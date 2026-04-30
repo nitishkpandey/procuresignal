@@ -84,6 +84,6 @@ jobs:
       - name: Build Worker image
         run: docker build -t procuresignal-worker:latest -f Dockerfile.worker .
       - name: Test API image
-        run: docker run --rm procuresignal-api:latest --help
+        run: docker run --rm --entrypoint uvicorn procuresignal-api:latest --help
       - name: Test Worker image
-        run: docker run --rm procuresignal-worker:latest --help
+        run: docker run --rm --entrypoint celery procuresignal-worker:latest --help
