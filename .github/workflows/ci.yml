@@ -62,7 +62,7 @@ jobs:
       - name: Install dependencies
         run: poetry install
       - name: Run tests
-        run: pytest tests/ -v --cov=api --cov=worker --cov=shared --cov-report=xml
+        run: poetry run pytest tests/ -v --cov=api --cov=worker --cov=shared --cov-report=xml
         env:
           DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@localhost:5432/procuresignal
           REDIS_URL: redis://localhost:6379/0
