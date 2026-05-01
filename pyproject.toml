@@ -19,6 +19,7 @@ pydantic-settings = "^2.0"
 sqlalchemy = "^2.0"
 asyncpg = "^0.28"
 alembic = "^1.13"
+aiosqlite = "^0.19"
 
 # API
 fastapi = "^0.104"
