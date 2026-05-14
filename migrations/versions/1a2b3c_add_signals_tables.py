@@ -4,6 +4,7 @@ Revision ID: 1a2b3c_add_signals_tables
 Revises: 1f8f95ad327b
 Create Date: 2026-05-14 00:00:00.000000
 """
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql

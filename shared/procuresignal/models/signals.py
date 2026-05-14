@@ -2,8 +2,9 @@
 
 from datetime import datetime
 
-from sqlalchemy import Float, ForeignKey, String, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy import JSON, Float, ForeignKey, String, Text, func, text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -20,8 +21,10 @@ class Signal(Base):
     article_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(20))
-    impact_areas: Mapped[list] = mapped_column(ARRAY(String))
-    raw_signal: Mapped[dict] = mapped_column(JSONB)
+    impact_areas: Mapped[list] = mapped_column(
+        MutableList.as_mutable(JSON), default=list, nullable=True
+    )
+    raw_signal: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, server_default=func.now(), onupdate=func.now()

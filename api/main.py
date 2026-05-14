@@ -1,6 +1,5 @@
 """FastAPI application entry point."""
 
-
 from os import getenv
 
 from fastapi import FastAPI
