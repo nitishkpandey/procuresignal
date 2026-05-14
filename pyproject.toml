@@ -77,6 +77,9 @@ strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR/shared"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
