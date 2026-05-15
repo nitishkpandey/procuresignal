@@ -37,6 +37,7 @@ spacy = "^3.7"
 
 # Enrichment
 tenacity = "^8.2"
+groq = "^0.9"
 
 # Logging
 structlog = "^23.2"
