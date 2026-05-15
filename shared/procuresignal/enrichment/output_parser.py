@@ -1,21 +1,21 @@
 """Parse and validate LLM output."""
 
 import json
-from dataclasses import dataclass
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class EnrichmentOutput(BaseModel):
     """Structured output from LLM enrichment."""
-    
+
     summary: str = Field(..., min_length=10, max_length=1000)
     category: str = Field(..., min_length=3, max_length=50)
     signal_tags: List[str] = Field(default_factory=list)
     priority_signal: Optional[str] = Field(default=None)
-    
-    @field_validator('category', mode='before')
+
+    @field_validator("category", mode="before")
+    @classmethod
     def validate_category(cls, v):
         """Validate category is one of allowed values (Pydantic v2).
 
@@ -27,19 +27,33 @@ class EnrichmentOutput(BaseModel):
             return "general"
 
         allowed = {
-            "automotive", "electronics", "chemicals", "energy",
-            "manufacturing", "logistics", "regulatory", "general"
+            "automotive",
+            "electronics",
+            "chemicals",
+            "energy",
+            "manufacturing",
+            "logistics",
+            "regulatory",
+            "general",
         }
         if val not in allowed:
             return "general"
         return val
-    
-    @field_validator('signal_tags', mode='after')
+
+    @field_validator("signal_tags", mode="after")
+    @classmethod
     def validate_tags(cls, v):
         """Ensure tags are valid and lowercase (Pydantic v2)."""
         allowed = {
-            "bankruptcy", "m_and_a", "strike", "tariff", "sanctions",
-            "port_strike", "quality_issue", "labor_dispute", "expansion"
+            "bankruptcy",
+            "m_and_a",
+            "strike",
+            "tariff",
+            "sanctions",
+            "port_strike",
+            "quality_issue",
+            "labor_dispute",
+            "expansion",
         }
         if not isinstance(v, list):
             return []
@@ -59,33 +73,33 @@ class EnrichmentOutput(BaseModel):
 
 class OutputParser:
     """Parse and validate LLM responses."""
-    
+
     @staticmethod
     def parse(response_text: str) -> Optional[EnrichmentOutput]:
         """Parse LLM response into structured output.
-        
+
         Args:
             response_text: Raw text from LLM
-        
+
         Returns:
             Parsed EnrichmentOutput or None if parsing fails
         """
         try:
             # Extract JSON from response
             # LLM might include extra text, so we look for JSON block
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            
+            json_start = response_text.find("{")
+            json_end = response_text.rfind("}") + 1
+
             if json_start == -1 or json_end == 0:
                 return None
-            
+
             json_str = response_text[json_start:json_end]
             data = json.loads(json_str)
-            
+
             # Validate and create model
             output = EnrichmentOutput(**data)
             return output
-        
+
         except json.JSONDecodeError:
             return None
         except ValueError:
@@ -93,11 +107,11 @@ class OutputParser:
             return None
         except Exception:
             return None
-    
+
     @staticmethod
     def get_fallback(title: str) -> EnrichmentOutput:
         """Get fallback output when LLM fails.
-        
+
         Better to have partial data than no data.
         """
         return EnrichmentOutput(
