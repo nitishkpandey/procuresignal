@@ -37,15 +37,26 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        if not preference.interested_categories:
+        preferred_categories = getattr(
+            preference,
+            "preferred_categories",
+            getattr(preference, "interested_categories", []),
+        )
+        excluded_categories = getattr(
+            preference,
+            "excluded_categories",
+            getattr(preference, "excluded_topics", []),
+        )
+
+        if not preferred_categories:
             return 0.5  # Neutral if no preference
 
-        if article_category.lower() in preference.interested_categories:
+        if article_category.lower() in preferred_categories:
             return 1.0
 
         # Check excluded categories
-        if preference.excluded_categories:
-            if article_category.lower() in preference.excluded_categories:
+        if excluded_categories:
+            if article_category.lower() in excluded_categories:
                 return 0.0
 
         return 0.3  # Partial match
@@ -64,12 +75,19 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        if not article_suppliers or not preference.watched_suppliers:
+        preferred_suppliers = getattr(
+            preference,
+            "preferred_suppliers",
+            getattr(preference, "interested_suppliers", []),
+        )
+        excluded_suppliers = getattr(preference, "excluded_suppliers", [])
+
+        if not article_suppliers or not preferred_suppliers:
             return 0.5  # Neutral if no data
 
         # Check for matches
         article_suppliers_lower = [s.lower() for s in article_suppliers]
-        watched_lower = [s.lower() for s in preference.watched_suppliers]
+        watched_lower = [s.lower() for s in preferred_suppliers]
 
         matches = len(set(article_suppliers_lower) & set(watched_lower))
 
@@ -78,8 +96,8 @@ class PreferenceMatcher:
             return min(1.0, 0.5 + (matches * 0.25))
 
         # Check excluded suppliers
-        if preference.excluded_suppliers:
-            excluded_lower = [s.lower() for s in preference.excluded_suppliers]
+        if excluded_suppliers:
+            excluded_lower = [s.lower() for s in excluded_suppliers]
             if set(article_suppliers_lower) & set(excluded_lower):
                 return 0.0
 
@@ -99,12 +117,19 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        if not article_regions or not preference.interested_regions:
+        preferred_regions = getattr(
+            preference,
+            "preferred_regions",
+            getattr(preference, "interested_regions", []),
+        )
+        excluded_regions = getattr(preference, "excluded_regions", [])
+
+        if not article_regions or not preferred_regions:
             return 0.5  # Neutral
 
         # Check for matches
         article_regions_lower = [r.lower() for r in article_regions]
-        interested_lower = [r.lower() for r in preference.interested_regions]
+        interested_lower = [r.lower() for r in preferred_regions]
 
         matches = len(set(article_regions_lower) & set(interested_lower))
 
@@ -112,8 +137,8 @@ class PreferenceMatcher:
             return min(1.0, 0.5 + (matches * 0.25))
 
         # Check excluded regions
-        if preference.excluded_regions:
-            excluded_lower = [r.lower() for r in preference.excluded_regions]
+        if excluded_regions:
+            excluded_lower = [r.lower() for r in excluded_regions]
             if set(article_regions_lower) & set(excluded_lower):
                 return 0.0
 
@@ -135,19 +160,24 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        if not preference.interested_signals:
+        preferred_signals = getattr(
+            preference,
+            "preferred_signals",
+            getattr(preference, "interested_signals", []),
+        )
+        excluded_signals = getattr(preference, "excluded_signals", [])
+
+        if not preferred_signals:
             return 0.5  # Neutral
 
         # Priority signals get higher weight
         if article_priority_signal:
-            if article_priority_signal.lower() in [
-                s.lower() for s in preference.interested_signals
-            ]:
+            if article_priority_signal.lower() in [s.lower() for s in preferred_signals]:
                 return 1.0
 
         # Check regular signal tags
         article_tags_lower = [t.lower() for t in article_signal_tags]
-        interested_lower = [s.lower() for s in preference.interested_signals]
+        interested_lower = [s.lower() for s in preferred_signals]
 
         matches = len(set(article_tags_lower) & set(interested_lower))
 
@@ -155,8 +185,8 @@ class PreferenceMatcher:
             return min(1.0, 0.5 + (matches * 0.25))
 
         # Check excluded signals
-        if preference.excluded_signals:
-            excluded_lower = [s.lower() for s in preference.excluded_signals]
+        if excluded_signals:
+            excluded_lower = [s.lower() for s in excluded_signals]
             if set(article_tags_lower) & set(excluded_lower):
                 return 0.0
 

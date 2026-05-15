@@ -15,28 +15,20 @@ class PreferenceManager:
     async def create_or_update_preference(
         session: AsyncSession,
         user_id: str,
-        interested_categories: Optional[List[str]] = None,
-        interested_suppliers: Optional[List[str]] = None,
-        interested_regions: Optional[List[str]] = None,
-        interested_signals: Optional[List[str]] = None,
-        excluded_categories: Optional[List[str]] = None,
-        excluded_suppliers: Optional[List[str]] = None,
-        excluded_regions: Optional[List[str]] = None,
-        excluded_signals: Optional[List[str]] = None,
+        preferred_categories: Optional[List[str]] = None,
+        preferred_suppliers: Optional[List[str]] = None,
+        preferred_regions: Optional[List[str]] = None,
+        excluded_topics: Optional[List[str]] = None,
     ) -> UserNewsPreference:
         """Create or update user preference.
 
         Args:
             session: Database session
             user_id: User ID
-            interested_categories: Categories user wants
-            interested_suppliers: Suppliers to watch
-            interested_regions: Regions to monitor
-            interested_signals: Signals to track
-            excluded_categories: Categories to exclude
-            excluded_suppliers: Suppliers to exclude
-            excluded_regions: Regions to exclude
-            excluded_signals: Signals to exclude
+            preferred_categories: Categories user wants
+            preferred_suppliers: Suppliers to watch
+            preferred_regions: Regions to monitor
+            excluded_topics: Topics to exclude
 
         Returns:
             Updated UserNewsPreference
@@ -49,34 +41,22 @@ class PreferenceManager:
 
         if pref:
             # Update existing
-            if interested_categories is not None:
-                pref.interested_categories = interested_categories
-            if interested_suppliers is not None:
-                pref.interested_suppliers = interested_suppliers
-            if interested_regions is not None:
-                pref.interested_regions = interested_regions
-            if interested_signals is not None:
-                pref.interested_signals = interested_signals
-            if excluded_categories is not None:
-                pref.excluded_categories = excluded_categories
-            if excluded_suppliers is not None:
-                pref.excluded_suppliers = excluded_suppliers
-            if excluded_regions is not None:
-                pref.excluded_regions = excluded_regions
-            if excluded_signals is not None:
-                pref.excluded_signals = excluded_signals
+            if preferred_categories is not None:
+                pref.preferred_categories = preferred_categories
+            if preferred_suppliers is not None:
+                pref.preferred_suppliers = preferred_suppliers
+            if preferred_regions is not None:
+                pref.preferred_regions = preferred_regions
+            if excluded_topics is not None:
+                pref.excluded_topics = excluded_topics
         else:
             # Create new
             pref = UserNewsPreference(
                 user_id=user_id,
-                interested_categories=interested_categories or [],
-                interested_suppliers=interested_suppliers or [],
-                interested_regions=interested_regions or [],
-                interested_signals=interested_signals or [],
-                excluded_categories=excluded_categories or [],
-                excluded_suppliers=excluded_suppliers or [],
-                excluded_regions=excluded_regions or [],
-                excluded_signals=excluded_signals or [],
+                preferred_categories=preferred_categories or [],
+                preferred_suppliers=preferred_suppliers or [],
+                preferred_regions=preferred_regions or [],
+                excluded_topics=excluded_topics or [],
             )
 
         session.add(pref)

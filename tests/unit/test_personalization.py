@@ -1,22 +1,40 @@
 """Tests for personalization engine."""
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 
-from procuresignal.models import NewsArticleProcessed, UserNewsPreference
-from procuresignal.personalization import (
-    PreferenceMatcher,
-)
+from procuresignal.models import NewsArticleProcessed
+from procuresignal.personalization import PreferenceMatcher
+
+
+@dataclass
+class PreferenceStub:
+    """Preference stub for matcher tests."""
+
+    user_id: str
+    preferred_categories: list[str]
+    preferred_suppliers: list[str]
+    preferred_regions: list[str]
+    preferred_signals: list[str]
+    excluded_topics: list[str]
+    excluded_suppliers: list[str]
+    excluded_regions: list[str]
+    excluded_signals: list[str]
 
 
 def test_category_match_hit():
     """Test category matching when preferences match."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=["automotive", "manufacturing"],
-        interested_suppliers=[],
-        interested_regions=[],
-        interested_signals=[],
+        preferred_categories=["automotive", "manufacturing"],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_category_match("automotive", pref)
@@ -26,13 +44,16 @@ def test_category_match_hit():
 
 def test_category_match_miss():
     """Test category matching when preferences don't match."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=["automotive"],
-        interested_suppliers=[],
-        interested_regions=[],
-        interested_signals=[],
-        excluded_categories=["general"],
+        preferred_categories=["automotive"],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=["general"],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_category_match("general", pref)
@@ -42,12 +63,16 @@ def test_category_match_miss():
 
 def test_category_match_no_preference():
     """Test category matching with no preferences."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=[],
-        interested_suppliers=[],
-        interested_regions=[],
-        interested_signals=[],
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_category_match("automotive", pref)
@@ -57,12 +82,16 @@ def test_category_match_no_preference():
 
 def test_supplier_match_hit():
     """Test supplier matching when preferences match."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=[],
-        interested_suppliers=["Bosch", "Siemens"],
-        interested_regions=[],
-        interested_signals=[],
+        preferred_categories=[],
+        preferred_suppliers=["Bosch", "Siemens"],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_supplier_match(["Bosch"], pref)
@@ -72,12 +101,16 @@ def test_supplier_match_hit():
 
 def test_supplier_match_multiple():
     """Test supplier matching with multiple matches."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=[],
-        interested_suppliers=["Bosch", "Siemens", "Volkswagen"],
-        interested_regions=[],
-        interested_signals=[],
+        preferred_categories=[],
+        preferred_suppliers=["Bosch", "Siemens", "Volkswagen"],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_supplier_match(["Bosch", "Siemens"], pref)
@@ -87,12 +120,16 @@ def test_supplier_match_multiple():
 
 def test_region_match_hit():
     """Test region matching when preferences match."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=[],
-        interested_suppliers=[],
-        interested_regions=["Germany", "Poland"],
-        interested_signals=[],
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=["Germany", "Poland"],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_region_match(["Germany"], pref)
@@ -102,12 +139,16 @@ def test_region_match_hit():
 
 def test_signal_match_priority():
     """Test signal matching with priority signal."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=[],
-        interested_suppliers=[],
-        interested_regions=[],
-        interested_signals=["bankruptcy", "strike"],
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=["bankruptcy", "strike"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     score = PreferenceMatcher.calculate_signal_match(["tariff"], "bankruptcy", pref)
@@ -117,12 +158,16 @@ def test_signal_match_priority():
 
 def test_match_score_calculation():
     """Test overall match score calculation."""
-    pref = UserNewsPreference(
+    pref = PreferenceStub(
         user_id="user1",
-        interested_categories=["automotive"],
-        interested_suppliers=["Bosch"],
-        interested_regions=["Germany"],
-        interested_signals=["tariff"],
+        preferred_categories=["automotive"],
+        preferred_suppliers=["Bosch"],
+        preferred_regions=["Germany"],
+        preferred_signals=["tariff"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
     )
 
     # Create a mock article

@@ -45,10 +45,10 @@ class PersonalizationPipeline:
             # Default preference: include all
             pref = UserNewsPreference(
                 user_id=user_id,
-                interested_categories=[],
-                interested_suppliers=[],
-                interested_regions=[],
-                interested_signals=[],
+                preferred_categories=[],
+                preferred_suppliers=[],
+                preferred_regions=[],
+                excluded_topics=[],
             )
 
         # Get recent articles
@@ -80,16 +80,19 @@ class PersonalizationPipeline:
         for rank, (article, score) in enumerate(scored_articles[:limit]):
             feed_entry = UserNewsFeed(
                 user_id=user_id,
-                article_id=article.id,
-                relevance_score=score.overall_score,
-                rank=rank + 1,
-                match_breakdown={
+                processed_article_id=article.id,
+                top_level_category=article.top_level_category,
+                rank_score=score.overall_score,
+                match_reasons={
                     "category": score.category_match,
                     "supplier": score.supplier_match,
                     "region": score.region_match,
                     "signal": score.signal_match,
                 },
-                added_to_feed_at=datetime.utcnow(),
+                related_sourcing_event_ids=[],
+                surfaced_at=datetime.utcnow(),
+                is_read=False,
+                is_hidden=False,
             )
             feed_articles.append(feed_entry)
 
@@ -120,7 +123,7 @@ class PersonalizationPipeline:
         feed_query = await session.execute(
             select(UserNewsFeed)
             .where(UserNewsFeed.user_id == user_id)
-            .order_by(UserNewsFeed.rank)
+            .order_by(desc(UserNewsFeed.rank_score))
             .limit(limit)
         )
         feed_entries = feed_query.scalars().all()
@@ -128,7 +131,7 @@ class PersonalizationPipeline:
         results = []
 
         for entry in feed_entries:
-            article = await session.get(NewsArticleProcessed, entry.article_id)
+            article = await session.get(NewsArticleProcessed, entry.processed_article_id)
             if article:
                 results.append((article, entry))
 
