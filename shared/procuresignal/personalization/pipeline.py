@@ -54,6 +54,11 @@ class PersonalizationPipeline:
         # Get recent articles
         cutoff_date = datetime.utcnow() - timedelta(days=days_back)
 
+        existing_feed_query = await session.execute(
+            select(UserNewsFeed.processed_article_id).where(UserNewsFeed.user_id == user_id)
+        )
+        existing_article_ids = {row[0] for row in existing_feed_query.all()}
+
         articles_query = await session.execute(
             select(NewsArticleProcessed)
             .where(NewsArticleProcessed.processed_at >= cutoff_date)
@@ -65,6 +70,9 @@ class PersonalizationPipeline:
         scored_articles = []
 
         for article in articles:
+            if article.id in existing_article_ids:
+                continue
+
             score = await PreferenceMatcher.score_article(article, pref)
 
             # Only include if score > threshold (0.3)
