@@ -29,6 +29,7 @@ httpx = "^0.25"
 # Worker
 celery = "^5.3"
 redis = "^5.0"
+flower = "^2.0"
 
 # Data processing
 feedparser = "^6.0"

@@ -26,4 +26,4 @@ COPY ./worker /app/worker
 RUN useradd -m -u 1000 procuresignal && chown -R procuresignal:procuresignal /app
 USER procuresignal
 
-CMD ["celery", "-A", "worker.tasks", "worker", "--loglevel=info", "--concurrency=4"]
+CMD ["celery", "-A", "worker.main", "worker", "--loglevel=info", "--queues=retrieval,processing,enrichment,personalization,default"]
