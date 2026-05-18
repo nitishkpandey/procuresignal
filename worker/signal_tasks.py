@@ -70,7 +70,7 @@ def _store_signal(article_id: str, signal, impact):
         return None
 
     # Lazy import of ORM models
-    from shared.procuresignal.models import Signal as SignalModel
+    from procuresignal.models import Signal as SignalModel
 
     async def _do_store():
         engine = create_async_engine(database_url, future=True)

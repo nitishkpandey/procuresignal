@@ -1,22 +1,16 @@
-"""Celery worker application entry point."""
-
-import os
+"""Celery application factory."""
 
 from celery import Celery
 
-broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
-backend_url = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
-
-app = Celery("procuresignal-worker", broker=broker_url, backend=backend_url)
-
-# Ensure task modules are loaded when worker starts.
+app = Celery("procuresignal-worker")
+app.config_from_object("worker.celery_config", namespace="CELERY")
 app.autodiscover_tasks(["worker"])
 
 
-@app.task
-def hello(name: str) -> str:
-    """Test task."""
-    return f"Hello {name}"
+@app.task(bind=True, name="worker.main.debug_task")
+def debug_task(self) -> None:
+    """Debug task for inspecting worker requests."""
+    print(f"Request: {self.request!r}")
 
 
 if __name__ == "__main__":
