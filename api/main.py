@@ -1,41 +1,68 @@
-"""FastAPI application entry point."""
+"""Main FastAPI application."""
 
+from contextlib import asynccontextmanager
 from os import getenv
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from procuresignal.config.database import close_db, init_db
+from starlette.middleware.gzip import GZipMiddleware
 
 from api.api.routers.signals import router as signals_router
-from shared.procuresignal.config.database import close_db, init_db
-
-app = FastAPI(
-    title="ProcureSignal API",
-    description="AI-powered procurement intelligence",
-    version="0.1.0",
-)
+from api.routers import articles, feed, health, preferences
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     database_url = getenv("DATABASE_URL")
     if database_url:
         await init_db(database_url)
-        app.include_router(signals_router)
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event():
     await close_db()
 
 
+app = FastAPI(
+    title="ProcureSignal API",
+    description="AI-powered procurement news aggregation and personalization",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+app.include_router(health.router)
+app.include_router(feed.router)
+app.include_router(preferences.router)
+app.include_router(articles.router)
+app.include_router(signals_router)
+
+
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint for container orchestration."""
+async def root_health() -> dict[str, str]:
+    """Legacy health check endpoint."""
+
     return {"status": "healthy", "service": "api"}
 
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"message": "ProcureSignal API v0.1.0 — Phase 4 signals"}
+    """Root endpoint."""
+
+    return {
+        "service": "ProcureSignal API",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+    }
 
 
 if __name__ == "__main__":
