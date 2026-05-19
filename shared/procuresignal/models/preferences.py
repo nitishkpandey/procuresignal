@@ -19,6 +19,13 @@ class UserNewsPreference(BaseModel):
     preferred_categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     preferred_suppliers: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     preferred_regions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    preferred_signals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    excluded_categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    excluded_suppliers: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    excluded_regions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    excluded_signals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     excluded_topics: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
