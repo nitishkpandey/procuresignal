@@ -21,4 +21,4 @@ async def test_root_endpoint() -> None:
     async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.get("/")
         assert response.status_code == 200
-        assert "ProcureSignal API" in response.json()["message"]
+        assert "ProcureSignal API" in response.json()["service"]

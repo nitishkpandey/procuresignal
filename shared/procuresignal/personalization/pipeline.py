@@ -48,6 +48,11 @@ class PersonalizationPipeline:
                 preferred_categories=[],
                 preferred_suppliers=[],
                 preferred_regions=[],
+                preferred_signals=[],
+                excluded_categories=[],
+                excluded_suppliers=[],
+                excluded_regions=[],
+                excluded_signals=[],
                 excluded_topics=[],
             )
 
