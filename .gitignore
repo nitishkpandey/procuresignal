@@ -58,3 +58,6 @@ logs/
 
 # Pre-commit
 .pre-commit-config.yaml.bak
+
+# Superpowers SDD scratch
+.superpowers/
