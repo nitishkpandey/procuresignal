@@ -3,11 +3,10 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, select
-
 from procuresignal.config import database
 from procuresignal.models import Signal as SignalModel
 from procuresignal.models import SignalMetadata
+from sqlalchemy import func, select
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 

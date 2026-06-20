@@ -3,7 +3,6 @@
 import asyncio
 
 import pytest
-
 from procuresignal.chat.chat_client import ChatLLMClient
 
 
