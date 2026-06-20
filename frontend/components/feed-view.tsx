@@ -49,6 +49,7 @@ export function FeedView() {
             setQuery("");
             setDraft("");
           }}
+          onRetry={results.reload}
         />
       ) : (
         <FeedList loading={feed.loading} error={feed.error} items={feed.data?.articles ?? []} onRetry={feed.reload} />
@@ -94,11 +95,13 @@ function SearchResults({
   error,
   items,
   onClear,
+  onRetry,
 }: {
   loading: boolean;
   error: string | null;
   items: SearchResult[];
   onClear: () => void;
+  onRetry: () => void;
 }) {
   return (
     <div className="space-y-3">
@@ -106,7 +109,14 @@ function SearchResults({
         ← Back to feed
       </button>
       {loading ? <Spinner label="Searching…" /> : null}
-      {error ? <p className="text-sm text-red-700">Search failed: {error}</p> : null}
+      {error ? (
+        <p className="text-sm text-red-700">
+          Search failed: {error}{" "}
+          <button className="underline" onClick={onRetry}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       {!loading && !error && items.length === 0 ? (
         <EmptyState title="No results" />
       ) : null}

@@ -62,4 +62,14 @@ describe("FeedView", () => {
     await waitFor(() => expect(screen.getByText("Search hit")).toBeInTheDocument());
     expect(screen.queryByText("Feed article")).not.toBeInTheDocument();
   });
+
+  it("shows a retry control when search fails", async () => {
+    vi.mocked(api.search).mockRejectedValueOnce(new Error("boom"));
+    render(<FeedView />);
+    await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
+    const input = screen.getByLabelText("Search articles");
+    await userEvent.type(input, "tariff{enter}");
+    await waitFor(() => expect(screen.getByText(/Search failed: boom/)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
 });
