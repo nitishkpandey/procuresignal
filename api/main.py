@@ -8,8 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
-from api.api.routers.signals import router as signals_router
-from api.routers import articles, chat, feed, health, preferences
+from api.routers import articles, chat, feed, health, preferences, signals
 
 
 @asynccontextmanager
@@ -44,7 +43,7 @@ app.include_router(feed.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(articles.router)
-app.include_router(signals_router)
+app.include_router(signals.router)
 
 
 @app.get("/health")
