@@ -1,0 +1,17 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { SignalBadge } from "@/components/signal-badge";
+
+describe("SignalBadge", () => {
+  it("renders the signal label", () => {
+    render(<SignalBadge signal="bankruptcy" />);
+    expect(screen.getByText("bankruptcy")).toBeInTheDocument();
+  });
+
+  it("applies priority styling", () => {
+    render(<SignalBadge signal="tariff" priority />);
+    const el = screen.getByText("tariff");
+    expect(el.className).toContain("bg-red");
+  });
+});
