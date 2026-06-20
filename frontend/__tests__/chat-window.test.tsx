@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,10 +30,12 @@ describe("ChatWindow", () => {
     await userEvent.type(input, "What is the tariff?{enter}");
     expect(screen.getByText("What is the tariff?")).toBeInTheDocument();
 
-    handlers!.onFrame({ type: "start", content: "" });
-    handlers!.onFrame({ type: "stream", content: "It " });
-    handlers!.onFrame({ type: "stream", content: "raises costs." });
-    handlers!.onFrame({ type: "end", content: "done" });
+    act(() => {
+      handlers!.onFrame({ type: "start", content: "" });
+      handlers!.onFrame({ type: "stream", content: "It " });
+      handlers!.onFrame({ type: "stream", content: "raises costs." });
+      handlers!.onFrame({ type: "end", content: "done" });
+    });
 
     await waitFor(() => expect(screen.getByText("It raises costs.")).toBeInTheDocument());
   });
