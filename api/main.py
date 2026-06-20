@@ -9,7 +9,7 @@ from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
 from api.api.routers.signals import router as signals_router
-from api.routers import articles, feed, health, preferences
+from api.routers import articles, chat, feed, health, preferences
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(health.router)
 app.include_router(feed.router)
 app.include_router(preferences.router)
+app.include_router(chat.router)
 app.include_router(articles.router)
 app.include_router(signals_router)
 
