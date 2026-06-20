@@ -7,8 +7,8 @@ license = "MIT"
 readme = "README.md"
 packages = [
     { include = "procuresignal", from = "shared" },
-    { include = "api", from = "api" },
-    { include = "worker", from = "worker" },
+    { include = "api" },
+    { include = "worker" },
 ]
 
 [tool.poetry.dependencies]
