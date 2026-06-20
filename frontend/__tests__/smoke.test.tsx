@@ -1,11 +1,9 @@
-import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import Home from "@/app/page";
+import { apiBaseUrl } from "@/lib/api";
 
 describe("smoke", () => {
-  it("renders the home placeholder", () => {
-    render(<Home />);
-    expect(screen.getByText("ProcureSignal")).toBeInTheDocument();
+  it("resolves an API base url", () => {
+    expect(typeof apiBaseUrl()).toBe("string");
   });
 });

@@ -1,3 +1,5 @@
+import { FeedView } from "@/components/feed-view";
+
 export default function Home() {
-  return <main>ProcureSignal</main>;
+  return <FeedView />;
 }
