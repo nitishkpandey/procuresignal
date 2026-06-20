@@ -1,8 +1,20 @@
 """Chat REST + WebSocket endpoints."""
 
 import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from procuresignal.chat.chat_client import ChatLLMClient
+from procuresignal.chat.context import build_system_prompt
+from procuresignal.config import database
 from procuresignal.models import ChatConversation, ChatMessage
 from sqlalchemy import asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,3 +102,138 @@ async def get_messages(
         messages=[MessageResponse.model_validate(r) for r in rows],
         total_count=len(rows),
     )
+
+
+def _build_chat_client() -> ChatLLMClient:
+    """Factory for the streaming chat client (overridable in tests)."""
+
+    return ChatLLMClient()
+
+
+async def _ensure_conversation(session_maker, user_id: str, conversation_id: str) -> None:
+    async with session_maker() as session:
+        conversation = await _get_conversation(session, conversation_id)
+        if conversation is None:
+            session.add(
+                ChatConversation(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    title=None,
+                    message_count=0,
+                    last_message_at=None,
+                )
+            )
+            await session.commit()
+
+
+async def _persist_user_message(
+    session_maker, user_id: str, conversation_id: str, text: str
+) -> tuple[str, list[dict]]:
+    """Persist the user message, set title if first, return (system_prompt, history)."""
+
+    async with session_maker() as session:
+        session.add(
+            ChatMessage(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                role="user",
+                content=text,
+                tokens_used=None,
+            )
+        )
+        conversation = await _get_conversation(session, conversation_id)
+        if conversation is not None and not conversation.title:
+            conversation.title = text[:200]
+        await session.commit()
+
+        history_rows = (
+            await session.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation_id)
+                .order_by(asc(ChatMessage.created_at), asc(ChatMessage.id))
+            )
+        ).all()
+        history = [{"role": m.role, "content": m.content} for m in history_rows[:-1]]
+        system_prompt = await build_system_prompt(session, user_id)
+    return system_prompt, history
+
+
+async def _persist_assistant_message(
+    session_maker, user_id: str, conversation_id: str, text: str, tokens_used: int | None
+) -> None:
+    async with session_maker() as session:
+        session.add(
+            ChatMessage(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=text,
+                tokens_used=tokens_used,
+            )
+        )
+        conversation = await _get_conversation(session, conversation_id)
+        if conversation is not None:
+            conversation.message_count = (conversation.message_count or 0) + 2
+            conversation.last_message_at = datetime.utcnow()
+        await session.commit()
+
+
+@router.websocket("/ws/chat/{user_id}/{conversation_id}")
+async def chat_websocket(websocket: WebSocket, user_id: str, conversation_id: str) -> None:
+    """Stream a context-aware chat response, persisting both sides of the exchange."""
+
+    await websocket.accept()
+
+    session_maker = (
+        getattr(database.db_config, "session_maker", None) if database.db_config else None
+    )
+    if session_maker is None:
+        await websocket.send_json({"type": "error", "content": "Database not initialized"})
+        await websocket.close()
+        return
+
+    try:
+        client = _build_chat_client()
+    except ValueError:
+        await websocket.send_json(
+            {"type": "error", "content": "Chat is unavailable: GROQ_API_KEY not configured"}
+        )
+        await websocket.close()
+        return
+
+    await _ensure_conversation(session_maker, user_id, conversation_id)
+
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            user_message = (payload or {}).get("message")
+            if not user_message:
+                await websocket.send_json({"type": "error", "content": "Missing 'message' field"})
+                continue
+
+            try:
+                system_prompt, history = await _persist_user_message(
+                    session_maker, user_id, conversation_id, user_message
+                )
+                await websocket.send_json(
+                    {"type": "start", "content": "Processing your message..."}
+                )
+                chunks: list[str] = []
+                async for delta in client.stream_chat(system_prompt, history, user_message):
+                    chunks.append(delta)
+                    await websocket.send_json({"type": "stream", "content": delta})
+                await websocket.send_json({"type": "end", "content": "Response complete"})
+
+                await _persist_assistant_message(
+                    session_maker,
+                    user_id,
+                    conversation_id,
+                    "".join(chunks),
+                    getattr(client, "last_tokens_used", None),
+                )
+            except Exception as exc:  # noqa: BLE001 — surface to client, keep socket open
+                await websocket.send_json(
+                    {"type": "error", "content": f"Failed to process message: {exc}"}
+                )
+    except WebSocketDisconnect:
+        return
