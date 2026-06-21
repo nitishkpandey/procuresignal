@@ -140,6 +140,30 @@ services:
       - ./shared:/app/shared
     command: celery -A worker.main beat --loglevel=info
 
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: procuresignal-bootstrap
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      worker:
+        condition: service_started
+    volumes:
+      - ./scripts:/app/scripts
+      - ./shared:/app/shared
+      - ./worker:/app/worker
+    command: python /app/scripts/bootstrap_pipeline.py
+    restart: "no"
+
   flower:
     image: mher/flower:2.0
     container_name: procuresignal-flower
