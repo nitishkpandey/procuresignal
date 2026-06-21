@@ -14,28 +14,43 @@ A production-grade system that brings personalized, context-aware market intelli
 - Docker & Docker Compose
 - Git
 
-### Running Locally
+### Running Locally (full stack)
 
 ```bash
-# Clone the repository
-git clone https://github.com/nitishkpandey/procuresignal.git
-cd procuresignal
+# 1. Configure secrets
+cp .env.example .env
+#   edit .env and set GROQ_API_KEY and NEWSAPI_KEY
 
-# Start all services
-docker-compose up -d
+# 2. Build and start the whole stack
+docker compose up -d --build
 
-# Wait for services to be ready (~30 seconds)
-docker-compose logs -f api
-
-# API will be available at http://localhost:8000
-# Swagger docs: http://localhost:8000/docs
-# Grafana: http://localhost:3000 (admin/admin)
+# 3. Wait for the API to be healthy, then verify end-to-end
+pip install httpx websockets   # one-time, for the smoke test
+python scripts/smoke_test.py --wait
 ```
+
+### Service URLs / ports
+
+| Service     | URL                          |
+|-------------|------------------------------|
+| Frontend    | http://localhost:3000        |
+| API + docs  | http://localhost:8000/docs   |
+| Grafana     | http://localhost:3001 (admin/admin) |
+| Flower      | http://localhost:5555        |
+| Prometheus  | http://localhost:9090        |
+| Postgres    | localhost:5433               |
+| Redis       | localhost:6379               |
+
+Migrations run automatically (the `migrate` service runs `alembic upgrade head`
+before the API starts). The one-shot `bootstrap` service triggers the
+retrieval → enrichment → personalization pipeline once so the feed populates
+with real articles over the following minutes (requires `NEWSAPI_KEY` /
+`GROQ_API_KEY`).
 
 ### Stopping Services
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ## Architecture
@@ -61,11 +76,12 @@ Frontend (Next.js)
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| PostgreSQL | 5432 | Data persistence |
+| Frontend | 3000 | Next.js web UI |
+| PostgreSQL | 5433 | Data persistence |
 | Redis | 6379 | Message broker & caching |
 | FastAPI | 8000 | REST API & Swagger docs |
 | Celery Worker | N/A | Background pipeline jobs |
-| Grafana | 3000 | Metrics dashboards |
+| Grafana | 3001 | Metrics dashboards |
 | Prometheus | 9090 | Metrics collection |
 
 ## Development
