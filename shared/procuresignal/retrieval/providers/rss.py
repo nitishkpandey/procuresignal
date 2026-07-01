@@ -4,13 +4,6 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 
 import feedparser
-import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from procuresignal.retrieval.base import NewsProvider, RawArticle
 
@@ -39,25 +32,13 @@ class RSSProvider(NewsProvider):
     def __init__(self) -> None:
         """Initialize RSS provider."""
         super().__init__("rss")
-        self.client = httpx.AsyncClient(timeout=30.0)
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, TimeoutError)),
-    )
-    async def _fetch_with_retry(self, url: str) -> str:
-        """Fetch RSS feed with retry."""
-        response = await self.client.get(url)
-        response.raise_for_status()
-        return response.text
 
     async def health_check(self) -> bool:
         """Check if RSS feeds are accessible."""
         try:
             # Try to fetch one major feed
-            content = await self._fetch_with_retry("https://feeds.reuters.com/reuters/businessNews")
-            return len(content) > 0
+            response = await self._get("https://feeds.reuters.com/reuters/businessNews")
+            return len(response.text) > 0
         except Exception:
             return False
 
@@ -82,8 +63,8 @@ class RSSProvider(NewsProvider):
         # Fetch and parse each feed
         for feed_url in feeds_to_fetch:
             try:
-                feed_content = await self._fetch_with_retry(feed_url)
-                feed = feedparser.parse(feed_content)
+                response = await self._get(feed_url)
+                feed = feedparser.parse(response.text)
 
                 for entry in feed.entries[:20]:  # Limit per feed
                     article = RawArticle(
@@ -129,7 +110,3 @@ class RSSProvider(NewsProvider):
 
         # Fallback
         return datetime.utcnow()
-
-    async def close(self) -> None:
-        """Close HTTP client."""
-        await self.client.aclose()

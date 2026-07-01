@@ -5,12 +5,6 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from procuresignal.retrieval.base import NewsProvider, RawArticle
 
@@ -28,18 +22,6 @@ class NewsAPIProvider(NewsProvider):
         """
         super().__init__("newsapi")
         self.api_key = api_key or os.getenv("NEWSAPI_KEY", "")
-        self.client = httpx.AsyncClient(timeout=30.0)
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, TimeoutError)),
-    )
-    async def _fetch_with_retry(self, url: str, params: dict) -> dict:
-        """Fetch from NewsAPI with exponential backoff retry."""
-        response = await self.client.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
 
     async def health_check(self) -> bool:
         """Check if NewsAPI is accessible."""
@@ -47,11 +29,11 @@ class NewsAPIProvider(NewsProvider):
             return False
 
         try:
-            result = await self._fetch_with_retry(
+            response = await self._get(
                 f"{self.BASE_URL}/top-headlines",
                 {"country": "us", "pageSize": 1, "apiKey": self.api_key},
             )
-            return result.get("status") == "ok"
+            return response.json().get("status") == "ok"
         except Exception:
             return False
 
@@ -72,7 +54,7 @@ class NewsAPIProvider(NewsProvider):
 
         for query in query_groups:
             try:
-                result = await self._fetch_with_retry(
+                response = await self._get(
                     f"{self.BASE_URL}/everything",
                     {
                         "q": query,
@@ -81,6 +63,7 @@ class NewsAPIProvider(NewsProvider):
                         "apiKey": self.api_key,
                     },
                 )
+                result = response.json()
 
                 if result.get("status") != "ok":
                     continue
@@ -124,7 +107,3 @@ class NewsAPIProvider(NewsProvider):
             return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
         except Exception:
             return datetime.utcnow()
-
-    async def close(self) -> None:
-        """Close HTTP client."""
-        await self.client.aclose()

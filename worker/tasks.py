@@ -8,7 +8,7 @@ import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from procuresignal.enrichment import EnrichmentPipeline, GroqLLMClient
 from procuresignal.models import NewsArticleRaw, UserNewsPreference
@@ -81,6 +81,14 @@ def _to_raw_article(article: NewsArticleRaw) -> RawArticle:
         language=article.language,
         raw_payload_json=article.raw_payload_json,
     )
+
+
+def _run_with_retry(task: Any, coro_factory: Callable[[], Awaitable[Any]]) -> Any:
+    """Run an async task body, retrying with exponential backoff on failure."""
+    try:
+        return asyncio.run(coro_factory())
+    except Exception as exc:
+        raise task.retry(exc=exc, countdown=60 * (2**task.request.retries)) from exc
 
 
 @asynccontextmanager
@@ -217,10 +225,7 @@ def retrieve_news_task(self) -> dict[str, Any]:
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-    try:
-        return asyncio.run(_run())
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries)) from exc
+    return _run_with_retry(self, _run)
 
 
 @app.task(
@@ -244,10 +249,7 @@ def normalize_articles_task(self) -> dict[str, Any]:
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-    try:
-        return asyncio.run(_run())
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries)) from exc
+    return _run_with_retry(self, _run)
 
 
 @app.task(
@@ -301,10 +303,7 @@ def enrich_articles_task(self) -> dict[str, Any]:
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-    try:
-        return asyncio.run(_run())
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries)) from exc
+    return _run_with_retry(self, _run)
 
 
 @app.task(
@@ -353,10 +352,7 @@ def personalize_feeds_task(self) -> dict[str, Any]:
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-    try:
-        return asyncio.run(_run())
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries)) from exc
+    return _run_with_retry(self, _run)
 
 
 @app.task(

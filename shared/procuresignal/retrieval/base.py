@@ -5,6 +5,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 
 @dataclass
 class RawArticle:
@@ -39,6 +47,22 @@ class NewsProvider(ABC):
             name: Provider name (newsapi, gdelt, rss)
         """
         self.name = name
+        self.client = httpx.AsyncClient(timeout=30.0)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.HTTPError, TimeoutError)),
+    )
+    async def _get(self, url: str, params: Optional[dict] = None) -> httpx.Response:
+        """Fetch a URL with exponential-backoff retry."""
+        response = await self.client.get(url, params=params)
+        response.raise_for_status()
+        return response
+
+    async def close(self) -> None:
+        """Close HTTP client."""
+        await self.client.aclose()
 
     @abstractmethod
     async def fetch_articles(self, query_groups: list[str]) -> list[RawArticle]:
