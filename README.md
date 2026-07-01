@@ -54,23 +54,26 @@ docker compose down
 ```
 
 ## Architecture
+
+```
 External News Sources (NewsAPI, GDELT, RSS)
-↓
+        ↓
 Retrieval Layer (httpx, async)
-↓
+        ↓
 Normalization & Quality Gate
-↓
+        ↓
 Procurement Signal Engine (NLP + rule-based scoring)
-↓
+        ↓
 LLM Enrichment (Groq API)
-↓
+        ↓
 PostgreSQL (persistent storage)
-↓
+        ↓
 Personalization Layer
-↓
+        ↓
 REST API (FastAPI) ← Consumed by Frontend
-↓
+        ↓
 Frontend (Next.js)
+```
 
 ### Services
 
@@ -112,6 +115,8 @@ pre-commit run --all-files
 ```
 
 ## Project Structure
+
+```
 procuresignal/
 ├── api/                          # FastAPI service
 │   ├── api/
@@ -145,6 +150,7 @@ procuresignal/
 ├── .pre-commit-config.yaml      # Pre-commit hooks
 ├── .env.example                 # Environment variables template
 └── README.md
+```
 
 ## Contributing
 
