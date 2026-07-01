@@ -17,6 +17,8 @@ class ArticleInFeed(BaseModel):
     category: str
     signal_tags: list[str] = Field(default_factory=list)
     priority_signal: Optional[str] = None
+    detected_suppliers: list[str] = Field(default_factory=list)
+    detected_regions: list[str] = Field(default_factory=list)
     source_name: str
     published_at: datetime
     article_url: str

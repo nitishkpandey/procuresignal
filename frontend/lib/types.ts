@@ -5,6 +5,8 @@ export interface FeedArticle {
   category: string;
   signal_tags: string[];
   priority_signal: string | null;
+  detected_suppliers: string[];
+  detected_regions: string[];
   source_name: string;
   published_at: string;
   article_url: string;
