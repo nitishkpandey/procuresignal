@@ -11,7 +11,8 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+      # ponytail: init scripts dropped — macOS bind mounts are exec'd noexec ("bad interpreter").
+      # POSTGRES_PASSWORD already provisions password auth the app uses; re-add via COPY-into-image if host trust-auth is needed.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U procuresignal"]
       interval: 10s
@@ -31,16 +32,38 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
+    container_name: procuresignal-migrate
+    environment:
+      DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini
+    command: alembic upgrade head
+    restart: "no"
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-api
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       LOG_LEVEL: INFO
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -48,15 +71,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./api:/app/api
       - ./shared:/app/shared
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_WS_URL: ws://localhost:8000
+    container_name: procuresignal-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-worker
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -64,11 +105,15 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       LOG_LEVEL: INFO
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./worker:/app/worker
       - ./shared:/app/shared
@@ -78,6 +123,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-beat
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -90,12 +136,39 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       worker:
         condition: service_started
     volumes:
       - ./worker:/app/worker
       - ./shared:/app/shared
     command: celery -A worker.main beat --loglevel=info
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
+    container_name: procuresignal-bootstrap
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      worker:
+        condition: service_started
+    volumes:
+      - ./scripts:/app/scripts
+      - ./shared:/app/shared
+      - ./worker:/app/worker
+    command: python /app/scripts/bootstrap_pipeline.py
+    restart: "no"
 
   flower:
     image: mher/flower:2.0
@@ -118,7 +191,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
