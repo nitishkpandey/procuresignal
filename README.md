@@ -146,18 +146,6 @@ procuresignal/
 ├── .env.example                 # Environment variables template
 └── README.md
 
-## Phases
-
-This project is built incrementally across 14 phases. See [PHASES.md](docs/PHASES.md) for details.
-
-- Phase 0: Project scaffold - Done
-- Phase 1: Database layer
-- Phase 2: News retrieval
-- Phase 3: Normalization & filtering
-- Phase 4: Signal engine
-- Phase 5: LLM enrichment
-- ...and more
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.

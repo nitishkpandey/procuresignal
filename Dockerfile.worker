@@ -26,4 +26,7 @@ COPY ./worker /app/worker
 RUN useradd -m -u 1000 procuresignal && chown -R procuresignal:procuresignal /app
 USER procuresignal
 
+# shared/procuresignal isn't pip-installed (--no-root); put it on the path
+ENV PYTHONPATH=/app/shared
+
 CMD ["celery", "-A", "worker.main", "worker", "--loglevel=info", "--queues=retrieval,processing,enrichment,personalization,default"]

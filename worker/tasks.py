@@ -170,9 +170,12 @@ def retrieve_news_task(self) -> dict[str, Any]:
         async with _session_scope() as session:
             providers = [
                 ("newsapi", NewsAPIProvider(), NEWSAPI_QUERIES),
-                ("gdelt", GDELTProvider(), GDELT_QUERY_GROUPS),
                 ("rss", RSSProvider(), RSS_QUERY_GROUPS),
             ]
+            # GDELT's free endpoint aggressively 429s and can stall retrieval for minutes;
+            # opt in via GDELT_ENABLED=true only where a higher rate limit is available.
+            if os.getenv("GDELT_ENABLED", "false").lower() == "true":
+                providers.insert(1, ("gdelt", GDELTProvider(), GDELT_QUERY_GROUPS))
             provider_results: dict[str, Any] = {}
             total_fetched = 0
             total_inserted = 0

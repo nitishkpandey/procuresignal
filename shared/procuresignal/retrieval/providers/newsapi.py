@@ -119,8 +119,9 @@ class NewsAPIProvider(NewsProvider):
         if not date_str:
             return datetime.utcnow()
         try:
-            # ISO format: "2024-04-30T10:30:00Z"
-            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            # ISO format: "2024-04-30T10:30:00Z". Strip tzinfo — the DB column is
+            # TIMESTAMP WITHOUT TIME ZONE and asyncpg rejects tz-aware values.
+            return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
         except Exception:
             return datetime.utcnow()
 

@@ -11,7 +11,8 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+      # ponytail: init scripts dropped — macOS bind mounts are exec'd noexec ("bad interpreter").
+      # POSTGRES_PASSWORD already provisions password auth the app uses; re-add via COPY-into-image if host trust-auth is needed.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U procuresignal"]
       interval: 10s
@@ -35,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-migrate
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -53,6 +55,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-api
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -94,6 +97,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-worker
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -119,6 +123,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-beat
     environment:
       DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal
@@ -144,6 +149,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    platform: linux/amd64  # blis (spaCy dep) has no linux/arm64 wheel; run amd64 under emulation
     container_name: procuresignal-bootstrap
     environment:
       CELERY_BROKER_URL: redis://redis:6379/1
