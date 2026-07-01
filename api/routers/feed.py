@@ -69,6 +69,8 @@ async def get_personalized_feed(
             category=processed.top_level_category,
             signal_tags=processed.signal_tags or [],
             priority_signal=processed.priority_signal,
+            detected_suppliers=processed.detected_suppliers or [],
+            detected_regions=processed.detected_regions or [],
             source_name=raw.source_name,
             published_at=raw.published_at,
             article_url=raw.article_url,
