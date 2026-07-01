@@ -3,14 +3,6 @@
 from datetime import datetime
 from typing import Optional
 
-import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
 from procuresignal.retrieval.base import NewsProvider, RawArticle
 
 
@@ -22,24 +14,12 @@ class GDELTProvider(NewsProvider):
     def __init__(self) -> None:
         """Initialize GDELT provider."""
         super().__init__("gdelt")
-        self.client = httpx.AsyncClient(timeout=30.0)
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, TimeoutError)),
-    )
-    async def _fetch_with_retry(self, url: str, params: dict) -> str:
-        """Fetch from GDELT with retry."""
-        response = await self.client.get(url, params=params)
-        response.raise_for_status()
-        return response.text
 
     async def health_check(self) -> bool:
         """Check if GDELT is accessible."""
         try:
             # GDELT doesn't require API key, always available
-            await self._fetch_with_retry(
+            await self._get(
                 self.BASE_URL,
                 {
                     "query": "Brexit",
@@ -80,7 +60,7 @@ class GDELTProvider(NewsProvider):
 
             for term in search_terms:
                 try:
-                    result_text = await self._fetch_with_retry(
+                    response = await self._get(
                         self.BASE_URL,
                         {
                             "query": term,
@@ -90,11 +70,7 @@ class GDELTProvider(NewsProvider):
                             "timespan": "7d",  # Last 7 days
                         },
                     )
-
-                    # GDELT returns JSON with articles array
-                    import json
-
-                    result = json.loads(result_text)
+                    result = response.json()
 
                     for item in result.get("articles", []):
                         article = RawArticle(
@@ -130,7 +106,3 @@ class GDELTProvider(NewsProvider):
             return datetime.strptime(date_str[:14], "%Y%m%d%H%M%S")
         except Exception:
             return datetime.utcnow()
-
-    async def close(self) -> None:
-        """Close HTTP client."""
-        await self.client.aclose()
