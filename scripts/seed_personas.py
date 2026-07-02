@@ -11,8 +11,20 @@ import httpx
 
 PERSONAS = {
     "demo-user": {
-        "interested_categories": ["automotive", "energy", "logistics", "manufacturing", "technology"],
-        "interested_signals": ["supplier_risk", "tariff", "logistics_disruption", "m_and_a", "regulatory"],
+        "interested_categories": [
+            "automotive",
+            "energy",
+            "logistics",
+            "manufacturing",
+            "technology",
+        ],
+        "interested_signals": [
+            "supplier_risk",
+            "tariff",
+            "logistics_disruption",
+            "m_and_a",
+            "regulatory",
+        ],
     },
     "auto-buyer": {
         "interested_categories": ["automotive", "manufacturing"],
