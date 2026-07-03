@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
+from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, GroqLLMClient
 from procuresignal.models import NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
@@ -22,7 +22,7 @@ from procuresignal.retrieval import (
     RSSProvider,
 )
 from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.main import app
 from worker.signal_tasks import process_article_for_signals
@@ -58,13 +58,6 @@ class _NormalizedArticleRecord:
     raw_payload_json: dict[str, Any] | None
 
 
-def _database_url() -> str:
-    return os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal",
-    )
-
-
 def _to_raw_article(article: NewsArticleRaw) -> RawArticle:
     return RawArticle(
         provider=article.provider,
@@ -89,18 +82,6 @@ def _run_with_retry(task: Any, coro_factory: Callable[[], Awaitable[Any]]) -> An
         return asyncio.run(coro_factory())
     except Exception as exc:
         raise task.retry(exc=exc, countdown=60 * (2**task.request.retries)) from exc
-
-
-@asynccontextmanager
-async def _session_scope() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine(_database_url(), future=True)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
-    async with session_factory() as session:
-        try:
-            yield session
-        finally:
-            await engine.dispose()
 
 
 async def _load_recent_raw_articles(
@@ -175,7 +156,7 @@ def retrieve_news_task(self) -> dict[str, Any]:
     """Retrieve news from all providers."""
 
     async def _run() -> dict[str, Any]:
-        async with _session_scope() as session:
+        async with session_scope() as session:
             providers = [
                 ("newsapi", NewsAPIProvider(), NEWSAPI_QUERIES),
                 ("rss", RSSProvider(), RSS_QUERY_GROUPS),
@@ -239,7 +220,7 @@ def normalize_articles_task(self) -> dict[str, Any]:
     """Normalize recently ingested raw articles."""
 
     async def _run() -> dict[str, Any]:
-        async with _session_scope() as session:
+        async with session_scope() as session:
             stats = await _normalize_articles(session, hours_back=24, limit=1000)
             return {
                 "status": "success",
@@ -263,7 +244,7 @@ def enrich_articles_task(self) -> dict[str, Any]:
     """Enrich normalized raw articles with LLM summaries."""
 
     async def _run() -> dict[str, Any]:
-        async with _session_scope() as session:
+        async with session_scope() as session:
             stats = await _normalize_articles(session, hours_back=12, limit=500)
             normalized_articles = stats["normalized_articles"]
 
@@ -317,7 +298,7 @@ def personalize_feeds_task(self) -> dict[str, Any]:
     """Generate personalized feeds for all users with preferences."""
 
     async def _run() -> dict[str, Any]:
-        async with _session_scope() as session:
+        async with session_scope() as session:
             result = await session.execute(select(UserNewsPreference))
             users = list(result.scalars().all())
 

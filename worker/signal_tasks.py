@@ -15,10 +15,8 @@ logger = logging.getLogger(__name__)
 def process_article_for_signals(article_id: str, article_text: str, headline: str):
     """Process an article to detect procurement signals.
 
-    This task currently runs a lightweight rule-based classifier,
-    attempts entity resolution (if DB session is provided) and
-    computes an impact score. Storage is left to integration with
-    the project's ORM in `_store_signal`.
+    Runs a lightweight rule-based classifier, attempts entity resolution,
+    computes an impact score, and persists detected signals via `_store_signal`.
     """
     try:
         classifier = SignalClassifier()
@@ -50,10 +48,10 @@ def process_article_for_signals(article_id: str, article_text: str, headline: st
 
 
 def _store_signal(article_id: str, signal, impact):
-    """Persist the signal to the DB.
+    """Persist the signal to the Signal table when DATABASE_URL is set.
 
-    This is intentionally left as a placeholder: projects should
-    implement this to insert into their chosen ORM or database layer.
+    A no-op when DATABASE_URL is unset, so the worker can run without a DB
+    (dev/test).
     """
     logger.debug("Storing signal for article %s: %s (impact=%s)", article_id, signal, impact)
 
@@ -62,7 +60,7 @@ def _store_signal(article_id: str, signal, impact):
     import asyncio
     from os import getenv
 
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from procuresignal.config.database import session_scope
 
     database_url = getenv("DATABASE_URL")
     if not database_url:
@@ -73,10 +71,7 @@ def _store_signal(article_id: str, signal, impact):
     from procuresignal.models import Signal as SignalModel
 
     async def _do_store():
-        engine = create_async_engine(database_url, future=True)
-        async_session = async_sessionmaker(engine, expire_on_commit=False)
-
-        async with async_session() as session:
+        async with session_scope(database_url) as session:
             model = SignalModel(
                 signal_type=getattr(signal.signal_type, "value", str(signal.signal_type)),
                 entity_id=signal.entity_id,
@@ -92,7 +87,6 @@ def _store_signal(article_id: str, signal, impact):
             await session.refresh(model)
 
             logger.info("Stored signal id=%s for article=%s", model.id, article_id)
-            await engine.dispose()
             return model.id
 
     try:

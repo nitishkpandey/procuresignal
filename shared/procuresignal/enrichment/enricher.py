@@ -66,10 +66,10 @@ class ArticleEnricher:
                 top_level_category=parsed.category,
                 signal_tags=parsed.signal_tags,
                 priority_signal=parsed.priority_signal,
-                detected_regions=[],  # Will be filled in Phase 6
+                detected_regions=[],  # not extracted during enrichment
                 detected_suppliers=[],
                 detected_categories=[parsed.category],
-                signal_score=0.0,  # Will be calculated in Phase 6
+                signal_score=0.0,  # not scored during enrichment
                 processing_status="completed",
                 llm_model="groq/llama-3.1-8b",
                 language=article.language,

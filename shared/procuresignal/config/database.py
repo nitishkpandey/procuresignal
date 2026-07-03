@@ -1,9 +1,13 @@
 """Database configuration and connection management."""
 
-from typing import AsyncGenerator
+import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+WORKER_DATABASE_URL = "postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal"
 
 
 class DatabaseConfig:
@@ -46,17 +50,25 @@ class DatabaseConfig:
         if self.engine:
             await self.engine.dispose()
 
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
-        """Get async database session."""
-        if not self.session_maker:
-            raise RuntimeError("Database not initialized. Call initialize() first.")
-
-        async with self.session_maker() as session:
-            yield session
-
 
 # Global instance
 db_config: "DatabaseConfig | None" = None
+
+
+@asynccontextmanager
+async def session_scope(database_url: str | None = None) -> AsyncIterator[AsyncSession]:
+    """One-off session against a per-call engine.
+
+    For workers and scripts that run without the API's long-lived pool. Falls back
+    to DATABASE_URL, then the in-cluster worker default.
+    """
+    url = database_url or os.getenv("DATABASE_URL", WORKER_DATABASE_URL)
+    engine = create_async_engine(url, future=True)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 async def init_db(database_url: str) -> None:

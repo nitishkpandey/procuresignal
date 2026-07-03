@@ -1,4 +1,4 @@
-"""Models for Phase 4: signals and related tables."""
+"""Signal models and related tables."""
 
 from datetime import datetime
 
