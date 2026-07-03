@@ -222,8 +222,9 @@ async def chat_websocket(websocket: WebSocket, user_id: str, conversation_id: st
                 async for delta in client.stream_chat(system_prompt, history, user_message):
                     chunks.append(delta)
                     await websocket.send_json({"type": "stream", "content": delta})
-                await websocket.send_json({"type": "end", "content": "Response complete"})
-
+                # Persist BEFORE "end" so the terminal frame guarantees the assistant
+                # message is committed; a client that disconnects on "end" could
+                # otherwise query history before the write lands (race → lost message).
                 await _persist_assistant_message(
                     session_maker,
                     user_id,
@@ -231,6 +232,7 @@ async def chat_websocket(websocket: WebSocket, user_id: str, conversation_id: st
                     "".join(chunks),
                     getattr(client, "last_tokens_used", None),
                 )
+                await websocket.send_json({"type": "end", "content": "Response complete"})
             except Exception as exc:  # noqa: BLE001 — surface to client, keep socket open
                 await websocket.send_json(
                     {"type": "error", "content": f"Failed to process message: {exc}"}

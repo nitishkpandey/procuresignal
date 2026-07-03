@@ -28,9 +28,9 @@ def assert_valid_frame_sequence(frames: list[dict]) -> None:
     assert frames[0].get("type") == "start", f"first frame must be 'start', got {frames[0]!r}"
     for f in frames:
         assert f.get("type") in VALID_TYPES, f"unknown frame type: {f!r}"
-    assert frames[-1].get("type") in VALID_TERMINAL, (
-        f"sequence must end with 'end' or 'error', got {frames[-1]!r}"
-    )
+    assert (
+        frames[-1].get("type") in VALID_TERMINAL
+    ), f"sequence must end with 'end' or 'error', got {frames[-1]!r}"
 
 
 class Checker:
@@ -95,7 +95,10 @@ def main() -> int:
     c.check("GET /health", r.status_code == 200 and r.json().get("status") == "healthy")
 
     r = httpx.get(f"{api}/api/health", timeout=5.0)
-    c.check("GET /api/health database connected", r.status_code == 200 and r.json().get("database") == "connected")
+    c.check(
+        "GET /api/health database connected",
+        r.status_code == 200 and r.json().get("database") == "connected",
+    )
 
     prefs = {
         "user_id": user_id,
@@ -113,21 +116,26 @@ def main() -> int:
     r = httpx.get(f"{api}/api/preferences", params={"user_id": user_id}, timeout=10.0)
     c.check(
         "GET /api/preferences round-trips",
-        r.status_code == 200 and "bosch" in [s.lower() for s in r.json().get("interested_suppliers", [])],
+        r.status_code == 200
+        and "bosch" in [s.lower() for s in r.json().get("interested_suppliers", [])],
     )
 
     r = httpx.get(f"{api}/api/feed", params={"user_id": user_id, "limit": 10}, timeout=20.0)
     body = r.json() if r.status_code == 200 else {}
     c.check(
         "GET /api/feed valid shape",
-        r.status_code == 200 and isinstance(body.get("articles"), list) and body.get("total_count", -1) >= 0,
+        r.status_code == 200
+        and isinstance(body.get("articles"), list)
+        and body.get("total_count", -1) >= 0,
     )
 
     r = httpx.get(f"{api}/api/search", params={"q": "tariff", "limit": 5}, timeout=10.0)
     body = r.json() if r.status_code == 200 else {}
     c.check(
         "GET /api/search valid shape",
-        r.status_code == 200 and isinstance(body.get("results"), list) and body.get("query") == "tariff",
+        r.status_code == 200
+        and isinstance(body.get("results"), list)
+        and body.get("query") == "tariff",
     )
 
     r = httpx.post(f"{api}/api/conversations", params={"user_id": user_id}, timeout=10.0)
@@ -135,7 +143,11 @@ def main() -> int:
     c.check("POST /api/conversations", bool(conv_id))
 
     r = httpx.get(f"{api}/api/conversations", params={"user_id": user_id}, timeout=10.0)
-    ids = [conv.get("conversation_id") for conv in r.json().get("conversations", [])] if r.status_code == 200 else []
+    ids = (
+        [conv.get("conversation_id") for conv in r.json().get("conversations", [])]
+        if r.status_code == 200
+        else []
+    )
     c.check("GET /api/conversations lists new id", conv_id in ids)
 
     if conv_id:
