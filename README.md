@@ -8,6 +8,14 @@ A production-grade system that brings personalized, context-aware market intelli
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Features
+
+- **Personalized feed** — procurement signals ranked by relevance, each showing priority, category, source, date, and detected suppliers/regions
+- **Signal engine** — rule-based classification (supplier risk, tariffs, M&A, logistics disruption, regulatory) with risk scoring
+- **LLM enrichment** — Groq-powered summaries and signal tagging
+- **Feed-grounded chat** — ask questions about your signals; answers are grounded in your preferences and recent feed
+- **Per-user preferences** — interested/excluded categories, suppliers, regions, and signal types
+
 ## Quick Start
 
 ### Prerequisites
@@ -118,38 +126,33 @@ pre-commit run --all-files
 
 ```
 procuresignal/
-├── api/                          # FastAPI service
-│   ├── api/
-│   │   ├── main.py              # FastAPI app
-│   │   ├── routers/             # API endpoints
-│   │   ├── schemas/             # Pydantic models
-│   │   └── dependencies/        # FastAPI dependencies
-│   └── pyproject.toml
-├── worker/                       # Celery worker service
-│   ├── worker/
-│   │   ├── main.py              # Celery app
-│   │   └── tasks/               # Task definitions
-│   └── pyproject.toml
-├── shared/                       # Shared code
-│   ├── procuresignal/
-│   │   ├── config/              # Settings & config
-│   │   ├── models/              # SQLAlchemy models
-│   │   └── utils/               # Utilities
-│   └── pyproject.toml
-├── tests/                        # Test suite
-│   ├── unit/
-│   ├── integration/
-│   └── conftest.py
-├── .github/
-│   └── workflows/
-│       └── ci.yml               # GitHub Actions CI/CD
-├── docker-compose.yml           # Local development stack
-├── Dockerfile.api
-├── Dockerfile.worker
-├── pyproject.toml               # Poetry workspace config
-├── .pre-commit-config.yaml      # Pre-commit hooks
-├── .env.example                 # Environment variables template
-└── README.md
+├── api/                     # FastAPI service
+│   ├── main.py              # App, lifespan, router wiring
+│   ├── dependencies.py      # Shared FastAPI dependencies
+│   ├── routers/             # feed, preferences, articles, search, signals, chat, health
+│   └── schemas/             # Pydantic request/response models
+├── worker/                  # Celery worker
+│   ├── main.py              # Celery app
+│   ├── celery_config.py     # Queues + beat schedule
+│   ├── tasks.py             # Retrieval → normalization → enrichment → personalization
+│   └── signal_tasks.py      # Signal detection & storage
+├── shared/procuresignal/    # Shared library (installed as a package)
+│   ├── config/              # Settings & database
+│   ├── models/              # SQLAlchemy models
+│   ├── retrieval/           # News providers (NewsAPI, GDELT, RSS) + persistence
+│   ├── normalization/       # Cleaning, quality gate, dedup
+│   ├── signals/             # Classifier, entity resolver, risk scorer
+│   ├── enrichment/          # Groq LLM enrichment
+│   ├── personalization/     # Feed matching + preference manager
+│   └── chat/                # Feed-grounded chat client + context builder
+├── frontend/                # Next.js web UI (feed, preferences, chat)
+├── migrations/              # Alembic migrations
+├── tests/                   # unit + integration
+├── scripts/                 # smoke test, pipeline bootstrap, persona seeding
+├── docker-compose.yml       # Full local stack
+├── Dockerfile.api           # API & migrate & bootstrap image
+├── Dockerfile.worker        # Worker & beat image
+└── pyproject.toml           # Poetry (single workspace)
 ```
 
 ## Contributing
