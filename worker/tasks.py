@@ -39,6 +39,11 @@ NEWSAPI_QUERIES = [
 GDELT_QUERY_GROUPS = ["supplier_risk", "logistics_disruption", "tariff_changes", "regulatory"]
 RSS_QUERY_GROUPS = ["supplier_risk", "regulatory", "logistics", "commodities"]
 
+# Cap enrichment per run so a backlog can't monopolize Groq's free-tier
+# tokens-per-minute budget (which is shared with the chat assistant). The beat
+# schedule drains the rest over subsequent runs.
+_ENRICH_MAX_PER_RUN = 20
+
 
 @dataclass(slots=True)
 class _NormalizedArticleRecord:
@@ -245,7 +250,7 @@ def enrich_articles_task(self) -> dict[str, Any]:
 
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
-            stats = await _normalize_articles(session, hours_back=12, limit=500)
+            stats = await _normalize_articles(session, hours_back=12, limit=_ENRICH_MAX_PER_RUN)
             normalized_articles = stats["normalized_articles"]
 
             if not normalized_articles:

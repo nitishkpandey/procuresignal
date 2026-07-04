@@ -13,7 +13,9 @@ _BASE_PERSONA = (
     "Be concise, factual, and actionable. If you are unsure, say so."
 )
 
-_RECENT_ARTICLE_LIMIT = 10
+# Keep the digest small — Groq's free tier caps tokens-per-minute.
+_RECENT_ARTICLE_LIMIT = 6
+_SUMMARY_CHARS = 200
 
 
 async def _recent_articles(session: AsyncSession, user_id: str) -> list[tuple[str, str, list]]:
@@ -55,7 +57,7 @@ async def build_system_prompt(session: AsyncSession, user_id: str) -> str:
     articles = await _recent_articles(session, user_id)
     if articles:
         digest = "\n".join(
-            f"- {title} [{', '.join(tags) if tags else 'no tags'}]: {summary}"
+            f"- {title} [{', '.join(tags) if tags else 'no tags'}]: {summary[:_SUMMARY_CHARS]}"
             for title, summary, tags in articles
         )
         parts.append("Recent relevant articles in the user's feed:\n" + digest)

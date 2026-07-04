@@ -1,9 +1,10 @@
 """Streaming Groq chat client for the conversational analyst."""
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 
-from groq import AsyncGroq
+from groq import AsyncGroq, RateLimitError
 
 
 class ChatLLMClient:
@@ -38,13 +39,7 @@ class ChatLLMClient:
         messages.append({"role": "user", "content": user_message})
 
         self.last_tokens_used = 0
-        stream = await self.client.chat.completions.create(
-            model=self.MODEL,
-            messages=messages,
-            max_tokens=self.MAX_TOKENS,
-            temperature=0.4,
-            stream=True,
-        )
+        stream = await self._open_stream(messages)
         async for chunk in stream:
             choices = getattr(chunk, "choices", None)
             if choices:
@@ -54,3 +49,35 @@ class ChatLLMClient:
             usage = getattr(chunk, "usage", None)
             if usage is not None:
                 self.last_tokens_used = getattr(usage, "total_tokens", 0) or 0
+
+    async def _open_stream(self, messages: list[dict]):
+        """Open the streaming completion, riding out Groq's low free-tier rate limit.
+
+        The free tier caps tokens-per-minute, so bursts of chat return 429; retry a
+        few times honoring the ``retry-after`` hint before giving up with a clean error.
+        """
+        attempts = 4
+        for attempt in range(attempts):
+            try:
+                return await self.client.chat.completions.create(
+                    model=self.MODEL,
+                    messages=messages,
+                    max_tokens=self.MAX_TOKENS,
+                    temperature=0.4,
+                    stream=True,
+                )
+            except RateLimitError as exc:
+                if attempt == attempts - 1:
+                    raise RuntimeError(
+                        "The assistant is rate-limited right now. Please try again in a few seconds."
+                    ) from exc
+                await asyncio.sleep(_retry_after(exc, default=2 * (attempt + 1)))
+
+
+def _retry_after(exc: RateLimitError, default: float) -> float:
+    """Seconds to wait from a 429's Retry-After header, capped, else ``default``."""
+    try:
+        value = float(exc.response.headers.get("retry-after", ""))
+        return min(value + 0.5, 15.0)
+    except (AttributeError, TypeError, ValueError):
+        return default
