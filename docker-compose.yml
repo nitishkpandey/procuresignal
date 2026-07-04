@@ -87,7 +87,7 @@ services:
         NEXT_PUBLIC_WS_URL: ws://localhost:8000
     container_name: procuresignal-frontend
     ports:
-      - "3000:3000"
+      - "3002:3000"  # host 3002 (3000 is a common local conflict); API URL is baked at build so this is host-only
     depends_on:
       api:
         condition: service_healthy

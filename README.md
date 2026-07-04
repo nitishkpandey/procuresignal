@@ -41,7 +41,7 @@ python scripts/smoke_test.py --wait
 
 | Service     | URL                          |
 |-------------|------------------------------|
-| Frontend    | http://localhost:3000        |
+| Frontend    | http://localhost:3002        |
 | API + docs  | http://localhost:8000/docs   |
 | Grafana     | http://localhost:3001 (admin/admin) |
 | Flower      | http://localhost:5555        |
@@ -87,7 +87,7 @@ Frontend (Next.js)
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| Frontend | 3000 | Next.js web UI |
+| Frontend | 3002 | Next.js web UI |
 | PostgreSQL | 5433 | Data persistence |
 | Redis | 6379 | Message broker & caching |
 | FastAPI | 8000 | REST API & Swagger docs |
