@@ -14,7 +14,11 @@ from api.main import app
 
 
 @pytest.fixture()
-def chat_client():
+def chat_client(monkeypatch):
+    # The app lifespan calls init_db() when DATABASE_URL is set, overwriting the
+    # in-memory SQLite db_config this fixture injects. CI sets DATABASE_URL (to an
+    # unmigrated Postgres), so clear it for the duration of the test.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
