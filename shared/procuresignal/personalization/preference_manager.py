@@ -2,10 +2,11 @@
 
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from procuresignal.models import UserNewsPreference
+from procuresignal.models import UserNewsFeed, UserNewsPreference
+from procuresignal.personalization.categories import canonical_category_list
 
 
 class PreferenceManager:
@@ -43,6 +44,13 @@ class PreferenceManager:
         Returns:
             Updated UserNewsPreference
         """
+        if preferred_categories is not None:
+            preferred_categories = canonical_category_list(preferred_categories)
+        if excluded_categories is not None:
+            excluded_categories = canonical_category_list(excluded_categories)
+        if excluded_topics is not None:
+            excluded_topics = canonical_category_list(excluded_topics)
+
         # Check if exists
         existing = await session.execute(
             select(UserNewsPreference).where(UserNewsPreference.user_id == user_id)
@@ -87,6 +95,7 @@ class PreferenceManager:
             )
 
         session.add(pref)
+        await session.execute(delete(UserNewsFeed).where(UserNewsFeed.user_id == user_id))
         await session.commit()
         await session.refresh(pref)
 

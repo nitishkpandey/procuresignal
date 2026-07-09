@@ -62,7 +62,7 @@ def api_client():
                 detected_categories=["automotive", "manufacturing"],
                 signal_score=0.87,
                 processing_status="completed",
-                llm_model="groq/llama-3.1-8b",
+                llm_model="openai/test-model",
                 language="en",
                 processed_at=datetime.utcnow(),
             )
@@ -148,6 +148,25 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["articles"]
 
 
+def test_preference_update_clears_stale_feed(api_client: TestClient) -> None:
+    first = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
+    assert first.status_code == 200
+    assert first.json()["articles"]
+
+    updated = api_client.post(
+        "/api/preferences",
+        json={
+            "user_id": "user-123",
+            "excluded_categories": ["automotive"],
+        },
+    )
+    assert updated.status_code == 200
+
+    refreshed = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["articles"] == []
+
+
 def test_preferences_round_trip(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/preferences",
@@ -169,6 +188,24 @@ def test_preferences_round_trip(api_client: TestClient) -> None:
     fetched = api_client.get("/api/preferences", params={"user_id": "user-new"})
     assert fetched.status_code == 200
     assert fetched.json()["interested_suppliers"] == ["bosch"]
+
+
+def test_preference_category_alias_generates_feed(api_client: TestClient) -> None:
+    response = api_client.post(
+        "/api/preferences",
+        json={
+            "user_id": "user-alias",
+            "interested_categories": ["Automobiles"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["interested_categories"] == ["automotive"]
+
+    feed = api_client.get("/api/feed", params={"user_id": "user-alias", "limit": 20})
+    assert feed.status_code == 200
+    assert feed.json()["articles"]
+    assert feed.json()["articles"][0]["category"] == "automotive"
 
 
 def test_bulk_preferences(api_client: TestClient) -> None:

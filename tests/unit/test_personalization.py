@@ -80,6 +80,25 @@ def test_category_match_no_preference():
     assert score == 0.5  # Neutral
 
 
+def test_category_alias_match_hit():
+    """Common user wording should map to the article taxonomy."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["automobiles"],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+
+    score = PreferenceMatcher.calculate_category_match("automotive", pref)
+
+    assert score == 1.0
+
+
 def test_supplier_match_hit():
     """Test supplier matching when preferences match."""
     pref = PreferenceStub(
@@ -191,3 +210,168 @@ def test_match_score_calculation():
     score = asyncio.run(PreferenceMatcher.score_article(article, pref))
 
     assert score.overall_score > 0.7
+
+
+def test_focused_preferences_reject_unrelated_signal_only_article():
+    """A matching signal alone should not flood the feed when focus preferences exist."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["technology"],
+        preferred_suppliers=["openai", "anthropic"],
+        preferred_regions=["usa", "india"],
+        preferred_signals=["m_and_a"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Critical metals deal update",
+        summary="A mining company announced a transaction update.",
+        top_level_category="energy",
+        signal_tags=["m_and_a"],
+        priority_signal="m_and_a",
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["energy"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is False
+
+
+def test_focused_preferences_include_category_alias():
+    """A category alias should include matching articles instead of emptying the feed."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["automobiles"],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Auto supplier expands in Germany",
+        summary="A vehicle parts supplier opened a new plant.",
+        top_level_category="automotive",
+        signal_tags=["expansion"],
+        priority_signal="expansion",
+        detected_suppliers=[],
+        detected_regions=["Germany"],
+        detected_categories=["automotive"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
+
+
+def test_excluded_category_alias_wins():
+    """Excluded aliases should still suppress matching articles."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=["cars"],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Auto supplier expands in Germany",
+        summary="A vehicle parts supplier opened a new plant.",
+        top_level_category="automotive",
+        signal_tags=["expansion"],
+        priority_signal="expansion",
+        detected_suppliers=[],
+        detected_regions=["Germany"],
+        detected_categories=["automotive"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is False
+
+
+def test_focused_preferences_include_supplier_match():
+    """A supplier match is enough to include an article even if the category is imperfect."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["technology"],
+        preferred_suppliers=["openai", "anthropic"],
+        preferred_regions=["usa", "india"],
+        preferred_signals=["m_and_a"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="OpenAI signs new infrastructure deal",
+        summary="OpenAI expanded its data center supply chain.",
+        top_level_category="energy",
+        signal_tags=["m_and_a"],
+        priority_signal="m_and_a",
+        detected_suppliers=["OpenAI"],
+        detected_regions=[],
+        detected_categories=["technology"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
+
+
+def test_focused_preferences_include_supplier_mentioned_in_title():
+    """Supplier names in title/summary count when entity extraction is missing."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["technology"],
+        preferred_suppliers=["openai", "anthropic"],
+        preferred_regions=["usa", "india"],
+        preferred_signals=["regulatory"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="OpenAI discusses government stake",
+        summary="The AI vendor is negotiating with federal agencies.",
+        top_level_category="general",
+        signal_tags=["regulatory"],
+        priority_signal="regulatory",
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["general"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
