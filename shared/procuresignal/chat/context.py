@@ -13,7 +13,7 @@ _BASE_PERSONA = (
     "Be concise, factual, and actionable. If you are unsure, say so."
 )
 
-# Keep the digest small — Groq's free tier caps tokens-per-minute.
+# Keep the digest small so chat requests stay fast and inexpensive.
 _RECENT_ARTICLE_LIMIT = 6
 _SUMMARY_CHARS = 200
 

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 from procuresignal.config.database import session_scope
-from procuresignal.enrichment import EnrichmentPipeline, GroqLLMClient
+from procuresignal.enrichment import EnrichmentPipeline, OpenAILLMClient
 from procuresignal.models import NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
@@ -39,9 +39,8 @@ NEWSAPI_QUERIES = [
 GDELT_QUERY_GROUPS = ["supplier_risk", "logistics_disruption", "tariff_changes", "regulatory"]
 RSS_QUERY_GROUPS = ["supplier_risk", "regulatory", "logistics", "commodities"]
 
-# Cap enrichment per run so a backlog can't monopolize Groq's free-tier
-# tokens-per-minute budget (which is shared with the chat assistant). The beat
-# schedule drains the rest over subsequent runs.
+# Cap enrichment per run so a backlog cannot monopolize the shared LLM budget.
+# The beat schedule drains the rest over subsequent runs.
 _ENRICH_MAX_PER_RUN = 20
 
 
@@ -264,18 +263,18 @@ def enrich_articles_task(self) -> dict[str, Any]:
                 }
 
             try:
-                groq_client = GroqLLMClient()
+                llm_client = OpenAILLMClient()
             except ValueError:
                 return {
                     "status": "success",
                     "enriched_count": 0,
                     "skipped_count": len(normalized_articles),
                     "error_count": 0,
-                    "reason": "GROQ_API_KEY not set",
+                    "reason": "OPENAI_API_KEY not set",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
-            pipeline = EnrichmentPipeline(groq_client)
+            pipeline = EnrichmentPipeline(llm_client)
             enriched_count, skipped_count, error_count = await pipeline.process_raw_articles(
                 session,
                 normalized_articles,

@@ -5,7 +5,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from procuresignal.enrichment.groq_client import GroqLLMClient
+from procuresignal.enrichment.openai_client import OpenAILLMClient
 from procuresignal.enrichment.output_parser import OutputParser
 from procuresignal.enrichment.prompts import EnrichmentPrompts
 from procuresignal.models import NewsArticleProcessed
@@ -15,13 +15,13 @@ from procuresignal.retrieval import RawArticle
 class ArticleEnricher:
     """Enrich articles with LLM summaries and classifications."""
 
-    def __init__(self, groq_client: Optional[GroqLLMClient] = None):
+    def __init__(self, llm_client: Optional[OpenAILLMClient] = None):
         """Initialize enricher.
 
         Args:
-            groq_client: Groq client (created if not provided)
+            llm_client: OpenAI client (created if not provided)
         """
-        self.client = groq_client or GroqLLMClient()
+        self.client = llm_client or OpenAILLMClient()
 
     async def enrich(
         self,
@@ -71,7 +71,7 @@ class ArticleEnricher:
                 detected_categories=[parsed.category],
                 signal_score=0.0,  # not scored during enrichment
                 processing_status="completed",
-                llm_model="groq/llama-3.1-8b",
+                llm_model=f"openai/{self.client.model}",
                 language=article.language,
                 processed_at=datetime.utcnow(),
             )

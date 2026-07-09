@@ -17,6 +17,7 @@ python = "^3.11"
 pydantic = "^2.0"
 pydantic-settings = "^2.0"
 sqlalchemy = "^2.0"
+greenlet = "^3.0"
 asyncpg = "^0.28"
 alembic = "^1.13"
 aiosqlite = "^0.19"
@@ -38,7 +39,6 @@ spacy = "^3.7"
 
 # Enrichment
 tenacity = "^8.2"
-groq = "^0.9"
 
 # Logging
 structlog = "^23.2"

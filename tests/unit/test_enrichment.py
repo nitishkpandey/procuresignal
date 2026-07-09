@@ -2,9 +2,11 @@
 
 import json
 
+import pytest
 from procuresignal.enrichment import (
     EnrichmentOutput,
     EnrichmentPrompts,
+    OpenAILLMClient,
     OutputParser,
 )
 
@@ -114,3 +116,56 @@ def test_enrichment_prompts_template():
     assert "Bosch announces facility" in prompt
     assert "New manufacturing plant" in prompt
     assert "Details here" in prompt
+
+
+class _FakeOpenAIResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "output": [
+                {
+                    "content": [
+                        {"type": "output_text", "text": "Parsed response"},
+                    ]
+                }
+            ],
+            "usage": {"total_tokens": 12},
+        }
+
+
+class _FakeAsyncClient:
+    def __init__(self, captured):
+        self._captured = captured
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+    async def post(self, url, **kwargs):
+        self._captured["url"] = url
+        self._captured.update(kwargs)
+        return _FakeOpenAIResponse()
+
+
+@pytest.mark.asyncio
+async def test_openai_client_uses_responses_api(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "procuresignal.enrichment.openai_client.httpx.AsyncClient",
+        lambda **_kwargs: _FakeAsyncClient(captured),
+    )
+    client = OpenAILLMClient(api_key="test-key", model="test-model")
+
+    result = await client.call("SYSTEM", "ARTICLE")
+
+    assert result == "Parsed response"
+    assert captured["url"].endswith("/v1/responses")
+    assert captured["json"]["model"] == "test-model"
+    assert captured["json"]["instructions"] == "SYSTEM"
+    assert captured["json"]["input"] == "ARTICLE"
+    assert captured["headers"]["Authorization"] == "Bearer test-key"
+    assert client.get_usage_stats()["total_tokens"] == 12

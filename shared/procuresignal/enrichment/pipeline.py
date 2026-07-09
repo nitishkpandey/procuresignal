@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.enrichment.enricher import ArticleEnricher
-from procuresignal.enrichment.groq_client import GroqLLMClient
+from procuresignal.enrichment.openai_client import OpenAILLMClient
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
 from procuresignal.retrieval import RawArticle
 
@@ -17,14 +17,14 @@ class EnrichmentPipeline:
     # Batch size for LLM calls
     BATCH_SIZE = 10
 
-    def __init__(self, groq_client: Optional[GroqLLMClient] = None):
+    def __init__(self, llm_client: Optional[OpenAILLMClient] = None):
         """Initialize pipeline.
 
         Args:
-            groq_client: Groq client instance
+            llm_client: OpenAI client instance
         """
-        self.enricher = ArticleEnricher(groq_client)
-        self.groq_client = groq_client or GroqLLMClient()
+        self.llm_client = llm_client or OpenAILLMClient()
+        self.enricher = ArticleEnricher(self.llm_client)
 
     async def process_raw_articles(
         self,
@@ -96,6 +96,6 @@ class EnrichmentPipeline:
     def get_stats(self) -> dict:
         """Get enrichment statistics."""
         return {
-            **self.groq_client.get_usage_stats(),
-            "model": "groq/llama-3.1-8b",
+            **self.llm_client.get_usage_stats(),
+            "model": f"openai/{self.llm_client.model}",
         }
