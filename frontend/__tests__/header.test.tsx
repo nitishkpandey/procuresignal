@@ -7,7 +7,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "buyer@example.com" });
+  useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "en" });
 });
 
 describe("Header", () => {
@@ -25,5 +25,14 @@ describe("Header", () => {
     expect(screen.getByText("buyer@example.com")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(useUserStore.getState().userId).toBe("");
+  });
+
+  it("uses the selected platform language for shell labels", () => {
+    useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "de" });
+    render(<Header />);
+
+    expect(screen.getByRole("link", { name: "Signale" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Einstellungen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abmelden" })).toBeInTheDocument();
   });
 });

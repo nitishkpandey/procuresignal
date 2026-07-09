@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { ArticleCard } from "@/components/article-card";
 import type { FeedArticle } from "@/lib/types";
+import { useUserStore } from "@/store/user";
 
 const article: FeedArticle = {
   id: 7,
@@ -21,6 +22,11 @@ const article: FeedArticle = {
 };
 
 describe("ArticleCard", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  });
+
   it("renders title, summary, and signals and links to detail", () => {
     render(<ArticleCard article={article} />);
     expect(screen.getByText("Bosch strike in Poland")).toBeInTheDocument();
@@ -33,5 +39,11 @@ describe("ArticleCard", () => {
       screen.getByText((_, element) => element?.textContent === "Regions: Poland"),
     ).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveAttribute("href", "/articles/7");
+  });
+
+  it("labels neutral scoring as a baseline match", () => {
+    render(<ArticleCard article={{ ...article, relevance_score: 0.5 }} />);
+    expect(screen.getByText("Baseline match 50%")).toBeInTheDocument();
+    expect(screen.queryByText("Medium relevance 50%")).not.toBeInTheDocument();
   });
 });

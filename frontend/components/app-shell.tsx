@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { t } from "@/lib/i18n";
 import { useUserStore } from "@/store/user";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -22,13 +23,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function CompanyEmailGate() {
   const setUserId = useUserStore((s) => s.setUserId);
+  const language = useUserStore((s) => s.platformLanguage);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
     const value = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      setError("Enter a valid company email.");
+      setError(t(language, "app.invalidEmail"));
       return;
     }
     setError(null);
@@ -44,7 +46,7 @@ function CompanyEmailGate() {
           </span>
           <div>
             <h1 className="text-lg font-semibold text-slate-950">ProcureSignal</h1>
-            <p className="text-sm text-slate-500">Sign in with your company email</p>
+            <p className="text-sm text-slate-500">{t(language, "app.signInTitle")}</p>
           </div>
         </div>
         <form
@@ -55,7 +57,7 @@ function CompanyEmailGate() {
           }}
         >
           <Input
-            aria-label="Company email"
+            aria-label={t(language, "app.companyEmail")}
             autoComplete="email"
             inputMode="email"
             placeholder="name@company.com"
@@ -64,7 +66,7 @@ function CompanyEmailGate() {
           />
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <Button className="w-full" type="submit">
-            Continue
+            {t(language, "app.continue")}
           </Button>
         </form>
       </section>

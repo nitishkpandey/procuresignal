@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { t, type TranslationKey } from "@/lib/i18n";
 import { useUserStore } from "@/store/user";
 
 const NAV = [
-  { href: "/", label: "Feed" },
-  { href: "/preferences", label: "Preferences" },
-  { href: "/chat", label: "Chat" },
-];
+  { href: "/", labelKey: "nav.feed" },
+  { href: "/preferences", labelKey: "nav.preferences" },
+  { href: "/chat", labelKey: "nav.chat" },
+] satisfies { href: string; labelKey: TranslationKey }[];
 
 export function Header() {
   const pathname = usePathname() ?? "/";
   const userId = useUserStore((s) => s.userId);
+  const language = useUserStore((s) => s.platformLanguage);
   const clearUser = useUserStore((s) => s.clearUser);
 
   return (
@@ -40,7 +42,7 @@ export function Header() {
                       : "hover:bg-white/70 hover:text-slate-950"
                   }`}
                 >
-                  {item.label}
+                  {t(language, item.labelKey)}
                 </Link>
               );
             })}
@@ -53,7 +55,7 @@ export function Header() {
             onClick={clearUser}
             className="rounded px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-white hover:text-slate-950"
           >
-            Sign out
+            {t(language, "nav.signOut")}
           </button>
         </div>
       </div>

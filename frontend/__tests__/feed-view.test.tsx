@@ -13,7 +13,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1" });
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.getFeed).mockResolvedValue({
     user_id: "u1",
     total_count: 1,

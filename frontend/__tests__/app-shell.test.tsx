@@ -7,7 +7,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "" });
+  useUserStore.setState({ userId: "", platformLanguage: "en" });
 });
 
 describe("AppShell", () => {

@@ -9,7 +9,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1" });
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.getPreferences).mockResolvedValue(null);
   vi.mocked(api.savePreferences).mockImplementation(async (p) => p);
 });
@@ -38,6 +38,17 @@ describe("PreferenceForm", () => {
     expect(screen.getByText("Categories")).toBeInTheDocument();
     expect(screen.getByText("Misc")).toBeInTheDocument();
     expect(screen.getByLabelText("Platform language")).toBeInTheDocument();
+  });
+
+  it("applies platform language changes to visible app labels", async () => {
+    render(<PreferenceForm />);
+
+    await waitFor(() => expect(screen.getByLabelText("Platform language")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Platform language"), "de");
+
+    expect(screen.getByText("Einstellungen")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Einstellungen speichern" })).toBeInTheDocument();
+    expect(useUserStore.getState().platformLanguage).toBe("de");
   });
 
   it("shows a retry state when preferences cannot load", async () => {

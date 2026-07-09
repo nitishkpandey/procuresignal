@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 
 import { SignalBadge } from "@/components/signal-badge";
+import { t } from "@/lib/i18n";
 import { formatDate, humanize, scoreTier } from "@/lib/labels";
 import type { FeedArticle } from "@/lib/types";
+import { useUserStore } from "@/store/user";
 
 export function ArticleCard({
   article,
@@ -13,16 +17,12 @@ export function ArticleCard({
   read?: boolean;
   onOpen?: (id: number) => void;
 }) {
+  const language = useUserStore((s) => s.platformLanguage);
   const tier = scoreTier(article.relevance_score);
   const pct = Math.round(article.relevance_score * 100);
   const suppliers = article.detected_suppliers ?? [];
   const regions = article.detected_regions ?? [];
-  const relevanceTone =
-    tier.label === "High"
-      ? "text-red-700"
-      : tier.label === "Medium"
-        ? "text-slate-700"
-        : "text-slate-500";
+  const scoreLabel = t(language, tier.labelKey);
 
   return (
     <article className={`transition ${read ? "opacity-60" : ""}`}>
@@ -41,8 +41,11 @@ export function ArticleCard({
             <span aria-hidden>|</span>
             <span>{formatDate(article.published_at)}</span>
           </div>
-          <span className={`shrink-0 text-xs font-semibold ${relevanceTone}`} title={`Relevance ${pct}%`}>
-            {tier.label} relevance {pct}%
+          <span
+            className={`shrink-0 text-xs font-semibold ${tier.tone}`}
+            title={t(language, "article.matchTitle", { pct })}
+          >
+            {t(language, "article.matchText", { label: scoreLabel, pct })}
           </span>
         </div>
 
@@ -53,18 +56,18 @@ export function ArticleCard({
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
             {article.priority_signal && (
               <span className="font-medium text-red-700">
-                Priority:{" "}
+                {t(language, "article.priority")}:{" "}
                 {humanize(article.priority_signal)}
               </span>
             )}
             {suppliers.length > 0 && (
               <span className="max-w-full">
-                Suppliers: {suppliers.map(humanize).join(", ")}
+                {t(language, "article.suppliers")}: {suppliers.map(humanize).join(", ")}
               </span>
             )}
             {regions.length > 0 && (
               <span className="max-w-full">
-                Regions: {regions.map(humanize).join(", ")}
+                {t(language, "article.regions")}: {regions.map(humanize).join(", ")}
               </span>
             )}
           </div>

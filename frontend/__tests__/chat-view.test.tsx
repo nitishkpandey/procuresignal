@@ -20,7 +20,7 @@ import { useUserStore } from "@/store/user";
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  useUserStore.setState({ userId: "u1" });
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.listConversations).mockResolvedValue({
     user_id: "u1",
     conversations: [],

@@ -4,7 +4,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "" });
+  useUserStore.setState({ userId: "", platformLanguage: "en" });
 });
 
 describe("user store", () => {
@@ -19,7 +19,17 @@ describe("user store", () => {
 
   it("clears the signed-in user", () => {
     useUserStore.getState().setUserId("buyer@example.com");
+    useUserStore.getState().setPlatformLanguage("de");
     useUserStore.getState().clearUser();
     expect(useUserStore.getState().userId).toBe("");
+    expect(useUserStore.getState().platformLanguage).toBe("en");
+  });
+
+  it("stores a supported platform language", () => {
+    useUserStore.getState().setPlatformLanguage("de");
+    expect(useUserStore.getState().platformLanguage).toBe("de");
+
+    useUserStore.getState().setPlatformLanguage("unknown");
+    expect(useUserStore.getState().platformLanguage).toBe("en");
   });
 });
