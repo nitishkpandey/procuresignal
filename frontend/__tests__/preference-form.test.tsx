@@ -17,9 +17,9 @@ beforeEach(() => {
 describe("PreferenceForm", () => {
   it("adds a supplier and saves", async () => {
     render(<PreferenceForm />);
-    await waitFor(() => expect(screen.getByLabelText("Add interested_suppliers")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Supplier")).toBeInTheDocument());
 
-    const input = screen.getByLabelText("Add interested_suppliers");
+    const input = screen.getByLabelText("Add suppliers");
     await userEvent.type(input, "Bosch{enter}");
     expect(screen.getByText("Bosch")).toBeInTheDocument();
 
@@ -28,6 +28,16 @@ describe("PreferenceForm", () => {
     const saved = vi.mocked(api.savePreferences).mock.calls[0][0];
     expect(saved.interested_suppliers).toContain("Bosch");
     expect(saved.user_id).toBe("u1");
+  });
+
+  it("shows the four preference groups and platform language", async () => {
+    render(<PreferenceForm />);
+
+    await waitFor(() => expect(screen.getByText("Supplier")).toBeInTheDocument());
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(screen.getByText("Categories")).toBeInTheDocument();
+    expect(screen.getByText("Misc")).toBeInTheDocument();
+    expect(screen.getByLabelText("Platform language")).toBeInTheDocument();
   });
 
   it("shows a retry state when preferences cannot load", async () => {
