@@ -9,7 +9,7 @@ class ChatLLMClient:
     """Chat client backed by OpenAI Responses API."""
 
     MODEL = OpenAILLMClient.MODEL
-    MAX_TOKENS = 1024
+    MAX_TOKENS = 700
 
     def __init__(self, api_key: str | None = None):
         self.client = OpenAILLMClient(

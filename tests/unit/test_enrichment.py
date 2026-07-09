@@ -137,6 +137,10 @@ def test_enrichment_prompts_template():
     assert "Details here" in prompt
 
 
+def test_openai_client_defaults_to_low_cost_model():
+    assert OpenAILLMClient.MODEL == "gpt-5.4-nano"
+
+
 class _FakeOpenAIResponse:
     def raise_for_status(self):
         return None
