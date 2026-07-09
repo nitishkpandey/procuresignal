@@ -36,6 +36,7 @@ class PreferenceUpdate(BaseModel):
     excluded_suppliers: Optional[list[str]] = None
     excluded_regions: Optional[list[str]] = None
     excluded_signals: Optional[list[str]] = None
+    platform_language: str = Field("en", min_length=2, max_length=10)
 
     @field_validator("user_id", mode="before")
     @classmethod
@@ -43,6 +44,12 @@ class PreferenceUpdate(BaseModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @field_validator("platform_language", mode="before")
+    @classmethod
+    def normalize_platform_language(cls, value: Any) -> str:
+        text = str(value or "en").strip().lower()
+        return text or "en"
 
     @field_validator(
         "interested_categories",
@@ -74,6 +81,7 @@ class PreferenceResponse(BaseModel):
     excluded_suppliers: list[str] = Field(default_factory=list)
     excluded_regions: list[str] = Field(default_factory=list)
     excluded_signals: list[str] = Field(default_factory=list)
+    platform_language: str = "en"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

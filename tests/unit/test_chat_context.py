@@ -105,6 +105,7 @@ def test_prompt_includes_preferences_and_articles():
                     excluded_regions=[],
                     excluded_signals=[],
                     excluded_topics=[],
+                    platform_language="de",
                     onboarding_completed=True,
                 )
             )
@@ -115,3 +116,4 @@ def test_prompt_includes_preferences_and_articles():
     assert "Bosch" in prompt
     assert "Bosch strike Poland" in prompt
     assert "strike" in prompt
+    assert "Reply in German" in prompt
