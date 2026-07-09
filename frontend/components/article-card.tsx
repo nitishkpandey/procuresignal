@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { SignalBadge } from "@/components/signal-badge";
 import { formatDate, humanize, scoreTier } from "@/lib/labels";
 import type { FeedArticle } from "@/lib/types";
@@ -19,61 +17,67 @@ export function ArticleCard({
   const pct = Math.round(article.relevance_score * 100);
   const suppliers = article.detected_suppliers ?? [];
   const regions = article.detected_regions ?? [];
+  const relevanceTone =
+    tier.label === "High"
+      ? "text-red-700"
+      : tier.label === "Medium"
+        ? "text-slate-700"
+        : "text-slate-500";
 
   return (
-    <Card className={`transition hover:border-slate-400 ${read ? "opacity-60" : ""}`}>
+    <article className={`transition ${read ? "opacity-60" : ""}`}>
       <Link
         href={`/articles/${article.id}`}
-        className="block"
+        className="block px-4 py-4 hover:bg-slate-50 sm:px-5"
         onClick={() => onOpen?.(article.id)}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-            <span className="font-medium uppercase tracking-wide text-slate-600">
+            <span className="font-semibold uppercase text-slate-600">
               {humanize(article.category)}
             </span>
-            <span>·</span>
+            <span aria-hidden>|</span>
             <span>{article.source_name}</span>
-            <span>·</span>
+            <span aria-hidden>|</span>
             <span>{formatDate(article.published_at)}</span>
           </div>
-          <Badge className={`shrink-0 ${tier.tone}`} title={`Relevance ${pct}%`}>
-            {tier.label} · {pct}%
-          </Badge>
+          <span className={`shrink-0 text-xs font-semibold ${relevanceTone}`} title={`Relevance ${pct}%`}>
+            {tier.label} relevance {pct}%
+          </span>
         </div>
 
-        <h3 className="mt-1.5 font-semibold leading-snug text-slate-900">{article.title}</h3>
-        <p className="mt-1 line-clamp-2 text-sm text-slate-600">{article.summary}</p>
+        <h3 className="mt-2 text-base font-semibold leading-snug text-slate-950">{article.title}</h3>
+        <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{article.summary}</p>
 
         {(article.priority_signal || suppliers.length > 0 || regions.length > 0) && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
             {article.priority_signal && (
-              <span className="inline-flex items-center gap-1 font-medium text-red-700">
-                <span aria-hidden>▲</span>
+              <span className="font-medium text-red-700">
+                Priority:{" "}
                 {humanize(article.priority_signal)}
               </span>
             )}
             {suppliers.length > 0 && (
-              <span className="truncate">
-                <span aria-hidden>🏢</span> {suppliers.map(humanize).join(", ")}
+              <span className="max-w-full">
+                Suppliers: {suppliers.map(humanize).join(", ")}
               </span>
             )}
             {regions.length > 0 && (
-              <span className="truncate">
-                <span aria-hidden>📍</span> {regions.map(humanize).join(", ")}
+              <span className="max-w-full">
+                Regions: {regions.map(humanize).join(", ")}
               </span>
             )}
           </div>
         )}
 
         {article.signal_tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-3 flex flex-wrap gap-1">
             {article.signal_tags.map((tag) => (
               <SignalBadge key={tag} signal={tag} priority={tag === article.priority_signal} />
             ))}
           </div>
         )}
       </Link>
-    </Card>
+    </article>
   );
 }

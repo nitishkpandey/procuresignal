@@ -21,9 +21,9 @@ type SocketFactory = (
 ) => { send: (message: string) => void; close: () => void };
 
 const EXAMPLE_PROMPTS = [
-  "What are the top risks in my feed this week?",
-  "Which suppliers have M&A activity?",
-  "Summarize the tariff signals.",
+  "What changed in my feed today?",
+  "Which watched suppliers need attention?",
+  "Summarize the top tariff signals.",
 ];
 
 export function ChatWindow({
@@ -75,7 +75,7 @@ export function ChatWindow({
   }, [userId, conversationId, socketFactory]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [state.messages]);
 
   const send = (text: string) => {
@@ -91,10 +91,13 @@ export function ChatWindow({
   const awaitingReply = state.streaming && last?.role === "assistant" && last.content === "";
 
   return (
-    <div className="flex h-[70vh] flex-col rounded-lg border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-        <span className="text-sm font-medium text-slate-700">Feed assistant</span>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+    <div className="flex h-[72vh] min-h-[580px] flex-col rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div>
+          <h1 className="text-base font-semibold text-slate-950">Procurement assistant</h1>
+          <p className="mt-0.5 text-xs text-slate-500">Grounded in your saved preferences and feed.</p>
+        </div>
+        <span className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500">
           <span
             className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
             aria-hidden
@@ -103,12 +106,12 @@ export function ChatWindow({
         </span>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/70 px-4 py-4">
         {isEmpty ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <p className="text-sm font-medium text-slate-700">Ask about your procurement feed</p>
-            <p className="mt-1 max-w-sm text-sm text-slate-500">
-              Answers are grounded in your preferences and recent signals.
+            <p className="text-sm font-semibold text-slate-800">Ask about your latest signals</p>
+            <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
+              The assistant uses your preferences and visible feed context.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               {EXAMPLE_PROMPTS.map((p) => (
@@ -117,7 +120,7 @@ export function ChatWindow({
                   type="button"
                   onClick={() => send(p)}
                   disabled={!connected}
-                  className="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-600 transition hover:border-slate-400 disabled:opacity-50"
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-950 disabled:opacity-50"
                 >
                   {p}
                 </button>
@@ -128,10 +131,10 @@ export function ChatWindow({
           state.messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm ${
+                className={`max-w-[78%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-6 shadow-sm ${
                   m.role === "user"
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-200 bg-slate-50 text-slate-800"
+                    ? "bg-slate-950 text-white shadow-slate-300/30"
+                    : "border border-slate-200 bg-white text-slate-800 shadow-slate-200/70"
                 }`}
               >
                 {m.content ||
@@ -151,7 +154,7 @@ export function ChatWindow({
       </div>
 
       <form
-        className="flex items-end gap-2 border-t border-slate-100 p-3"
+        className="flex items-end gap-2 border-t border-slate-200 bg-white p-3"
         onSubmit={(e) => {
           e.preventDefault();
           send(draft);
@@ -159,7 +162,7 @@ export function ChatWindow({
       >
         <Textarea
           aria-label="Message"
-          placeholder="Ask about your feed…  (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask about your feed..."
           rows={1}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

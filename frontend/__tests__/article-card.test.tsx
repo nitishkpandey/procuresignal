@@ -11,6 +11,8 @@ const article: FeedArticle = {
   category: "automotive",
   signal_tags: ["strike", "labor"],
   priority_signal: "strike",
+  detected_suppliers: ["Bosch"],
+  detected_regions: ["Poland"],
   source_name: "Reuters",
   published_at: "2026-06-20T10:00:00Z",
   article_url: "https://example.com/a",
@@ -23,7 +25,13 @@ describe("ArticleCard", () => {
     render(<ArticleCard article={article} />);
     expect(screen.getByText("Bosch strike in Poland")).toBeInTheDocument();
     expect(screen.getByText("Workers began a strike.")).toBeInTheDocument();
-    expect(screen.getByText("strike")).toBeInTheDocument();
+    expect(screen.getAllByText("Strike").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText((_, element) => element?.textContent === "Suppliers: Bosch"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.textContent === "Regions: Poland"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveAttribute("href", "/articles/7");
   });
 });

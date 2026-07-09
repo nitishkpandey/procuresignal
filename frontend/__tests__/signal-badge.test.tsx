@@ -6,12 +6,12 @@ import { SignalBadge } from "@/components/signal-badge";
 describe("SignalBadge", () => {
   it("renders the signal label", () => {
     render(<SignalBadge signal="bankruptcy" />);
-    expect(screen.getByText("bankruptcy")).toBeInTheDocument();
+    expect(screen.getByText("Bankruptcy")).toBeInTheDocument();
   });
 
   it("applies priority styling", () => {
     render(<SignalBadge signal="tariff" priority />);
-    const el = screen.getByText("tariff");
+    const el = screen.getByText("Tariff");
     expect(el.className).toContain("bg-red");
   });
 });

@@ -24,7 +24,7 @@ beforeEach(() => {
     published_at: "2026-06-20T10:00:00Z",
     processed_at: "2026-06-20T11:00:00Z",
     language: "en",
-    llm_model: "groq/llama-3.1-8b",
+    llm_model: "openai/test-model",
   });
 });
 
