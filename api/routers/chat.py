@@ -16,11 +16,12 @@ from procuresignal.chat.chat_client import ChatLLMClient
 from procuresignal.chat.context import build_system_prompt
 from procuresignal.config import database
 from procuresignal.models import ChatConversation, ChatMessage
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_session
 from api.schemas.chat import (
+    ClearHistoryResponse,
     ConversationListResponse,
     ConversationResponse,
     MessageListResponse,
@@ -74,6 +75,25 @@ async def list_conversations(
         user_id=user_id,
         conversations=[ConversationResponse.model_validate(r) for r in rows],
         total_count=len(rows),
+    )
+
+
+@router.delete("/conversations", response_model=ClearHistoryResponse)
+async def clear_conversation_history(
+    user_id: str = Query(..., min_length=1, max_length=100),
+    session: AsyncSession = Depends(get_session),
+) -> ClearHistoryResponse:
+    """Delete all chat conversations and messages for a user."""
+
+    message_result = await session.execute(delete(ChatMessage).where(ChatMessage.user_id == user_id))
+    conversation_result = await session.execute(
+        delete(ChatConversation).where(ChatConversation.user_id == user_id)
+    )
+    await session.commit()
+    return ClearHistoryResponse(
+        user_id=user_id,
+        deleted_conversations=conversation_result.rowcount or 0,
+        deleted_messages=message_result.rowcount or 0,
     )
 
 
@@ -196,7 +216,7 @@ async def chat_websocket(websocket: WebSocket, user_id: str, conversation_id: st
         client = _build_chat_client()
     except ValueError:
         await websocket.send_json(
-            {"type": "error", "content": "Chat is unavailable: GROQ_API_KEY not configured"}
+            {"type": "error", "content": "Chat is unavailable: OPENAI_API_KEY not configured"}
         )
         await websocket.close()
         return

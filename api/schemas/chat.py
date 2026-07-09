@@ -22,6 +22,12 @@ class ConversationListResponse(BaseModel):
     total_count: int
 
 
+class ClearHistoryResponse(BaseModel):
+    user_id: str
+    deleted_conversations: int
+    deleted_messages: int
+
+
 class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

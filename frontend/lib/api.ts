@@ -2,6 +2,7 @@ import axios from "axios";
 
 import type {
   ArticleDetail,
+  ClearHistoryResponse,
   Conversation,
   ConversationListResponse,
   FeedResponse,
@@ -70,6 +71,13 @@ export async function listConversations(userId: string): Promise<ConversationLis
 
 export async function createConversation(userId: string): Promise<Conversation> {
   const { data } = await client.post("/api/conversations", null, {
+    params: { user_id: userId },
+  });
+  return data;
+}
+
+export async function clearConversationHistory(userId: string): Promise<ClearHistoryResponse> {
+  const { data } = await client.delete("/api/conversations", {
     params: { user_id: userId },
   });
   return data;
