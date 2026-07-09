@@ -8,7 +8,38 @@ from typing import Callable, Iterable
 
 import httpx
 
-DEFAULT_EUR_QUOTES = ("USD", "GBP", "CHF", "JPY", "CNY", "INR", "PLN")
+DEFAULT_EUR_QUOTES = (
+    "USD",
+    "GBP",
+    "CHF",
+    "JPY",
+    "CNY",
+    "INR",
+    "PLN",
+    "AUD",
+    "BGN",
+    "BRL",
+    "CAD",
+    "CZK",
+    "DKK",
+    "HKD",
+    "HUF",
+    "IDR",
+    "ILS",
+    "ISK",
+    "KRW",
+    "MXN",
+    "MYR",
+    "NOK",
+    "NZD",
+    "PHP",
+    "RON",
+    "SEK",
+    "SGD",
+    "THB",
+    "TRY",
+    "ZAR",
+)
 FRANKFURTER_BASE_URL = "https://api.frankfurter.dev"
 
 

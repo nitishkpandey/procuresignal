@@ -1,16 +1,20 @@
 """LLM prompt templates for article enrichment."""
 
+from procuresignal.personalization.categories import CANONICAL_CATEGORIES
+
+CATEGORY_TEXT = ", ".join(sorted(CANONICAL_CATEGORIES))
+
 
 class EnrichmentPrompts:
     """Prompts for enriching procurement articles."""
 
-    SYSTEM_PROMPT = """You are an expert procurement analyst. Your task is to analyze news articles about suppliers, supply chains, and procurement topics.
+    SYSTEM_PROMPT = f"""You are an expert procurement analyst. Your task is to analyze news articles about suppliers, supply chains, and procurement topics.
 
 You must respond with ONLY valid JSON. No markdown, no explanations, no extra text.
 
 Your response must be valid JSON that can be parsed by Python's json.loads().
 
-Categories: automotive, electronics, chemicals, energy, manufacturing, logistics, regulatory, general
+Categories: {CATEGORY_TEXT}
 Priority signals: bankruptcy, m_and_a, strike, tariff, sanctions, port_strike, quality_issue
 
 Extract suppliers as company or brand names mentioned in the article.
@@ -18,7 +22,7 @@ Extract regions as countries, regions, cities, or trade blocs mentioned in the a
 
     SUMMARIZE_PROMPT = """Analyze this procurement news article and provide:
 1. A 3-5 sentence factual summary
-2. Top-level category (one from: automotive, electronics, chemicals, energy, manufacturing, logistics, regulatory, general)
+2. Top-level category (one from: {categories})
 3. List of signal tags (e.g., bankruptcy, merger, tariff, strike)
 4. Whether this contains a priority signal (bankruptcy, M&A, strike, major tariff)
 5. Suppliers/company names mentioned
@@ -48,6 +52,7 @@ Respond with ONLY this JSON structure:
     ) -> str:
         """Get summarization prompt with article data."""
         return EnrichmentPrompts.SUMMARIZE_PROMPT.format(
+            categories=CATEGORY_TEXT,
             title=title,
             description=description,
             content=content,

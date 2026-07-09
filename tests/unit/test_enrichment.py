@@ -45,6 +45,18 @@ def test_enrichment_output_invalid_category():
     assert output.category == "general"
 
 
+def test_enrichment_output_accepts_procurement_categories():
+    """Procurement-specific categories should not collapse into general."""
+    output = EnrichmentOutput(
+        summary="Copper and lithium suppliers face new shipment constraints.",
+        category="metals_mining",
+        signal_tags=[],
+        priority_signal=None,
+    )
+
+    assert output.category == "metals_mining"
+
+
 def test_enrichment_output_filters_invalid_tags():
     """Test that invalid signal tags are filtered."""
     output = EnrichmentOutput(

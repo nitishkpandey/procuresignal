@@ -5,6 +5,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from procuresignal.personalization.categories import CANONICAL_CATEGORIES, canonical_category
+
 
 class EnrichmentOutput(BaseModel):
     """Structured output from LLM enrichment."""
@@ -29,17 +31,8 @@ class EnrichmentOutput(BaseModel):
         except Exception:
             return "general"
 
-        allowed = {
-            "automotive",
-            "electronics",
-            "chemicals",
-            "energy",
-            "manufacturing",
-            "logistics",
-            "regulatory",
-            "general",
-        }
-        if val not in allowed:
+        val = canonical_category(val)
+        if val not in CANONICAL_CATEGORIES:
             return "general"
         return val
 

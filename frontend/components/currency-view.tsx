@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Spinner } from "@/components/ui/spinner";
 import { getCurrencyMonitor } from "@/lib/api";
 import type { CurrencySignal } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
+
+const COMPACT_PAIR_COUNT = 7;
 
 export function CurrencyView() {
   return (
@@ -23,8 +25,13 @@ export function CurrencyView() {
 }
 
 export function CurrencyRail({ className = "" }: { className?: string }) {
+  const [expanded, setExpanded] = useState(false);
   const { data, loading, error } = useApi(() => getCurrencyMonitor({ days: 30 }), []);
   const currencies = useMemo(() => data?.currencies ?? [], [data?.currencies]);
+  const sortedCurrencies = useMemo(() => sortBySignalStrength(currencies), [currencies]);
+  const visibleCurrencies = expanded
+    ? sortedCurrencies
+    : sortedCurrencies.slice(0, COMPACT_PAIR_COUNT);
   const strongest = useMemo(() => pickStrongest(currencies), [currencies]);
 
   return (
@@ -47,6 +54,11 @@ export function CurrencyRail({ className = "" }: { className?: string }) {
             {data.lookback_days}-day range, refreshed from market rates as of {data.as_of}.
           </p>
         ) : null}
+        {currencies.length > 0 ? (
+          <p className="mt-2 text-xs font-medium text-slate-600">
+            {currencies.length} pairs tracked
+          </p>
+        ) : null}
       </div>
 
       {loading ? <Spinner label="Loading EUR timing..." /> : null}
@@ -67,10 +79,21 @@ export function CurrencyRail({ className = "" }: { className?: string }) {
             </div>
           ) : null}
           <div className="divide-y divide-slate-100">
-            {currencies.map((item) => (
+            {visibleCurrencies.map((item) => (
               <CurrencyRow key={item.currency} item={item} />
             ))}
           </div>
+          {currencies.length > COMPACT_PAIR_COUNT ? (
+            <div className="border-t border-slate-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-950"
+              >
+                {expanded ? "Show fewer" : `Show all ${currencies.length}`}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </aside>
@@ -146,4 +169,13 @@ function pickStrongest(currencies: CurrencySignal[]) {
     (best, item) => (!best || item.range_position > best.range_position ? item : best),
     null,
   );
+}
+
+function sortBySignalStrength(currencies: CurrencySignal[]) {
+  return [...currencies].sort((a, b) => {
+    const signalDelta =
+      Math.abs(b.range_position - 0.5) - Math.abs(a.range_position - 0.5);
+    if (signalDelta !== 0) return signalDelta;
+    return a.currency.localeCompare(b.currency);
+  });
 }
