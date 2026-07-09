@@ -13,6 +13,9 @@ class EnrichmentOutput(BaseModel):
     category: str = Field(..., min_length=3, max_length=50)
     signal_tags: List[str] = Field(default_factory=list)
     priority_signal: Optional[str] = Field(default=None)
+    detected_suppliers: List[str] = Field(default_factory=list)
+    detected_regions: List[str] = Field(default_factory=list)
+    detected_categories: List[str] = Field(default_factory=list)
 
     @field_validator("category", mode="before")
     @classmethod
@@ -39,6 +42,21 @@ class EnrichmentOutput(BaseModel):
         if val not in allowed:
             return "general"
         return val
+
+    @field_validator("detected_suppliers", "detected_regions", "detected_categories", mode="before")
+    @classmethod
+    def normalize_entity_lists(cls, v):
+        """Normalize entity list fields while preserving order."""
+        if not isinstance(v, list):
+            return []
+        normalized = []
+        for item in v:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
 
     @field_validator("signal_tags", mode="after")
     @classmethod
@@ -119,4 +137,7 @@ class OutputParser:
             category="general",
             signal_tags=[],
             priority_signal=None,
+            detected_suppliers=[],
+            detected_regions=[],
+            detected_categories=["general"],
         )

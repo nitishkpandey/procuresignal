@@ -16,6 +16,12 @@ _BASE_PERSONA = (
 # Keep the digest small so chat requests stay fast and inexpensive.
 _RECENT_ARTICLE_LIMIT = 6
 _SUMMARY_CHARS = 200
+_LANGUAGE_NAMES = {
+    "en": "English",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+}
 
 
 async def _recent_articles(session: AsyncSession, user_id: str) -> list[tuple[str, str, list]]:
@@ -42,6 +48,11 @@ async def build_system_prompt(session: AsyncSession, user_id: str) -> str:
 
     pref = await PreferenceManager.get_preference(session, user_id)
     if pref is not None:
+        language = _LANGUAGE_NAMES.get(
+            (pref.platform_language or "en").lower(), pref.platform_language
+        )
+        parts.append(f"Reply in {language} unless the user explicitly asks for another language.")
+
         focus: list[str] = []
         if pref.preferred_suppliers:
             focus.append(f"Suppliers: {', '.join(pref.preferred_suppliers)}")

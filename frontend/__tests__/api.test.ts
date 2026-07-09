@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted so the mocks exist before lib/api.ts runs axios.create() at import time.
-const { mockedGet, mockedPost } = vi.hoisted(() => ({
+const { mockedGet, mockedPost, mockedDelete } = vi.hoisted(() => ({
   mockedGet: vi.fn(),
   mockedPost: vi.fn(),
+  mockedDelete: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
-  default: { create: () => ({ get: mockedGet, post: mockedPost }) },
+  default: { create: () => ({ get: mockedGet, post: mockedPost, delete: mockedDelete }) },
 }));
 
 import * as api from "@/lib/api";
@@ -15,6 +16,7 @@ import * as api from "@/lib/api";
 afterEach(() => {
   mockedGet.mockReset();
   mockedPost.mockReset();
+  mockedDelete.mockReset();
 });
 
 describe("api client", () => {
@@ -49,5 +51,14 @@ describe("api client", () => {
       params: { user_id: "u1" },
     });
     expect(res.conversation_id).toBe("c1");
+  });
+
+  it("getCurrencyMonitor calls /api/currency/eur-monitor", async () => {
+    mockedGet.mockResolvedValue({ data: { base: "EUR", currencies: [] } });
+    const res = await api.getCurrencyMonitor({ quotes: ["USD", "GBP"], days: 30 });
+    expect(mockedGet).toHaveBeenCalledWith("/api/currency/eur-monitor", {
+      params: { quotes: "USD,GBP", days: 30 },
+    });
+    expect(res.base).toBe("EUR");
   });
 });

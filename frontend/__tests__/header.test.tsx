@@ -14,6 +14,7 @@ describe("Header", () => {
   it("shows nav links", () => {
     render(<Header />);
     expect(screen.getByRole("link", { name: "Feed" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Currency" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Preferences" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });

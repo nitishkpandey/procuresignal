@@ -1,8 +1,8 @@
 """User preference endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from procuresignal.personalization.categories import canonical_category_list
 from procuresignal.personalization import PreferenceManager
+from procuresignal.personalization.categories import canonical_category_list
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_session
@@ -29,6 +29,7 @@ def _to_response(pref) -> PreferenceResponse:
         excluded_suppliers=list(getattr(pref, "excluded_suppliers", []) or []),
         excluded_regions=list(getattr(pref, "excluded_regions", []) or []),
         excluded_signals=list(getattr(pref, "excluded_signals", []) or []),
+        platform_language=getattr(pref, "platform_language", "en") or "en",
         created_at=getattr(pref, "created_at", None),
         updated_at=getattr(pref, "updated_at", None),
     )
@@ -52,6 +53,7 @@ async def update_preferences(
         excluded_suppliers=preference_update.excluded_suppliers,
         excluded_regions=preference_update.excluded_regions,
         excluded_signals=preference_update.excluded_signals,
+        platform_language=preference_update.platform_language,
     )
 
     return _to_response(pref)
@@ -91,6 +93,7 @@ async def bulk_update_preferences(
             excluded_suppliers=preference_update.excluded_suppliers,
             excluded_regions=preference_update.excluded_regions,
             excluded_signals=preference_update.excluded_signals,
+            platform_language=preference_update.platform_language,
         )
         updated_preferences.append(_to_response(pref))
 

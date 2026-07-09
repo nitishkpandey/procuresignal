@@ -5,6 +5,11 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from procuresignal.enrichment.entities import (
+    extract_regions_from_text,
+    extract_suppliers_from_text,
+    merge_entities,
+)
 from procuresignal.enrichment.openai_client import OpenAILLMClient
 from procuresignal.enrichment.output_parser import OutputParser
 from procuresignal.enrichment.prompts import EnrichmentPrompts
@@ -58,6 +63,25 @@ class ArticleEnricher:
             if parsed is None:
                 parsed = OutputParser.get_fallback(article.title)
 
+            article_text = " ".join(
+                part
+                for part in [
+                    article.title,
+                    article.description or "",
+                    article.content_snippet or "",
+                ]
+                if part
+            )
+            detected_suppliers = merge_entities(
+                parsed.detected_suppliers,
+                extract_suppliers_from_text(article_text),
+            )
+            detected_regions = merge_entities(
+                parsed.detected_regions,
+                extract_regions_from_text(article_text),
+            )
+            detected_categories = merge_entities(parsed.detected_categories, [parsed.category])
+
             # Create processed article
             processed = NewsArticleProcessed(
                 raw_article_id=raw_article_id,
@@ -66,9 +90,9 @@ class ArticleEnricher:
                 top_level_category=parsed.category,
                 signal_tags=parsed.signal_tags,
                 priority_signal=parsed.priority_signal,
-                detected_regions=[],  # not extracted during enrichment
-                detected_suppliers=[],
-                detected_categories=[parsed.category],
+                detected_regions=detected_regions,
+                detected_suppliers=detected_suppliers,
+                detected_categories=detected_categories,
                 signal_score=0.0,  # not scored during enrichment
                 processing_status="completed",
                 llm_model=f"openai/{self.client.model}",

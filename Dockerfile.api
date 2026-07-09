@@ -21,6 +21,7 @@ RUN poetry config virtualenvs.create false && \
 # Copy source code
 COPY ./shared /app/shared
 COPY ./api /app/api
+COPY ./worker /app/worker
 
 # Create non-root user for security
 RUN useradd -m -u 1000 procuresignal && chown -R procuresignal:procuresignal /app

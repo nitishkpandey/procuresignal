@@ -29,6 +29,7 @@ class UserNewsPreference(BaseModel):
     excluded_topics: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    platform_language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
 
     __table_args__ = (Index("idx_user_preferences_user_id", "user_id"),)
 

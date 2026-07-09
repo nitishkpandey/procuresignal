@@ -68,6 +68,43 @@ def api_client():
             )
             session.add(processed)
 
+            raw_missing_entities = NewsArticleRaw(
+                provider="rss",
+                provider_article_id="article-456",
+                query_group="general",
+                ingest_hash="seed-hash-456",
+                title="Ferrari supplier talks expand in Italy after Mercedes parts warning",
+                description="Ferrari and Mercedes discuss supplier continuity in Maranello, Italy.",
+                content_snippet="Procurement teams are watching component availability across Italy.",
+                article_url="https://example.com/article-456",
+                canonical_url="https://example.com/article-456",
+                source_name="Industry Week",
+                source_url="https://industryweek.com",
+                published_at=datetime.utcnow(),
+                language="en",
+                ingested_at=datetime.utcnow(),
+            )
+            session.add(raw_missing_entities)
+            await session.flush()
+
+            processed_missing_entities = NewsArticleProcessed(
+                raw_article_id=raw_missing_entities.id,
+                normalized_title="Ferrari supplier talks expand in Italy",
+                summary="Ferrari and Mercedes are watching supplier continuity in Italy.",
+                top_level_category="automotive",
+                signal_tags=["supplier_risk"],
+                priority_signal="supplier_risk",
+                detected_regions=[],
+                detected_suppliers=[],
+                detected_categories=[],
+                signal_score=0.71,
+                processing_status="completed",
+                llm_model="openai/test-model",
+                language="en",
+                processed_at=datetime.utcnow(),
+            )
+            session.add(processed_missing_entities)
+
             pref = UserNewsPreference(
                 user_id="user-123",
                 preferred_categories=["automotive"],
@@ -148,6 +185,15 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["articles"]
 
 
+def test_feed_without_preferences_returns_general_news(api_client: TestClient) -> None:
+    response = api_client.get("/api/feed", params={"user_id": "new-user", "limit": 20})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "new-user"
+    assert payload["articles"]
+
+
 def test_preference_update_clears_stale_feed(api_client: TestClient) -> None:
     first = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
     assert first.status_code == 200
@@ -177,6 +223,7 @@ def test_preferences_round_trip(api_client: TestClient) -> None:
             "interested_regions": ["Germany"],
             "interested_signals": ["Tariff"],
             "excluded_categories": ["Politics"],
+            "platform_language": "de",
         },
     )
 
@@ -184,10 +231,12 @@ def test_preferences_round_trip(api_client: TestClient) -> None:
     created = response.json()
     assert created["user_id"] == "user-new"
     assert created["interested_categories"] == ["automotive"]
+    assert created["platform_language"] == "de"
 
     fetched = api_client.get("/api/preferences", params={"user_id": "user-new"})
     assert fetched.status_code == 200
     assert fetched.json()["interested_suppliers"] == ["bosch"]
+    assert fetched.json()["platform_language"] == "de"
 
 
 def test_preference_category_alias_generates_feed(api_client: TestClient) -> None:
@@ -244,6 +293,30 @@ def test_get_article_detail(api_client: TestClient) -> None:
     payload = response.json()
     assert payload["title"]
     assert payload["source_name"] == "Reuters"
+
+
+def test_get_article_detail_infers_missing_entities(api_client: TestClient) -> None:
+    response = api_client.get("/api/articles/2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "Ferrari" in payload["detected_suppliers"]
+    assert "Mercedes" in payload["detected_suppliers"]
+    assert "Italy" in payload["detected_regions"]
+    assert payload["detected_categories"] == ["automotive"]
+
+
+def test_feed_infers_missing_entities(api_client: TestClient) -> None:
+    response = api_client.get("/api/feed", params={"user_id": "metadata-user", "limit": 20})
+
+    assert response.status_code == 200
+    article = next(
+        item
+        for item in response.json()["articles"]
+        if item["title"] == "Ferrari supplier talks expand in Italy"
+    )
+    assert "Ferrari" in article["detected_suppliers"]
+    assert "Italy" in article["detected_regions"]
 
 
 def test_search_missing_query(api_client: TestClient) -> None:

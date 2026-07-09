@@ -68,7 +68,9 @@ function Detail({ label, items }: { label: string; items: string[] }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
       <dt className="text-xs font-semibold uppercase text-slate-500">{label}</dt>
-      <dd className="mt-1 text-slate-800">{items.length ? items.map(humanize).join(", ") : "-"}</dd>
+      <dd className="mt-1 text-slate-800">
+        {items.length ? items.map(humanize).join(", ") : "Not detected"}
+      </dd>
     </div>
   );
 }

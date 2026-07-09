@@ -1,14 +1,17 @@
 """Tests for LLM enrichment."""
 
 import json
+from datetime import datetime
 
 import pytest
 from procuresignal.enrichment import (
+    ArticleEnricher,
     EnrichmentOutput,
     EnrichmentPrompts,
     OpenAILLMClient,
     OutputParser,
 )
+from procuresignal.retrieval import RawArticle
 
 
 def test_enrichment_output_creation():
@@ -18,11 +21,16 @@ def test_enrichment_output_creation():
         category="manufacturing",
         signal_tags=["expansion"],
         priority_signal=None,
+        detected_suppliers=["Bosch"],
+        detected_regions=["Poland"],
+        detected_categories=["manufacturing"],
     )
 
     assert output.summary == "Bosch announced a new manufacturing facility in Poland."
     assert output.category == "manufacturing"
     assert "expansion" in output.signal_tags
+    assert output.detected_suppliers == ["Bosch"]
+    assert output.detected_regions == ["Poland"]
 
 
 def test_enrichment_output_invalid_category():
@@ -59,6 +67,9 @@ def test_output_parser_valid_json():
             "category": "automotive",
             "signal_tags": ["tariff", "strike"],
             "priority_signal": "tariff",
+            "detected_suppliers": ["Volkswagen"],
+            "detected_regions": ["Germany"],
+            "detected_categories": ["automotive"],
         }
     )
 
@@ -68,6 +79,8 @@ def test_output_parser_valid_json():
     assert parsed.summary == "Article summary here"
     assert parsed.category == "automotive"
     assert "tariff" in parsed.signal_tags
+    assert parsed.detected_suppliers == ["Volkswagen"]
+    assert parsed.detected_regions == ["Germany"]
 
 
 def test_output_parser_json_with_extra_text():
@@ -77,7 +90,10 @@ def test_output_parser_json_with_extra_text():
     "summary": "Article summary here",
     "category": "manufacturing",
     "signal_tags": ["expansion"],
-    "priority_signal": null
+    "priority_signal": null,
+    "detected_suppliers": ["Siemens"],
+    "detected_regions": ["Germany"],
+    "detected_categories": ["manufacturing"]
 }
 Some extra text here."""
 
@@ -85,6 +101,7 @@ Some extra text here."""
 
     assert parsed is not None
     assert parsed.category == "manufacturing"
+    assert parsed.detected_suppliers == ["Siemens"]
 
 
 def test_output_parser_invalid_json():
@@ -103,6 +120,8 @@ def test_output_parser_fallback():
     assert fallback is not None
     assert fallback.category == "general"
     assert fallback.priority_signal is None
+    assert fallback.detected_suppliers == []
+    assert fallback.detected_regions == []
 
 
 def test_enrichment_prompts_template():
@@ -169,3 +188,47 @@ async def test_openai_client_uses_responses_api(monkeypatch):
     assert captured["json"]["input"] == "ARTICLE"
     assert captured["headers"]["Authorization"] == "Bearer test-key"
     assert client.get_usage_stats()["total_tokens"] == 12
+
+
+class _FakeLLMClient:
+    model = "test-model"
+
+    async def call(self, system_prompt: str, user_message: str) -> str:
+        return json.dumps(
+            {
+                "summary": "Mercedes questioned Ferrari's budget strategy in Italy.",
+                "category": "automotive",
+                "signal_tags": [],
+                "priority_signal": None,
+                "detected_suppliers": ["Mercedes", "Ferrari"],
+                "detected_regions": ["Italy"],
+                "detected_categories": ["automotive"],
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_enricher_persists_detected_suppliers_and_regions():
+    enricher = ArticleEnricher(_FakeLLMClient())
+    article = RawArticle(
+        provider="newsapi",
+        provider_article_id="a1",
+        query_group="automotive",
+        title="Ferrari budget strategy questioned by Mercedes in Italy",
+        description="Mercedes questioned Ferrari's 2026 upgrade budget.",
+        content_snippet="The debate centered on Formula 1 suppliers in Italy.",
+        article_url="https://example.com/a",
+        canonical_url="https://example.com/a",
+        source_name="Example",
+        source_url="https://example.com",
+        published_at=datetime.utcnow(),
+        language="en",
+        raw_payload_json={},
+    )
+
+    processed = await enricher.enrich(article, raw_article_id=42)
+
+    assert processed is not None
+    assert processed.detected_suppliers == ["Mercedes", "Ferrari"]
+    assert processed.detected_regions == ["Italy"]
+    assert processed.detected_categories == ["automotive"]

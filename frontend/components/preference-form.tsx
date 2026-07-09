@@ -11,18 +11,41 @@ import { getPreferences, savePreferences } from "@/lib/api";
 import type { Preferences } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
-const INTEREST_FIELDS: (keyof Preferences)[] = [
-  "interested_categories",
-  "interested_suppliers",
-  "interested_regions",
-  "interested_signals",
-];
-
-const EXCLUDE_FIELDS: (keyof Preferences)[] = [
-  "excluded_categories",
-  "excluded_suppliers",
-  "excluded_regions",
-  "excluded_signals",
+const PREFERENCE_GROUPS: {
+  title: string;
+  includeField: keyof Preferences;
+  excludeField: keyof Preferences;
+  includeLabel: string;
+  excludeLabel: string;
+}[] = [
+  {
+    title: "Supplier",
+    includeField: "interested_suppliers",
+    excludeField: "excluded_suppliers",
+    includeLabel: "suppliers",
+    excludeLabel: "excluded suppliers",
+  },
+  {
+    title: "Location",
+    includeField: "interested_regions",
+    excludeField: "excluded_regions",
+    includeLabel: "locations",
+    excludeLabel: "excluded locations",
+  },
+  {
+    title: "Categories",
+    includeField: "interested_categories",
+    excludeField: "excluded_categories",
+    includeLabel: "categories",
+    excludeLabel: "excluded categories",
+  },
+  {
+    title: "Misc",
+    includeField: "interested_signals",
+    excludeField: "excluded_signals",
+    includeLabel: "risk signals",
+    excludeLabel: "excluded risk signals",
+  },
 ];
 
 export function emptyPreferences(userId: string): Preferences {
@@ -36,6 +59,7 @@ export function emptyPreferences(userId: string): Preferences {
     excluded_suppliers: [],
     excluded_regions: [],
     excluded_signals: [],
+    platform_language: "en",
   };
 }
 
@@ -124,29 +148,42 @@ export function PreferenceForm() {
   return (
     <main className="space-y-5">
       <PageHeader />
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+        <label className="block text-sm font-medium text-slate-700" htmlFor="platform-language">
+          Platform language
+        </label>
+        <select
+          id="platform-language"
+          aria-label="Platform language"
+          value={prefs.platform_language || "en"}
+          onChange={(e) => setPrefs({ ...prefs, platform_language: e.target.value })}
+          className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:max-w-xs"
+        >
+          <option value="en">English</option>
+          <option value="de">German</option>
+          <option value="fr">French</option>
+          <option value="es">Spanish</option>
+        </select>
+      </section>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <PreferenceSection title="Include in feed">
-          {INTEREST_FIELDS.map((field) => (
+        {PREFERENCE_GROUPS.map((group) => (
+          <PreferenceSection key={group.title} title={group.title}>
             <TagField
-              key={field}
-              field={field}
-              values={prefs[field] as string[]}
+              field={group.includeField}
+              label={group.includeLabel}
+              values={prefs[group.includeField] as string[]}
               onAdd={addItem}
               onRemove={removeItem}
             />
-          ))}
-        </PreferenceSection>
-        <PreferenceSection title="Exclude from feed">
-          {EXCLUDE_FIELDS.map((field) => (
             <TagField
-              key={field}
-              field={field}
-              values={prefs[field] as string[]}
+              field={group.excludeField}
+              label={group.excludeLabel}
+              values={prefs[group.excludeField] as string[]}
               onAdd={addItem}
               onRemove={removeItem}
             />
-          ))}
-        </PreferenceSection>
+          </PreferenceSection>
+        ))}
       </div>
       <div className="flex items-center gap-3">
         <Button onClick={onSave}>Save preferences</Button>
@@ -168,13 +205,7 @@ function PageHeader() {
   );
 }
 
-function PreferenceSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function PreferenceSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
       <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
@@ -185,17 +216,18 @@ function PreferenceSection({
 
 function TagField({
   field,
+  label,
   values,
   onAdd,
   onRemove,
 }: {
   field: keyof Preferences;
+  label: string;
   values: string[];
   onAdd: (field: keyof Preferences, value: string) => void;
   onRemove: (field: keyof Preferences, value: string) => void;
 }) {
   const [draft, setDraft] = useState("");
-  const label = String(field).replace(/_/g, " ");
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50/80 p-3">
       <p className="mb-2 text-sm font-medium capitalize text-slate-700">{label}</p>
@@ -207,7 +239,7 @@ function TagField({
         }}
       >
         <Input
-          aria-label={`Add ${String(field)}`}
+          aria-label={`Add ${label}`}
           placeholder={`Add ${label}…`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

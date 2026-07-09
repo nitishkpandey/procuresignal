@@ -5,6 +5,7 @@ import type {
   ClearHistoryResponse,
   Conversation,
   ConversationListResponse,
+  CurrencyMonitorResponse,
   FeedResponse,
   MessageListResponse,
   Preferences,
@@ -39,6 +40,18 @@ export async function search(
 
 export async function getArticle(id: number): Promise<ArticleDetail> {
   const { data } = await client.get(`/api/articles/${id}`);
+  return data;
+}
+
+export async function getCurrencyMonitor(
+  opts: { quotes?: string[]; days?: number } = {},
+): Promise<CurrencyMonitorResponse> {
+  const { data } = await client.get("/api/currency/eur-monitor", {
+    params: {
+      quotes: (opts.quotes ?? ["USD", "GBP", "CHF", "JPY", "CNY", "INR", "PLN"]).join(","),
+      days: opts.days ?? 30,
+    },
+  });
   return data;
 }
 

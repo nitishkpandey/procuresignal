@@ -25,6 +25,7 @@ class PreferenceManager:
         excluded_regions: Optional[List[str]] = None,
         excluded_signals: Optional[List[str]] = None,
         excluded_topics: Optional[List[str]] = None,
+        platform_language: str = "en",
     ) -> UserNewsPreference:
         """Create or update user preference.
 
@@ -40,6 +41,7 @@ class PreferenceManager:
             excluded_regions: Regions to exclude
             excluded_signals: Signals to exclude
             excluded_topics: Topics to exclude
+            platform_language: User's preferred platform language
 
         Returns:
             Updated UserNewsPreference
@@ -50,6 +52,7 @@ class PreferenceManager:
             excluded_categories = canonical_category_list(excluded_categories)
         if excluded_topics is not None:
             excluded_topics = canonical_category_list(excluded_topics)
+        platform_language = (platform_language or "en").strip().lower() or "en"
 
         # Check if exists
         existing = await session.execute(
@@ -79,6 +82,7 @@ class PreferenceManager:
                 pref.excluded_regions = excluded_regions
             if excluded_signals is not None:
                 pref.excluded_signals = excluded_signals
+            pref.platform_language = platform_language
         else:
             # Create new
             pref = UserNewsPreference(
@@ -92,6 +96,7 @@ class PreferenceManager:
                 excluded_regions=excluded_regions or [],
                 excluded_signals=excluded_signals or [],
                 excluded_topics=excluded_topics or excluded_categories or [],
+                platform_language=platform_language,
             )
 
         session.add(pref)

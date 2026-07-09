@@ -15,6 +15,8 @@ A production-grade system that brings personalized, context-aware market intelli
 - **LLM enrichment** — OpenAI-powered summaries and signal tagging
 - **Feed-grounded chat** — ask questions about your signals; answers are grounded in your preferences and recent feed
 - **Per-user preferences** — interested/excluded categories, suppliers, regions, and signal types
+- **EUR currency monitor** — tracks EUR against key supplier-market currencies for procurement timing
+- **Scheduled operations** — optional APScheduler orchestration with idempotent job registration and retention cleanup
 
 ## Quick Start
 
@@ -54,6 +56,17 @@ before the API starts). The one-shot `bootstrap` service triggers the
 retrieval → enrichment → personalization pipeline once so the feed populates
 with real articles over the following minutes (requires `NEWSAPI_KEY` /
 `OPENAI_API_KEY`; optionally set `OPENAI_MODEL`).
+
+### Scheduling, freshness, and retention
+
+ProcureSignal can run scheduled jobs in two ways:
+
+- Celery beat (`beat` service) is enabled in Docker Compose and runs retrieval every 6 hours, normalization/enrichment every 2 hours, and personalization hourly.
+- API-owned APScheduler is available by setting `ENABLE_APSCHEDULER=true`; use this instead of Celery beat if the API should own the schedule.
+
+Scheduled job IDs are stable and registered with `replace_existing=True`, `coalesce=True`, and `max_instances=1`, so repeated API starts do not duplicate jobs. Retention cleanup runs daily at 02:15 UTC and keeps raw articles for 14 days, processed articles for 30 days, and user-facing feed rows for 14 days.
+
+If a user has no saved preferences, feed generation falls back to general category-level procurement news. Saved preferences live in PostgreSQL and include supplier, location, category, misc signal filters, exclusions, and platform language. The currency monitor calls Frankfurter's latest EUR rates endpoint and displays daily central-bank exchange rates for procurement timing.
 
 ### Stopping Services
 

@@ -2,6 +2,16 @@
 
 from collections.abc import Iterable
 
+CANONICAL_CATEGORIES = {
+    "automotive",
+    "electronics",
+    "chemicals",
+    "energy",
+    "manufacturing",
+    "logistics",
+    "regulatory",
+    "general",
+}
 
 CATEGORY_ALIASES: dict[str, str] = {
     "auto": "automotive",
@@ -44,6 +54,88 @@ CATEGORY_ALIASES: dict[str, str] = {
     "utilities": "energy",
 }
 
+CATEGORY_KEYWORDS: dict[str, set[str]] = {
+    "automotive": {
+        "automotive",
+        "auto",
+        "automobile",
+        "car",
+        "cars",
+        "ev",
+        "fleet",
+        "mobility",
+        "vehicle",
+        "vehicles",
+    },
+    "electronics": {
+        "ai",
+        "chip",
+        "chips",
+        "electronics",
+        "hardware",
+        "memory",
+        "semiconductor",
+        "semiconductors",
+        "software",
+        "technology",
+    },
+    "chemicals": {
+        "chemical",
+        "chemicals",
+        "fertilizer",
+        "materials",
+        "plastics",
+        "polymer",
+        "resin",
+    },
+    "energy": {
+        "battery",
+        "electricity",
+        "energy",
+        "gas",
+        "oil",
+        "power",
+        "renewable",
+        "renewables",
+        "solar",
+        "utility",
+        "wind",
+    },
+    "manufacturing": {
+        "factory",
+        "factories",
+        "industrial",
+        "industry",
+        "manufacturing",
+        "plant",
+        "production",
+    },
+    "logistics": {
+        "cargo",
+        "freight",
+        "logistics",
+        "port",
+        "shipping",
+        "supply",
+        "transport",
+        "transportation",
+        "warehouse",
+    },
+    "regulatory": {
+        "compliance",
+        "law",
+        "legal",
+        "policy",
+        "regulation",
+        "regulations",
+        "regulatory",
+        "rules",
+        "sanctions",
+        "tariff",
+        "trade",
+    },
+}
+
 
 def normalize_category_key(value: object) -> str:
     """Return a stable lowercase key for category matching."""
@@ -56,7 +148,15 @@ def canonical_category(value: object) -> str:
     """Map common user-entered category names to the article taxonomy."""
 
     key = normalize_category_key(value)
-    return CATEGORY_ALIASES.get(key, key)
+    if key in CANONICAL_CATEGORIES:
+        return key
+    if key in CATEGORY_ALIASES:
+        return CATEGORY_ALIASES[key]
+
+    tokens = set(key.split())
+    scores = {category: len(tokens & keywords) for category, keywords in CATEGORY_KEYWORDS.items()}
+    best_category, score = max(scores.items(), key=lambda item: item[1])
+    return best_category if score > 0 else key
 
 
 def canonical_category_list(values: Iterable[object] | None) -> list[str]:
