@@ -69,8 +69,25 @@ export interface Preferences {
   excluded_suppliers: string[];
   excluded_regions: string[];
   excluded_signals: string[];
+  platform_language: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CurrencySignal {
+  currency: string;
+  latest_rate: number;
+  range_low: number;
+  range_high: number;
+  range_position: number;
+  procurement_signal: string;
+}
+
+export interface CurrencyMonitorResponse {
+  base: string;
+  as_of: string;
+  lookback_days: number;
+  currencies: CurrencySignal[];
 }
 
 export interface Conversation {
