@@ -24,12 +24,12 @@ beforeEach(() => {
 });
 
 describe("CurrencyView", () => {
-  it("renders EUR currency monitor signals", async () => {
+  it("renders the compact EUR timing monitor", async () => {
     render(<CurrencyView />);
 
-    await waitFor(() => expect(screen.getByText("EUR currency monitor")).toBeInTheDocument());
-    expect(screen.getByText(/EUR \/ USD/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("EUR monitor")).toBeInTheDocument());
+    expect(screen.getByText("EUR / USD")).toBeInTheDocument();
     expect(screen.getByText("1.2000")).toBeInTheDocument();
-    expect(screen.getByText(/near its 30-day high/)).toBeInTheDocument();
+    expect(screen.getByText("Buy window")).toBeInTheDocument();
   });
 });
