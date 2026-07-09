@@ -82,7 +82,7 @@ def main() -> int:
 
     api = args.api_url.rstrip("/")
     c = Checker()
-    user_id = "demo-user"
+    user_id = "smoke@example.com"
 
     if args.wait:
         print(f"Waiting for {api}/health ...")

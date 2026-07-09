@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { Header } from "@/components/header";
+import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,10 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="mx-auto min-h-screen max-w-5xl px-4 py-6">
-          <Header />
-          {children}
-        </div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
