@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
-from api.routers import articles, chat, feed, health, preferences, signals
+from api.routers import articles, chat, currency, feed, health, preferences, signals
+from api.scheduler import create_scheduler, scheduler_enabled
 
 
 @asynccontextmanager
@@ -17,9 +18,18 @@ async def lifespan(app: FastAPI):
     if database_url:
         await init_db(database_url)
 
-    yield
+    scheduler = None
+    if scheduler_enabled():
+        scheduler = create_scheduler()
+        scheduler.start()
 
-    await close_db()
+    try:
+        yield
+    finally:
+        if scheduler:
+            scheduler.shutdown(wait=False)
+
+        await close_db()
 
 
 app = FastAPI(
@@ -44,6 +54,7 @@ app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(articles.router)
 app.include_router(signals.router)
+app.include_router(currency.router)
 
 
 @app.get("/health")

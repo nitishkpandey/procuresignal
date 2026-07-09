@@ -26,6 +26,7 @@ aiosqlite = "^0.19"
 fastapi = "^0.104"
 uvicorn = {extras = ["standard"], version = "^0.24"}  # [standard] pulls websockets for WS chat
 httpx = "^0.25"
+apscheduler = "^3.11.3"
 
 # Worker
 celery = "^5.3"
