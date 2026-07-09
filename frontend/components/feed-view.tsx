@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { ArticleCard } from "@/components/article-card";
+import { CurrencyRail } from "@/components/currency-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -73,30 +74,41 @@ export function FeedView() {
       </section>
 
       {query ? (
-        <SearchResults
-          loading={results.loading}
-          error={results.error}
-          items={results.data?.results ?? []}
-          onClear={() => {
-            setQuery("");
-            setDraft("");
-          }}
-          onRetry={results.reload}
-        />
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <SearchResults
+            loading={results.loading}
+            error={results.error}
+            items={results.data?.results ?? []}
+            onClear={() => {
+              setQuery("");
+              setDraft("");
+            }}
+            onRetry={results.reload}
+          />
+          <CurrencyRail className="order-first xl:order-none xl:sticky xl:top-5 xl:self-start" />
+        </div>
       ) : (
-        <>
-          {!feed.loading && !feed.error && articles.length > 0 && (
-            <Toolbar
-              count={visible.length}
-              sort={sort}
-              onSort={setSort}
-              categories={categories}
-              category={category}
-              onCategory={setCategory}
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="space-y-5">
+            {!feed.loading && !feed.error && articles.length > 0 && (
+              <Toolbar
+                count={visible.length}
+                sort={sort}
+                onSort={setSort}
+                categories={categories}
+                category={category}
+                onCategory={setCategory}
+              />
+            )}
+            <FeedList
+              loading={feed.loading}
+              error={feed.error}
+              items={visible}
+              onRetry={feed.reload}
             />
-          )}
-          <FeedList loading={feed.loading} error={feed.error} items={visible} onRetry={feed.reload} />
-        </>
+          </section>
+          <CurrencyRail className="order-first xl:order-none xl:sticky xl:top-5 xl:self-start" />
+        </div>
       )}
     </main>
   );

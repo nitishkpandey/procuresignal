@@ -6,12 +6,14 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.config import database as database_module
+from procuresignal.currency.service import CurrencyMonitorResponse
 from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from api.dependencies import get_session
 from api.main import app
+from api.routers import currency as currency_router
 
 
 @pytest.fixture()
@@ -167,6 +169,31 @@ def test_api_health_check(api_client: TestClient) -> None:
     payload = response.json()
     assert payload["service"] == "api"
     assert payload["database"] == "connected"
+
+
+def test_currency_endpoint_uses_service_defaults(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeCurrencyMonitor:
+        calls: list[dict] = []
+
+        async def get_eur_monitor(self, **kwargs):
+            self.calls.append(kwargs)
+            return CurrencyMonitorResponse(
+                base="EUR",
+                as_of="2026-07-09",
+                lookback_days=kwargs.get("days", 30),
+                currencies=[],
+            )
+
+    monitor = FakeCurrencyMonitor()
+    monkeypatch.setattr(currency_router, "CurrencyMonitor", lambda: monitor)
+
+    response = api_client.get("/api/currency/eur-monitor", params={"days": 30})
+
+    assert response.status_code == 200
+    assert response.json()["base"] == "EUR"
+    assert monitor.calls == [{"days": 30}]
 
 
 def test_feed_missing_user_id(api_client: TestClient) -> None:

@@ -7,7 +7,6 @@ import { useUserStore } from "@/store/user";
 
 const NAV = [
   { href: "/", label: "Feed" },
-  { href: "/currency", label: "Currency" },
   { href: "/preferences", label: "Preferences" },
   { href: "/chat", label: "Chat" },
 ];

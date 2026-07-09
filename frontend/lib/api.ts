@@ -46,11 +46,13 @@ export async function getArticle(id: number): Promise<ArticleDetail> {
 export async function getCurrencyMonitor(
   opts: { quotes?: string[]; days?: number } = {},
 ): Promise<CurrencyMonitorResponse> {
+  const params: { quotes?: string; days: number } = { days: opts.days ?? 30 };
+  if (opts.quotes?.length) {
+    params.quotes = opts.quotes.join(",");
+  }
+
   const { data } = await client.get("/api/currency/eur-monitor", {
-    params: {
-      quotes: (opts.quotes ?? ["USD", "GBP", "CHF", "JPY", "CNY", "INR", "PLN"]).join(","),
-      days: opts.days ?? 30,
-    },
+    params,
   });
   return data;
 }

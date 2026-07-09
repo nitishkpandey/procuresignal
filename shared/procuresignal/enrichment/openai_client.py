@@ -16,8 +16,8 @@ class OpenAILLMClient:
     """Small async client for OpenAI text responses."""
 
     BASE_URL = "https://api.openai.com/v1/responses"
-    MODEL = "gpt-5.5"
-    MAX_TOKENS = 500
+    MODEL = "gpt-5.4-nano"
+    MAX_TOKENS = 400
 
     def __init__(
         self,

@@ -61,4 +61,12 @@ describe("api client", () => {
     });
     expect(res.base).toBe("EUR");
   });
+
+  it("lets the backend choose the default currency universe", async () => {
+    mockedGet.mockResolvedValue({ data: { base: "EUR", currencies: [] } });
+    await api.getCurrencyMonitor({ days: 30 });
+    expect(mockedGet).toHaveBeenCalledWith("/api/currency/eur-monitor", {
+      params: { days: 30 },
+    });
+  });
 });

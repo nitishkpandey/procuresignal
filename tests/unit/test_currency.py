@@ -3,7 +3,13 @@
 from datetime import date
 
 import pytest
-from procuresignal.currency.service import CurrencyMonitor
+from procuresignal.currency.service import DEFAULT_EUR_QUOTES, CurrencyMonitor
+
+
+def test_default_quotes_cover_global_supplier_markets():
+    assert len(DEFAULT_EUR_QUOTES) >= 25
+    for currency in ["USD", "GBP", "CNY", "INR", "JPY", "KRW", "MXN", "CAD", "AUD"]:
+        assert currency in DEFAULT_EUR_QUOTES
 
 
 class _FakeResponse:

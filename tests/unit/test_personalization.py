@@ -99,6 +99,25 @@ def test_category_alias_match_hit():
     assert score == 1.0
 
 
+def test_procurement_category_alias_match_hit():
+    """Procurement wording should map into richer category buckets."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=["critical minerals"],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+
+    score = PreferenceMatcher.calculate_category_match("metals_mining", pref)
+
+    assert score == 1.0
+
+
 def test_supplier_match_hit():
     """Test supplier matching when preferences match."""
     pref = PreferenceStub(

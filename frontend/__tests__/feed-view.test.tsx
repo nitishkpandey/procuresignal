@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   getFeed: vi.fn(),
+  getCurrencyMonitor: vi.fn(),
   search: vi.fn(),
 }));
 import * as api from "@/lib/api";
@@ -48,12 +49,36 @@ beforeEach(() => {
       },
     ],
   });
+  vi.mocked(api.getCurrencyMonitor).mockResolvedValue({
+    base: "EUR",
+    as_of: "2026-07-09",
+    lookback_days: 30,
+    currencies: [
+      {
+        currency: "USD",
+        latest_rate: 1.2,
+        range_low: 1.1,
+        range_high: 1.2,
+        range_position: 1,
+        procurement_signal: "EUR is near its 30-day high vs USD.",
+      },
+    ],
+  });
 });
 
 describe("FeedView", () => {
   it("renders the feed by default", async () => {
     render(<FeedView />);
     await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
+  });
+
+  it("shows the EUR timing rail beside the feed", async () => {
+    render(<FeedView />);
+    await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
+
+    expect(screen.getByText("EUR monitor")).toBeInTheDocument();
+    expect(screen.getByText("EUR / USD")).toBeInTheDocument();
+    expect(api.getCurrencyMonitor).toHaveBeenCalledWith({ days: 30 });
   });
 
   it("shows search results after submitting a query", async () => {
