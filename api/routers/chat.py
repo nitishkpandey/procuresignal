@@ -85,7 +85,9 @@ async def clear_conversation_history(
 ) -> ClearHistoryResponse:
     """Delete all chat conversations and messages for a user."""
 
-    message_result = await session.execute(delete(ChatMessage).where(ChatMessage.user_id == user_id))
+    message_result = await session.execute(
+        delete(ChatMessage).where(ChatMessage.user_id == user_id)
+    )
     conversation_result = await session.execute(
         delete(ChatConversation).where(ChatConversation.user_id == user_id)
     )
