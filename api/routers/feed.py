@@ -8,6 +8,7 @@ from procuresignal.personalization import PersonalizationPipeline
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.article_entities import regions_for_response, suppliers_for_response
 from api.dependencies import get_session
 from api.schemas.feed import ArticleInFeed, FeedResponse
 
@@ -69,8 +70,8 @@ async def get_personalized_feed(
             category=processed.top_level_category,
             signal_tags=processed.signal_tags or [],
             priority_signal=processed.priority_signal,
-            detected_suppliers=processed.detected_suppliers or [],
-            detected_regions=processed.detected_regions or [],
+            detected_suppliers=suppliers_for_response(processed, raw),
+            detected_regions=regions_for_response(processed, raw),
             source_name=raw.source_name,
             published_at=raw.published_at,
             article_url=raw.article_url,

@@ -8,6 +8,11 @@ from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsF
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.article_entities import (
+    categories_for_response,
+    regions_for_response,
+    suppliers_for_response,
+)
 from api.dependencies import get_session
 from api.schemas.article import ArticleDetail, ArticleReadResponse, SearchResponse, SearchResult
 
@@ -24,9 +29,9 @@ def _build_article_detail(processed: NewsArticleProcessed, raw: NewsArticleRaw) 
         category=processed.top_level_category,
         signal_tags=processed.signal_tags or [],
         priority_signal=processed.priority_signal,
-        detected_suppliers=processed.detected_suppliers or [],
-        detected_regions=processed.detected_regions or [],
-        detected_categories=processed.detected_categories or [],
+        detected_suppliers=suppliers_for_response(processed, raw),
+        detected_regions=regions_for_response(processed, raw),
+        detected_categories=categories_for_response(processed),
         source_name=raw.source_name,
         source_url=raw.source_url or "",
         article_url=raw.article_url,

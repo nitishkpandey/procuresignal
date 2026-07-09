@@ -11,13 +11,19 @@ You must respond with ONLY valid JSON. No markdown, no explanations, no extra te
 Your response must be valid JSON that can be parsed by Python's json.loads().
 
 Categories: automotive, electronics, chemicals, energy, manufacturing, logistics, regulatory, general
-Priority signals: bankruptcy, m_and_a, strike, tariff, sanctions, port_strike, quality_issue"""
+Priority signals: bankruptcy, m_and_a, strike, tariff, sanctions, port_strike, quality_issue
+
+Extract suppliers as company or brand names mentioned in the article.
+Extract regions as countries, regions, cities, or trade blocs mentioned in the article."""
 
     SUMMARIZE_PROMPT = """Analyze this procurement news article and provide:
 1. A 3-5 sentence factual summary
 2. Top-level category (one from: automotive, electronics, chemicals, energy, manufacturing, logistics, regulatory, general)
 3. List of signal tags (e.g., bankruptcy, merger, tariff, strike)
 4. Whether this contains a priority signal (bankruptcy, M&A, strike, major tariff)
+5. Suppliers/company names mentioned
+6. Regions/locations/trade blocs mentioned
+7. Category tags that apply
 
 Title: {title}
 Description: {description}
@@ -28,7 +34,10 @@ Respond with ONLY this JSON structure:
     "summary": "3-5 sentence summary here",
     "category": "category_name",
     "signal_tags": ["tag1", "tag2"],
-    "priority_signal": "signal_name or null"
+    "priority_signal": "signal_name or null",
+    "detected_suppliers": ["supplier1", "supplier2"],
+    "detected_regions": ["region1", "region2"],
+    "detected_categories": ["category1", "category2"]
 }}"""
 
     @staticmethod
