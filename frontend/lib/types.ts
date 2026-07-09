@@ -87,6 +87,12 @@ export interface ConversationListResponse {
   total_count: number;
 }
 
+export interface ClearHistoryResponse {
+  user_id: string;
+  deleted_conversations: number;
+  deleted_messages: number;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

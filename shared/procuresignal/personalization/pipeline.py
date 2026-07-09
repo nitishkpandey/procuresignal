@@ -78,6 +78,9 @@ class PersonalizationPipeline:
             if article.id in existing_article_ids:
                 continue
 
+            if not PreferenceMatcher.should_include_article(article, pref):
+                continue
+
             score = await PreferenceMatcher.score_article(article, pref)
 
             # Only include if score > threshold (0.3)

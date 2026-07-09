@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { ArticleCard } from "@/components/article-card";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ export function FeedView() {
     [query],
   );
 
-  const articles = feed.data?.articles ?? [];
+  const articles = useMemo(() => feed.data?.articles ?? [], [feed.data?.articles]);
   const categories = useMemo(
     () => Array.from(new Set(articles.map((a) => a.category))).sort(),
     [articles],
@@ -46,20 +47,30 @@ export function FeedView() {
   }, [articles, category, sort]);
 
   return (
-    <main className="space-y-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery(draft.trim());
-        }}
-      >
-        <Input
-          aria-label="Search articles"
-          placeholder="Search articles…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-      </form>
+    <main className="space-y-5">
+      <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase text-slate-500">Personalized signals</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">Signal Feed</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Ranked market intelligence for your saved company profile.
+          </p>
+        </div>
+        <form
+          className="w-full md:max-w-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery(draft.trim());
+          }}
+        >
+          <Input
+            aria-label="Search articles"
+            placeholder="Search articles..."
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        </form>
+      </section>
 
       {query ? (
         <SearchResults
@@ -107,23 +118,19 @@ function Toolbar({
   onCategory: (c: string | null) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-slate-500">
+    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-sm font-medium text-slate-600">
           {count} signal{count === 1 ? "" : "s"}
         </span>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <span>Sort</span>
-          <select
-            aria-label="Sort feed"
-            value={sort}
-            onChange={(e) => onSort(e.target.value as SortKey)}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
-          >
-            <option value="relevance">Relevance</option>
-            <option value="newest">Newest</option>
-          </select>
-        </label>
+        <div className="flex rounded-md bg-slate-100 p-1" aria-label="Sort feed">
+          <SortButton active={sort === "relevance"} onClick={() => onSort("relevance")}>
+            Relevance
+          </SortButton>
+          <SortButton active={sort === "newest"} onClick={() => onSort("newest")}>
+            Newest
+          </SortButton>
+        </div>
       </div>
       {categories.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
@@ -141,6 +148,28 @@ function Toolbar({
   );
 }
 
+function SortButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded px-3 py-1 text-sm font-medium transition ${
+        active ? "bg-white text-slate-950 shadow-sm" : "text-slate-600 hover:text-slate-950"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function FilterChip({
   active,
   onClick,
@@ -154,10 +183,10 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
+      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
         active
-          ? "border-slate-800 bg-slate-800 text-white"
-          : "border-slate-300 text-slate-600 hover:border-slate-400"
+          ? "border-slate-950 bg-slate-950 text-white"
+          : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-950"
       }`}
     >
       {children}
@@ -179,23 +208,33 @@ function FeedList({
   const readIds = useReadStore((s) => s.ids);
   const markRead = useReadStore((s) => s.markRead);
 
-  if (loading) return <Spinner label="Loading feed…" />;
+  if (loading) return <Spinner label="Loading feed..." />;
   if (error)
     return (
-      <Card>
-        <p className="text-sm text-red-700">Failed to load feed: {error}</p>
-        <button className="mt-2 text-sm underline" onClick={onRetry}>
+      <Card className="border-red-200 bg-red-50/70">
+        <p className="text-sm font-semibold text-red-800">Feed unavailable</p>
+        <p className="mt-1 text-sm text-red-700">
+          The feed service did not respond. Retry when the API is available.
+        </p>
+        <Button className="mt-3" variant="secondary" onClick={onRetry}>
           Retry
-        </button>
+        </Button>
       </Card>
     );
   if (items.length === 0)
-    return <EmptyState title="No articles yet" hint="Set your preferences to personalize the feed." />;
+    return (
+      <EmptyState
+        title="No articles yet"
+        hint="Preferences can be saved now; signals will appear as matching articles are processed."
+      />
+    );
   return (
-    <div className="space-y-3">
-      {items.map((a) => (
-        <ArticleCard key={a.id} article={a} read={readIds.includes(a.id)} onOpen={markRead} />
-      ))}
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+      <div className="divide-y divide-slate-100">
+        {items.map((a) => (
+          <ArticleCard key={a.id} article={a} read={readIds.includes(a.id)} onOpen={markRead} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -215,30 +254,40 @@ function SearchResults({
 }) {
   return (
     <div className="space-y-3">
-      <button className="text-sm underline" onClick={onClear}>
-        ← Back to feed
-      </button>
-      {loading ? <Spinner label="Searching…" /> : null}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-slate-950">Search results</h2>
+        <Button variant="ghost" onClick={onClear}>
+          Back to feed
+        </Button>
+      </div>
+      {loading ? <Spinner label="Searching..." /> : null}
       {error ? (
-        <p className="text-sm text-red-700">
-          Search failed: {error}{" "}
-          <button className="underline" onClick={onRetry}>
+        <Card className="border-red-200 bg-red-50/70">
+          <p className="text-sm font-semibold text-red-800">Search unavailable</p>
+          <p className="mt-1 text-sm text-red-700">The search service did not respond.</p>
+          <Button className="mt-3" variant="secondary" onClick={onRetry}>
             Retry
-          </button>
-        </p>
-      ) : null}
-      {!loading && !error && items.length === 0 ? (
-        <EmptyState title="No results" />
-      ) : null}
-      {items.map((r) => (
-        <Card key={r.id}>
-          <Link href={`/articles/${r.id}`} className="block">
-            <div className="text-xs uppercase tracking-wide text-slate-500">{humanize(r.category)}</div>
-            <h3 className="mt-1 font-semibold">{r.title}</h3>
-            <p className="mt-1 text-sm text-slate-600">{r.summary}</p>
-          </Link>
+          </Button>
         </Card>
-      ))}
+      ) : null}
+      {!loading && !error && items.length === 0 ? <EmptyState title="No results" /> : null}
+      {items.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+          <div className="divide-y divide-slate-100">
+            {items.map((r) => (
+              <Link
+                key={r.id}
+                href={`/articles/${r.id}`}
+                className="block px-4 py-4 hover:bg-slate-50 sm:px-5"
+              >
+                <div className="text-xs font-semibold uppercase text-slate-500">{humanize(r.category)}</div>
+                <h3 className="mt-1 font-semibold text-slate-950">{r.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{r.summary}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

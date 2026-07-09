@@ -24,6 +24,8 @@ beforeEach(() => {
         category: "automotive",
         signal_tags: [],
         priority_signal: null,
+        detected_suppliers: [],
+        detected_regions: [],
         source_name: "Reuters",
         published_at: "2026-06-20T10:00:00Z",
         article_url: "https://e.com",
@@ -69,7 +71,17 @@ describe("FeedView", () => {
     await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
     const input = screen.getByLabelText("Search articles");
     await userEvent.type(input, "tariff{enter}");
-    await waitFor(() => expect(screen.getByText(/Search failed: boom/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Search unavailable")).toBeInTheDocument());
+    expect(screen.getByText(/The search service did not respond/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("shows a professional retry state when the feed fails", async () => {
+    vi.mocked(api.getFeed).mockRejectedValueOnce(new Error("Network Error"));
+    render(<FeedView />);
+    await waitFor(() => expect(screen.getByText("Feed unavailable")).toBeInTheDocument());
+    expect(screen.getByText(/The feed service did not respond/)).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load feed/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

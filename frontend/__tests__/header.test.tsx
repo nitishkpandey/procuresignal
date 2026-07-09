@@ -7,7 +7,7 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "demo-user" });
+  useUserStore.setState({ userId: "buyer@example.com" });
 });
 
 describe("Header", () => {
@@ -18,11 +18,11 @@ describe("Header", () => {
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });
 
-  it("edits the user id", async () => {
+  it("shows the signed-in company email and signs out", async () => {
     render(<Header />);
-    const input = screen.getByLabelText("User ID") as HTMLInputElement;
-    await userEvent.clear(input);
-    await userEvent.type(input, "alice");
-    expect(useUserStore.getState().userId).toBe("alice");
+    expect(screen.queryByText("Viewing as")).not.toBeInTheDocument();
+    expect(screen.getByText("buyer@example.com")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(useUserStore.getState().userId).toBe("");
   });
 });

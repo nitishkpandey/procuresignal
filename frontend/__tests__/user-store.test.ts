@@ -4,16 +4,22 @@ import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "demo-user" });
+  useUserStore.setState({ userId: "" });
 });
 
 describe("user store", () => {
-  it("defaults to demo-user", () => {
-    expect(useUserStore.getState().userId).toBe("demo-user");
+  it("starts without a signed-in user", () => {
+    expect(useUserStore.getState().userId).toBe("");
   });
 
-  it("updates the user id", () => {
-    useUserStore.getState().setUserId("alice");
-    expect(useUserStore.getState().userId).toBe("alice");
+  it("stores a normalized company email", () => {
+    useUserStore.getState().setUserId(" Buyer@Example.COM ");
+    expect(useUserStore.getState().userId).toBe("buyer@example.com");
+  });
+
+  it("clears the signed-in user", () => {
+    useUserStore.getState().setUserId("buyer@example.com");
+    useUserStore.getState().clearUser();
+    expect(useUserStore.getState().userId).toBe("");
   });
 });

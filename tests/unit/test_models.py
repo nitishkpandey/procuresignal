@@ -7,10 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from shared.procuresignal.models import (
     Base,
-    NewsArticleRaw,
     NewsArticleProcessed,
-    UserNewsPreference,
+    NewsArticleRaw,
     NewsPipelineRun,
+    UserNewsPreference,
 )
 
 

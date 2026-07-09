@@ -4,13 +4,15 @@ import { persist } from "zustand/middleware";
 interface UserState {
   userId: string;
   setUserId: (id: string) => void;
+  clearUser: () => void;
 }
 
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
-      userId: "demo-user",
-      setUserId: (id: string) => set({ userId: id || "demo-user" }),
+      userId: "",
+      setUserId: (id: string) => set({ userId: id.trim().toLowerCase() }),
+      clearUser: () => set({ userId: "" }),
     }),
     { name: "procuresignal-user" },
   ),

@@ -1,6 +1,7 @@
 """User preference endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from procuresignal.personalization.categories import canonical_category_list
 from procuresignal.personalization import PreferenceManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +19,15 @@ router = APIRouter(prefix="/api", tags=["preferences"])
 def _to_response(pref) -> PreferenceResponse:
     return PreferenceResponse(
         user_id=pref.user_id,
-        interested_categories=list(getattr(pref, "preferred_categories", []) or []),
+        interested_categories=canonical_category_list(
+            getattr(pref, "preferred_categories", []) or []
+        ),
         interested_suppliers=list(getattr(pref, "preferred_suppliers", []) or []),
         interested_regions=list(getattr(pref, "preferred_regions", []) or []),
         interested_signals=list(getattr(pref, "preferred_signals", []) or []),
-        excluded_categories=list(getattr(pref, "excluded_categories", []) or []),
+        excluded_categories=canonical_category_list(
+            getattr(pref, "excluded_categories", []) or []
+        ),
         excluded_suppliers=list(getattr(pref, "excluded_suppliers", []) or []),
         excluded_regions=list(getattr(pref, "excluded_regions", []) or []),
         excluded_signals=list(getattr(pref, "excluded_signals", []) or []),

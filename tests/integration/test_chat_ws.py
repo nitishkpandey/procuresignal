@@ -1,4 +1,4 @@
-"""Integration test for the chat WebSocket (Groq stubbed)."""
+"""Integration test for the chat WebSocket (LLM stubbed)."""
 
 import asyncio
 

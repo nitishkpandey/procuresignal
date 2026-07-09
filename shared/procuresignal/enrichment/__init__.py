@@ -1,13 +1,13 @@
 """LLM enrichment module."""
 
-from .groq_client import GroqLLMClient
-from .prompts import EnrichmentPrompts
-from .output_parser import EnrichmentOutput, OutputParser
 from .enricher import ArticleEnricher
+from .openai_client import OpenAILLMClient
+from .output_parser import EnrichmentOutput, OutputParser
 from .pipeline import EnrichmentPipeline
+from .prompts import EnrichmentPrompts
 
 __all__ = [
-    "GroqLLMClient",
+    "OpenAILLMClient",
     "EnrichmentPrompts",
     "EnrichmentOutput",
     "OutputParser",

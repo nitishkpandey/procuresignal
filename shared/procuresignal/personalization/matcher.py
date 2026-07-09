@@ -1,9 +1,10 @@
 """Personalization matching engine."""
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from procuresignal.models import NewsArticleProcessed, UserNewsPreference
+from procuresignal.personalization.categories import canonical_category, canonical_category_set
 
 
 @dataclass
@@ -24,6 +25,147 @@ class PreferenceMatcher:
     """Match articles against user preferences."""
 
     @staticmethod
+    def _normalized(values: Iterable[str] | None) -> set[str]:
+        """Normalize preference/article tokens for case-insensitive matching."""
+        return {str(value).strip().lower() for value in values or [] if str(value).strip()}
+
+    @staticmethod
+    def _preferred_categories(preference: UserNewsPreference) -> set[str]:
+        return canonical_category_set(
+            getattr(
+                preference, "preferred_categories", getattr(preference, "interested_categories", [])
+            )
+        )
+
+    @staticmethod
+    def _excluded_categories(preference: UserNewsPreference) -> set[str]:
+        excluded = getattr(
+            preference,
+            "excluded_categories",
+            getattr(preference, "excluded_topics", []),
+        )
+        if not excluded:
+            excluded = getattr(preference, "excluded_topics", [])
+        return canonical_category_set(excluded)
+
+    @staticmethod
+    def _preferred_suppliers(preference: UserNewsPreference) -> set[str]:
+        return PreferenceMatcher._normalized(
+            getattr(
+                preference, "preferred_suppliers", getattr(preference, "interested_suppliers", [])
+            )
+        )
+
+    @staticmethod
+    def _preferred_regions(preference: UserNewsPreference) -> set[str]:
+        return PreferenceMatcher._normalized(
+            getattr(preference, "preferred_regions", getattr(preference, "interested_regions", []))
+        )
+
+    @staticmethod
+    def _preferred_signals(preference: UserNewsPreference) -> set[str]:
+        return PreferenceMatcher._normalized(
+            getattr(preference, "preferred_signals", getattr(preference, "interested_signals", []))
+        )
+
+    @staticmethod
+    def _article_categories(article: NewsArticleProcessed) -> set[str]:
+        return canonical_category_set(
+            [article.top_level_category, *(article.detected_categories or [])]
+        )
+
+    @staticmethod
+    def _article_suppliers(article: NewsArticleProcessed) -> set[str]:
+        return PreferenceMatcher._normalized(article.detected_suppliers or [])
+
+    @staticmethod
+    def _article_text(article: NewsArticleProcessed) -> str:
+        return " ".join(
+            part.strip().lower()
+            for part in [article.normalized_title or "", article.summary or ""]
+            if part and part.strip()
+        )
+
+    @staticmethod
+    def _supplier_text_matches(
+        article: NewsArticleProcessed,
+        preferred_suppliers: set[str],
+    ) -> set[str]:
+        text = PreferenceMatcher._article_text(article)
+        return {supplier for supplier in preferred_suppliers if supplier in text}
+
+    @staticmethod
+    def _article_regions(article: NewsArticleProcessed) -> set[str]:
+        return PreferenceMatcher._normalized(article.detected_regions or [])
+
+    @staticmethod
+    def _article_signals(article: NewsArticleProcessed) -> set[str]:
+        return PreferenceMatcher._normalized(
+            [article.priority_signal, *(article.signal_tags or [])]
+        )
+
+    @staticmethod
+    def has_excluded_match(
+        article: NewsArticleProcessed,
+        preference: UserNewsPreference,
+    ) -> bool:
+        """Return True when an article hits any explicit exclusion."""
+        excluded_suppliers = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_suppliers", [])
+        )
+        excluded_regions = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_regions", [])
+        )
+        excluded_signals = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_signals", [])
+        )
+
+        return bool(
+            (
+                PreferenceMatcher._article_categories(article)
+                & PreferenceMatcher._excluded_categories(preference)
+            )
+            or (PreferenceMatcher._article_suppliers(article) & excluded_suppliers)
+            or (PreferenceMatcher._article_regions(article) & excluded_regions)
+            or (PreferenceMatcher._article_signals(article) & excluded_signals)
+        )
+
+    @staticmethod
+    def should_include_article(
+        article: NewsArticleProcessed,
+        preference: UserNewsPreference,
+    ) -> bool:
+        """Decide whether an article is eligible for the user's feed.
+
+        Category and supplier interests are the strongest intent signals. Region
+        and signal preferences refine the feed, but should not allow generic
+        articles through when primary focus preferences are present.
+        """
+        if PreferenceMatcher.has_excluded_match(article, preference):
+            return False
+
+        preferred_categories = PreferenceMatcher._preferred_categories(preference)
+        preferred_suppliers = PreferenceMatcher._preferred_suppliers(preference)
+        preferred_regions = PreferenceMatcher._preferred_regions(preference)
+        preferred_signals = PreferenceMatcher._preferred_signals(preference)
+
+        category_match = bool(PreferenceMatcher._article_categories(article) & preferred_categories)
+        supplier_match = bool(
+            (PreferenceMatcher._article_suppliers(article) & preferred_suppliers)
+            or PreferenceMatcher._supplier_text_matches(article, preferred_suppliers)
+        )
+        region_match = bool(PreferenceMatcher._article_regions(article) & preferred_regions)
+        signal_match = bool(PreferenceMatcher._article_signals(article) & preferred_signals)
+
+        if preferred_categories or preferred_suppliers:
+            return category_match or supplier_match
+        if preferred_regions:
+            return region_match
+        if preferred_signals:
+            return signal_match
+        return True
+
+    @staticmethod
     def calculate_category_match(
         article_category: str,
         preference: UserNewsPreference,
@@ -37,27 +179,18 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        preferred_categories = getattr(
-            preference,
-            "preferred_categories",
-            getattr(preference, "interested_categories", []),
-        )
-        excluded_categories = getattr(
-            preference,
-            "excluded_categories",
-            getattr(preference, "excluded_topics", []),
-        )
+        preferred_categories = PreferenceMatcher._preferred_categories(preference)
+        excluded_categories = PreferenceMatcher._excluded_categories(preference)
+        article_category_normalized = canonical_category(article_category)
+
+        if article_category_normalized in excluded_categories:
+            return 0.0
 
         if not preferred_categories:
             return 0.5  # Neutral if no preference
 
-        if article_category.lower() in preferred_categories:
+        if article_category_normalized in preferred_categories:
             return 1.0
-
-        # Check excluded categories
-        if excluded_categories:
-            if article_category.lower() in excluded_categories:
-                return 0.0
 
         return 0.3  # Partial match
 
@@ -75,31 +208,24 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        preferred_suppliers = getattr(
-            preference,
-            "preferred_suppliers",
-            getattr(preference, "interested_suppliers", []),
+        preferred_suppliers = PreferenceMatcher._preferred_suppliers(preference)
+        excluded_suppliers = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_suppliers", [])
         )
-        excluded_suppliers = getattr(preference, "excluded_suppliers", [])
+        article_suppliers_lower = PreferenceMatcher._normalized(article_suppliers)
+
+        if article_suppliers_lower & excluded_suppliers:
+            return 0.0
 
         if not article_suppliers or not preferred_suppliers:
             return 0.5  # Neutral if no data
 
         # Check for matches
-        article_suppliers_lower = [s.lower() for s in article_suppliers]
-        watched_lower = [s.lower() for s in preferred_suppliers]
-
-        matches = len(set(article_suppliers_lower) & set(watched_lower))
+        matches = len(article_suppliers_lower & preferred_suppliers)
 
         if matches > 0:
             # More matches = higher score
             return min(1.0, 0.5 + (matches * 0.25))
-
-        # Check excluded suppliers
-        if excluded_suppliers:
-            excluded_lower = [s.lower() for s in excluded_suppliers]
-            if set(article_suppliers_lower) & set(excluded_lower):
-                return 0.0
 
         return 0.3
 
@@ -117,30 +243,23 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        preferred_regions = getattr(
-            preference,
-            "preferred_regions",
-            getattr(preference, "interested_regions", []),
+        preferred_regions = PreferenceMatcher._preferred_regions(preference)
+        excluded_regions = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_regions", [])
         )
-        excluded_regions = getattr(preference, "excluded_regions", [])
+        article_regions_lower = PreferenceMatcher._normalized(article_regions)
+
+        if article_regions_lower & excluded_regions:
+            return 0.0
 
         if not article_regions or not preferred_regions:
             return 0.5  # Neutral
 
         # Check for matches
-        article_regions_lower = [r.lower() for r in article_regions]
-        interested_lower = [r.lower() for r in preferred_regions]
-
-        matches = len(set(article_regions_lower) & set(interested_lower))
+        matches = len(article_regions_lower & preferred_regions)
 
         if matches > 0:
             return min(1.0, 0.5 + (matches * 0.25))
-
-        # Check excluded regions
-        if excluded_regions:
-            excluded_lower = [r.lower() for r in excluded_regions]
-            if set(article_regions_lower) & set(excluded_lower):
-                return 0.0
 
         return 0.3
 
@@ -160,35 +279,30 @@ class PreferenceMatcher:
         Returns:
             Score 0.0-1.0
         """
-        preferred_signals = getattr(
-            preference,
-            "preferred_signals",
-            getattr(preference, "interested_signals", []),
+        preferred_signals = PreferenceMatcher._preferred_signals(preference)
+        excluded_signals = PreferenceMatcher._normalized(
+            getattr(preference, "excluded_signals", [])
         )
-        excluded_signals = getattr(preference, "excluded_signals", [])
+        article_tags_lower = PreferenceMatcher._normalized(article_signal_tags)
+        if article_priority_signal:
+            article_tags_lower.add(article_priority_signal.lower())
+
+        if article_tags_lower & excluded_signals:
+            return 0.0
 
         if not preferred_signals:
             return 0.5  # Neutral
 
         # Priority signals get higher weight
         if article_priority_signal:
-            if article_priority_signal.lower() in [s.lower() for s in preferred_signals]:
+            if article_priority_signal.lower() in preferred_signals:
                 return 1.0
 
         # Check regular signal tags
-        article_tags_lower = [t.lower() for t in article_signal_tags]
-        interested_lower = [s.lower() for s in preferred_signals]
-
-        matches = len(set(article_tags_lower) & set(interested_lower))
+        matches = len(article_tags_lower & preferred_signals)
 
         if matches > 0:
             return min(1.0, 0.5 + (matches * 0.25))
-
-        # Check excluded signals
-        if excluded_signals:
-            excluded_lower = [s.lower() for s in excluded_signals]
-            if set(article_tags_lower) & set(excluded_lower):
-                return 0.0
 
         return 0.3
 
@@ -212,9 +326,15 @@ class PreferenceMatcher:
             preference,
         )
 
+        supplier_tokens = set(article.detected_suppliers or [])
+        supplier_tokens.update(
+            PreferenceMatcher._supplier_text_matches(
+                article,
+                PreferenceMatcher._preferred_suppliers(preference),
+            )
+        )
         supplier_score = PreferenceMatcher.calculate_supplier_match(
-            article.detected_suppliers or [],
-            preference,
+            list(supplier_tokens), preference
         )
 
         region_score = PreferenceMatcher.calculate_region_match(

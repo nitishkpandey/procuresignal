@@ -1,4 +1,4 @@
-"""Tests for the streaming chat client (Groq stubbed)."""
+"""Tests for the chat client (OpenAI stubbed)."""
 
 import asyncio
 
@@ -6,63 +6,27 @@ import pytest
 from procuresignal.chat.chat_client import ChatLLMClient
 
 
-class _FakeDelta:
-    def __init__(self, content):
-        self.content = content
-
-
-class _FakeChoice:
-    def __init__(self, content):
-        self.delta = _FakeDelta(content)
-
-
-class _FakeChunk:
-    def __init__(self, content):
-        self.choices = [_FakeChoice(content)]
-        self.usage = None
-
-
-class _FakeStream:
-    def __init__(self, contents):
-        self._contents = contents
-
-    def __aiter__(self):
-        async def gen():
-            for c in self._contents:
-                yield _FakeChunk(c)
-
-        return gen()
-
-
-class _FakeCompletions:
+class _FakeOpenAIClient:
     def __init__(self, captured):
         self._captured = captured
+        self.last_tokens_used = 42
 
-    async def create(self, **kwargs):
-        self._captured.update(kwargs)
-        return _FakeStream(["Hello", ", ", "world"])
-
-
-class _FakeChat:
-    def __init__(self, captured):
-        self.completions = _FakeCompletions(captured)
-
-
-class _FakeAsyncGroq:
-    def __init__(self, captured):
-        self.chat = _FakeChat(captured)
+    async def call(self, system_prompt: str, user_message: str) -> str:
+        self._captured["system_prompt"] = system_prompt
+        self._captured["user_message"] = user_message
+        return "Hello, world"
 
 
 def test_missing_api_key_raises(monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(ValueError):
         ChatLLMClient()
 
 
-def test_stream_chat_yields_deltas_and_assembles_messages(monkeypatch):
+def test_stream_chat_calls_openai_with_context(monkeypatch):
     captured: dict = {}
     client = ChatLLMClient(api_key="test-key")
-    client.client = _FakeAsyncGroq(captured)
+    client.client = _FakeOpenAIClient(captured)
 
     async def run():
         out = []
@@ -75,10 +39,9 @@ def test_stream_chat_yields_deltas_and_assembles_messages(monkeypatch):
         return out
 
     out = asyncio.run(run())
-    assert out == ["Hello", ", ", "world"]
+    assert out == ["Hello, world"]
+    assert client.last_tokens_used == 42
 
-    messages = captured["messages"]
-    assert messages[0] == {"role": "system", "content": "SYS"}
-    assert messages[1] == {"role": "user", "content": "earlier"}
-    assert messages[-1] == {"role": "user", "content": "now"}
-    assert captured["stream"] is True
+    assert captured["system_prompt"] == "SYS"
+    assert "user: earlier" in captured["user_message"]
+    assert captured["user_message"].endswith("user: now")

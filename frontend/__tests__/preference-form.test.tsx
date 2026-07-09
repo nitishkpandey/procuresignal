@@ -29,4 +29,12 @@ describe("PreferenceForm", () => {
     expect(saved.interested_suppliers).toContain("Bosch");
     expect(saved.user_id).toBe("u1");
   });
+
+  it("shows a retry state when preferences cannot load", async () => {
+    vi.mocked(api.getPreferences).mockRejectedValueOnce(new Error("Network Error"));
+    render(<PreferenceForm />);
+    await waitFor(() => expect(screen.getByText("Preferences unavailable")).toBeInTheDocument());
+    expect(screen.getByText(/The preference service did not respond/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
 });

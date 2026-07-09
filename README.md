@@ -1,6 +1,6 @@
 # ProcureSignal
 
-🚀 **AI-powered procurement intelligence agent**
+**AI-powered procurement intelligence agent**
 
 A production-grade system that brings personalized, context-aware market intelligence directly into procurement workflows. Built with Python, FastAPI, Celery, PostgreSQL, and modern AI.
 
@@ -12,7 +12,7 @@ A production-grade system that brings personalized, context-aware market intelli
 
 - **Personalized feed** — procurement signals ranked by relevance, each showing priority, category, source, date, and detected suppliers/regions
 - **Signal engine** — rule-based classification (supplier risk, tariffs, M&A, logistics disruption, regulatory) with risk scoring
-- **LLM enrichment** — Groq-powered summaries and signal tagging
+- **LLM enrichment** — OpenAI-powered summaries and signal tagging
 - **Feed-grounded chat** — ask questions about your signals; answers are grounded in your preferences and recent feed
 - **Per-user preferences** — interested/excluded categories, suppliers, regions, and signal types
 
@@ -27,7 +27,7 @@ A production-grade system that brings personalized, context-aware market intelli
 ```bash
 # 1. Configure secrets
 cp .env.example .env
-#   edit .env and set GROQ_API_KEY and NEWSAPI_KEY
+#   edit .env and set OPENAI_API_KEY and NEWSAPI_KEY
 
 # 2. Build and start the whole stack
 docker compose up -d --build
@@ -53,7 +53,7 @@ Migrations run automatically (the `migrate` service runs `alembic upgrade head`
 before the API starts). The one-shot `bootstrap` service triggers the
 retrieval → enrichment → personalization pipeline once so the feed populates
 with real articles over the following minutes (requires `NEWSAPI_KEY` /
-`GROQ_API_KEY`).
+`OPENAI_API_KEY`; optionally set `OPENAI_MODEL`).
 
 ### Stopping Services
 
@@ -72,7 +72,7 @@ Normalization & Quality Gate
         ↓
 Procurement Signal Engine (NLP + rule-based scoring)
         ↓
-LLM Enrichment (Groq API)
+LLM Enrichment (OpenAI Responses API)
         ↓
 PostgreSQL (persistent storage)
         ↓
@@ -142,13 +142,13 @@ procuresignal/
 │   ├── retrieval/           # News providers (NewsAPI, GDELT, RSS) + persistence
 │   ├── normalization/       # Cleaning, quality gate, dedup
 │   ├── signals/             # Classifier, entity resolver, risk scorer
-│   ├── enrichment/          # Groq LLM enrichment
+│   ├── enrichment/          # OpenAI LLM enrichment
 │   ├── personalization/     # Feed matching + preference manager
 │   └── chat/                # Feed-grounded chat client + context builder
 ├── frontend/                # Next.js web UI (feed, preferences, chat)
 ├── migrations/              # Alembic migrations
 ├── tests/                   # unit + integration
-├── scripts/                 # smoke test, pipeline bootstrap, persona seeding
+├── scripts/                 # smoke test and pipeline bootstrap
 ├── docker-compose.yml       # Full local stack
 ├── Dockerfile.api           # API & migrate & bootstrap image
 ├── Dockerfile.worker        # Worker & beat image
