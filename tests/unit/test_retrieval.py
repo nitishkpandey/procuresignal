@@ -11,6 +11,14 @@ from procuresignal.retrieval import (
 )
 
 
+class _FakeNewsAPIResponse:
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+
 @pytest.mark.asyncio
 async def test_raw_article_creation() -> None:
     """Test creating a RawArticle."""
@@ -42,6 +50,44 @@ async def test_newsapi_provider_initialization() -> None:
     assert provider.api_key == "test-key"
 
     await provider.close()
+
+
+@pytest.mark.asyncio
+async def test_newsapi_provider_fetches_europe_business_headlines() -> None:
+    """NewsAPI should supplement broad queries with European business headlines."""
+    provider = NewsAPIProvider(api_key="test-key")
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_get(url: str, params: dict) -> _FakeNewsAPIResponse:
+        calls.append((url, params))
+        if url.endswith("/top-headlines"):
+            country = params["country"]
+            return _FakeNewsAPIResponse(
+                {
+                    "status": "ok",
+                    "articles": [
+                        {
+                            "title": f"Europe business update {country}",
+                            "description": "Manufacturing and supplier activity.",
+                            "content": "European companies report procurement shifts.",
+                            "url": f"https://example.com/{country}",
+                            "source": {"name": f"Europe Source {country}"},
+                            "publishedAt": "2026-07-10T08:00:00Z",
+                        }
+                    ],
+                }
+            )
+        return _FakeNewsAPIResponse({"status": "ok", "articles": []})
+
+    provider._get = fake_get  # type: ignore[method-assign]
+
+    articles = await provider.fetch_articles(["supplier risk"])
+
+    country_params = [params for url, params in calls if url.endswith("/top-headlines")]
+    assert country_params
+    assert {"de", "fr", "gb", "it", "nl"}.issubset({params["country"] for params in country_params})
+    assert all(params["category"] == "business" for params in country_params)
+    assert any(article.query_group == "europe_business" for article in articles)
 
 
 @pytest.mark.asyncio

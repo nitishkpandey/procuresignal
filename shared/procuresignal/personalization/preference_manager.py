@@ -124,3 +124,39 @@ class PreferenceManager:
             select(UserNewsPreference).where(UserNewsPreference.user_id == user_id)
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update_platform_language(
+        session: AsyncSession,
+        user_id: str,
+        platform_language: str,
+    ) -> UserNewsPreference:
+        """Update only the platform language without invalidating the user's feed."""
+
+        platform_language = (platform_language or "en").strip().lower() or "en"
+        result = await session.execute(
+            select(UserNewsPreference).where(UserNewsPreference.user_id == user_id)
+        )
+        pref = result.scalar_one_or_none()
+
+        if pref:
+            pref.platform_language = platform_language
+        else:
+            pref = UserNewsPreference(
+                user_id=user_id,
+                preferred_categories=[],
+                preferred_suppliers=[],
+                preferred_regions=[],
+                preferred_signals=[],
+                excluded_categories=[],
+                excluded_suppliers=[],
+                excluded_regions=[],
+                excluded_signals=[],
+                excluded_topics=[],
+                platform_language=platform_language,
+            )
+
+        session.add(pref)
+        await session.commit()
+        await session.refresh(pref)
+        return pref

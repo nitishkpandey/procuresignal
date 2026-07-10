@@ -13,7 +13,9 @@ from sqlalchemy.pool import StaticPool
 
 from api.dependencies import get_session
 from api.main import app
+from api.routers import articles as articles_router
 from api.routers import currency as currency_router
+from api.routers import feed as feed_router
 
 
 @pytest.fixture()
@@ -212,6 +214,34 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["articles"]
 
 
+def test_feed_translates_articles_when_language_requested(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_translate(articles, language):
+        assert language == "de"
+        return [
+            article.model_copy(
+                update={
+                    "title": f"DE: {article.title}",
+                    "summary": f"DE: {article.summary}",
+                }
+            )
+            for article in articles
+        ]
+
+    monkeypatch.setattr(feed_router, "translate_feed_articles", fake_translate, raising=False)
+
+    response = api_client.get(
+        "/api/feed",
+        params={"user_id": "user-123", "limit": 20, "language": "de"},
+    )
+
+    assert response.status_code == 200
+    first_article = response.json()["articles"][0]
+    assert first_article["title"].startswith("DE: ")
+    assert first_article["summary"].startswith("DE: ")
+
+
 def test_feed_without_preferences_returns_general_news(api_client: TestClient) -> None:
     response = api_client.get("/api/feed", params={"user_id": "new-user", "limit": 20})
 
@@ -238,6 +268,24 @@ def test_preference_update_clears_stale_feed(api_client: TestClient) -> None:
     refreshed = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
     assert refreshed.status_code == 200
     assert refreshed.json()["articles"] == []
+
+
+def test_language_update_does_not_clear_existing_feed(api_client: TestClient) -> None:
+    first = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
+    assert first.status_code == 200
+    assert first.json()["articles"]
+
+    updated = api_client.patch(
+        "/api/preferences/language",
+        json={"user_id": "user-123", "platform_language": "de"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["platform_language"] == "de"
+
+    refreshed = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["articles"]
 
 
 def test_preferences_round_trip(api_client: TestClient) -> None:
@@ -320,6 +368,33 @@ def test_get_article_detail(api_client: TestClient) -> None:
     payload = response.json()
     assert payload["title"]
     assert payload["source_name"] == "Reuters"
+
+
+def test_get_article_detail_translates_when_language_requested(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_translate(article, language):
+        assert language == "de"
+        return article.model_copy(
+            update={
+                "title": f"DE: {article.title}",
+                "summary": f"DE: {article.summary}",
+            }
+        )
+
+    monkeypatch.setattr(
+        articles_router,
+        "translate_article_detail",
+        fake_translate,
+        raising=False,
+    )
+
+    response = api_client.get("/api/articles/1", params={"language": "de"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"].startswith("DE: ")
+    assert payload["summary"].startswith("DE: ")
 
 
 def test_get_article_detail_infers_missing_entities(api_client: TestClient) -> None:

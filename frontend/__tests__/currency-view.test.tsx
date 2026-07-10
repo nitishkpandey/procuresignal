@@ -5,8 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({ getCurrencyMonitor: vi.fn() }));
 import { CurrencyView } from "@/components/currency-view";
 import * as api from "@/lib/api";
+import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
+  localStorage.clear();
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.getCurrencyMonitor).mockResolvedValue({
     base: "EUR",
     as_of: "2026-07-09",
@@ -39,10 +42,11 @@ describe("CurrencyView", () => {
     render(<CurrencyView />);
 
     await waitFor(() => expect(screen.getByText("EUR monitor")).toBeInTheDocument());
-    expect(screen.getByText("9 pairs tracked")).toBeInTheDocument();
+    expect(screen.getByText("Latest FX date: 2026-07-09; range window: 30 days.")).toBeInTheDocument();
+    expect(screen.getByText("Showing 7 of 9 EUR pairs")).toBeInTheDocument();
     expect(screen.queryByText("EUR / AUD")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Show all 9" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show all pairs" }));
 
     expect(screen.getByText("EUR / AUD")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show fewer" })).toBeInTheDocument();

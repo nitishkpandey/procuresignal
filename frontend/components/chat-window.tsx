@@ -11,8 +11,10 @@ import {
   initialChatState,
   type ChatState,
 } from "@/lib/chatReducer";
+import { t, type TranslationKey } from "@/lib/i18n";
 import { openChatSocket, type ChatSocketHandlers } from "@/lib/ws";
 import type { ChatFrame } from "@/lib/types";
+import { useUserStore } from "@/store/user";
 
 type SocketFactory = (
   userId: string,
@@ -20,11 +22,11 @@ type SocketFactory = (
   handlers: ChatSocketHandlers,
 ) => { send: (message: string) => void; close: () => void };
 
-const EXAMPLE_PROMPTS = [
-  "What changed in my feed today?",
-  "Which watched suppliers need attention?",
-  "Summarize the top tariff signals.",
-];
+const EXAMPLE_PROMPT_KEYS = [
+  "chat.promptChanges",
+  "chat.promptSuppliers",
+  "chat.promptTariffs",
+] satisfies TranslationKey[];
 
 export function ChatWindow({
   userId,
@@ -35,6 +37,7 @@ export function ChatWindow({
   conversationId: string;
   socketFactory?: SocketFactory;
 }) {
+  const language = useUserStore((s) => s.platformLanguage);
   const [state, dispatch] = useReducer(
     (
       s: ChatState,
@@ -94,37 +97,46 @@ export function ChatWindow({
     <div className="flex h-[72vh] min-h-[580px] flex-col rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
-          <h1 className="text-base font-semibold text-slate-950">Procurement assistant</h1>
-          <p className="mt-0.5 text-xs text-slate-500">Grounded in your saved preferences and feed.</p>
+          <h1 className="text-base font-semibold text-slate-950">
+            {t(language, "chat.assistantTitle")}
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {t(language, "chat.windowSubtitle")}
+          </p>
         </div>
         <span className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500">
           <span
             className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
             aria-hidden
           />
-          {connected ? "Connected" : "Connecting…"}
+          {connected ? t(language, "chat.connected") : t(language, "chat.connecting")}
         </span>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/70 px-4 py-4">
         {isEmpty ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <p className="text-sm font-semibold text-slate-800">Ask about your latest signals</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {t(language, "chat.emptyTitle")}
+            </p>
             <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
-              The assistant uses your preferences and visible feed context.
+              {t(language, "chat.emptyHint")}
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {EXAMPLE_PROMPTS.map((p) => (
+              {EXAMPLE_PROMPT_KEYS.map((key) => {
+                const prompt = t(language, key);
+                return (
                 <button
-                  key={p}
+                  key={key}
                   type="button"
-                  onClick={() => send(p)}
+                  onClick={() => send(prompt)}
                   disabled={!connected}
                 className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-950 disabled:opacity-50"
                 >
-                  {p}
+                  {prompt}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -139,7 +151,7 @@ export function ChatWindow({
               >
                 {m.content ||
                   (awaitingReply && i === state.messages.length - 1 ? (
-                    <span className="inline-flex gap-1 py-1" aria-label="Assistant is typing">
+                    <span className="inline-flex gap-1 py-1" aria-label={t(language, "chat.typing")}>
                       <Dot /> <Dot /> <Dot />
                     </span>
                   ) : null)}
@@ -161,8 +173,8 @@ export function ChatWindow({
         }}
       >
         <Textarea
-          aria-label="Message"
-          placeholder="Ask about your feed..."
+          aria-label={t(language, "chat.message")}
+          placeholder={t(language, "chat.placeholder")}
           rows={1}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -175,7 +187,7 @@ export function ChatWindow({
           className="max-h-32 flex-1 resize-none"
         />
         <Button type="submit" disabled={!draft.trim()}>
-          Send
+          {t(language, "chat.send")}
         </Button>
       </form>
     </div>

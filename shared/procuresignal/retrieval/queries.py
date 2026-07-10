@@ -38,6 +38,13 @@ QUERY_GROUPS = {
         "industrial Czech Republic",
         "automotive Mexico",
     ],
+    "europe_business": [
+        "Europe business procurement",
+        "European manufacturing suppliers",
+        "Germany industry supply chain",
+        "EU trade business",
+        "France business suppliers",
+    ],
 }
 
 

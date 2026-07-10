@@ -15,6 +15,7 @@ from api.article_entities import (
 )
 from api.dependencies import get_session
 from api.schemas.article import ArticleDetail, ArticleReadResponse, SearchResponse, SearchResult
+from api.translation import translate_article_detail, translate_search_results
 
 router = APIRouter(prefix="/api", tags=["articles"])
 
@@ -45,6 +46,7 @@ def _build_article_detail(processed: NewsArticleProcessed, raw: NewsArticleRaw) 
 @router.get("/articles/{article_id}", response_model=ArticleDetail)
 async def get_article(
     article_id: int,
+    language: str = Query("en", min_length=2, max_length=10),
     session: AsyncSession = Depends(get_session),
 ) -> ArticleDetail:
     """Get a single article's full details."""
@@ -57,7 +59,7 @@ async def get_article(
     if not raw:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
 
-    return _build_article_detail(processed, raw)
+    return await translate_article_detail(_build_article_detail(processed, raw), language)
 
 
 @router.post("/articles/{article_id}/read", response_model=ArticleReadResponse)
@@ -116,6 +118,7 @@ async def search_articles(
     q: str = Query(..., min_length=1, max_length=200),
     limit: int = Query(20, ge=1, le=100),
     days: int = Query(7, ge=1, le=30),
+    language: str = Query("en", min_length=2, max_length=10),
     session: AsyncSession = Depends(get_session),
 ) -> SearchResponse:
     """Search processed articles."""
@@ -158,6 +161,7 @@ async def search_articles(
 
     scored_results.sort(key=lambda result: result.relevance, reverse=True)
     results = scored_results[:limit]
+    results = await translate_search_results(results, language)
 
     return SearchResponse(
         query=q,

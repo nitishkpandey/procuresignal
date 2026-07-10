@@ -20,7 +20,7 @@ import { useUserStore } from "@/store/user";
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  useUserStore.setState({ userId: "u1" });
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.listConversations).mockResolvedValue({
     user_id: "u1",
     conversations: [],
@@ -39,6 +39,15 @@ describe("ChatView", () => {
     await waitFor(() => expect(api.listConversations).toHaveBeenCalled());
     expect(screen.getByRole("heading", { name: "Procurement assistant" })).toBeInTheDocument();
     expect(screen.getByText("No conversation selected")).toBeInTheDocument();
+  });
+
+  it("uses the selected platform language on the chat workspace", async () => {
+    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    render(<ChatView />);
+    await waitFor(() => expect(api.listConversations).toHaveBeenCalled());
+
+    expect(screen.getByRole("heading", { name: "Beschaffungsassistent" })).toBeInTheDocument();
+    expect(screen.getByText("Keine Unterhaltung ausgewaehlt")).toBeInTheDocument();
   });
 
   it("shows a retry state when conversations cannot load", async () => {

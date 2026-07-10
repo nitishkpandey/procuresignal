@@ -20,26 +20,41 @@ const client = axios.create({ baseURL: apiBaseUrl() });
 
 export async function getFeed(
   userId: string,
-  opts: { limit?: number; days?: number } = {},
+  opts: { limit?: number; days?: number; language?: string } = {},
 ): Promise<FeedResponse> {
   const { data } = await client.get("/api/feed", {
-    params: { user_id: userId, limit: opts.limit ?? 50, days: opts.days ?? 7 },
+    params: {
+      user_id: userId,
+      limit: opts.limit ?? 50,
+      days: opts.days ?? 7,
+      language: opts.language ?? "en",
+    },
   });
   return data;
 }
 
 export async function search(
   q: string,
-  opts: { limit?: number; days?: number } = {},
+  opts: { limit?: number; days?: number; language?: string } = {},
 ): Promise<SearchResponse> {
   const { data } = await client.get("/api/search", {
-    params: { q, limit: opts.limit ?? 20, days: opts.days ?? 7 },
+    params: {
+      q,
+      limit: opts.limit ?? 20,
+      days: opts.days ?? 7,
+      language: opts.language ?? "en",
+    },
   });
   return data;
 }
 
-export async function getArticle(id: number): Promise<ArticleDetail> {
-  const { data } = await client.get(`/api/articles/${id}`);
+export async function getArticle(
+  id: number,
+  opts: { language?: string } = {},
+): Promise<ArticleDetail> {
+  const { data } = await client.get(`/api/articles/${id}`, {
+    params: { language: opts.language ?? "en" },
+  });
   return data;
 }
 
@@ -76,6 +91,17 @@ export async function getPreferences(userId: string): Promise<Preferences | null
 
 export async function savePreferences(prefs: Preferences): Promise<Preferences> {
   const { data } = await client.post("/api/preferences", prefs);
+  return data;
+}
+
+export async function updatePlatformLanguage(
+  userId: string,
+  platformLanguage: string,
+): Promise<Preferences> {
+  const { data } = await client.patch("/api/preferences/language", {
+    user_id: userId,
+    platform_language: platformLanguage,
+  });
   return data;
 }
 

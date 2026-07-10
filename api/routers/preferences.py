@@ -9,6 +9,7 @@ from api.dependencies import get_session
 from api.schemas.preference import (
     PreferenceBulkResponse,
     PreferenceBulkUpdate,
+    PreferenceLanguageUpdate,
     PreferenceResponse,
     PreferenceUpdate,
 )
@@ -56,6 +57,21 @@ async def update_preferences(
         platform_language=preference_update.platform_language,
     )
 
+    return _to_response(pref)
+
+
+@router.patch("/preferences/language", response_model=PreferenceResponse)
+async def update_preference_language(
+    language_update: PreferenceLanguageUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> PreferenceResponse:
+    """Update only the platform language without invalidating feed rows."""
+
+    pref = await PreferenceManager.update_platform_language(
+        session=session,
+        user_id=language_update.user_id,
+        platform_language=language_update.platform_language,
+    )
     return _to_response(pref)
 
 

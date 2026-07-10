@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.article_entities import regions_for_response, suppliers_for_response
 from api.dependencies import get_session
 from api.schemas.feed import ArticleInFeed, FeedResponse
+from api.translation import translate_feed_articles
 
 router = APIRouter(prefix="/api", tags=["feed"])
 
@@ -48,6 +49,7 @@ async def get_personalized_feed(
     user_id: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(50, ge=1, le=200),
     days: int = Query(7, ge=1, le=30),
+    language: str = Query("en", min_length=2, max_length=10),
     session: AsyncSession = Depends(get_session),
 ) -> FeedResponse:
     """Get the user's personalized feed."""
@@ -80,6 +82,8 @@ async def get_personalized_feed(
         )
         for index, (feed_entry, processed, raw) in enumerate(feed_rows)
     ]
+
+    articles = await translate_feed_articles(articles, language)
 
     return FeedResponse(
         user_id=user_id,

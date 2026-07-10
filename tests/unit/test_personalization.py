@@ -394,3 +394,71 @@ def test_focused_preferences_include_supplier_mentioned_in_title():
     )
 
     assert PreferenceMatcher.should_include_article(article, pref) is True
+
+
+def test_region_preference_matches_region_mentioned_in_text():
+    """Locations like China should match even when entity extraction missed metadata."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=["China"],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Chinese manufacturers face new export checks",
+        summary="Procurement teams are reviewing component sourcing in China.",
+        top_level_category="manufacturing",
+        signal_tags=[],
+        priority_signal=None,
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["manufacturing"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
+    score = asyncio.run(PreferenceMatcher.score_article(article, pref))
+    assert score.region_match > 0.5
+
+
+def test_region_exclusion_matches_region_mentioned_in_text():
+    """Text-based region extraction should also honor explicit exclusions."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=["China"],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="China shipping lanes face disruption",
+        summary="Importers are reviewing Asia routing.",
+        top_level_category="logistics",
+        signal_tags=[],
+        priority_signal=None,
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["logistics"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is False

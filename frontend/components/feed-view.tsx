@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { getFeed, search } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import { humanize } from "@/lib/labels";
 import { useApi } from "@/lib/useApi";
 import type { FeedArticle, SearchResult } from "@/lib/types";
@@ -21,15 +22,16 @@ type SortKey = "relevance" | "newest";
 
 export function FeedView() {
   const userId = useUserStore((s) => s.userId);
+  const language = useUserStore((s) => s.platformLanguage);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("relevance");
   const [category, setCategory] = useState<string | null>(null);
 
-  const feed = useApi(() => getFeed(userId), [userId]);
+  const feed = useApi(() => getFeed(userId, { language }), [userId, language]);
   const results = useApi(
-    () => (query ? search(query) : Promise.resolve(null)),
-    [query],
+    () => (query ? search(query, { language }) : Promise.resolve(null)),
+    [query, language],
   );
 
   const articles = useMemo(() => feed.data?.articles ?? [], [feed.data?.articles]);
@@ -51,10 +53,14 @@ export function FeedView() {
     <main className="space-y-5">
       <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase text-slate-500">Personalized signals</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">Signal Feed</h1>
+          <p className="text-xs font-semibold uppercase text-slate-500">
+            {t(language, "feed.eyebrow")}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">
+            {t(language, "feed.title")}
+          </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Ranked market intelligence for your saved company profile.
+            {t(language, "feed.subtitle")}
           </p>
         </div>
         <form
@@ -65,8 +71,8 @@ export function FeedView() {
           }}
         >
           <Input
-            aria-label="Search articles"
-            placeholder="Search articles..."
+            aria-label={t(language, "feed.searchAria")}
+            placeholder={t(language, "feed.searchPlaceholder")}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
@@ -84,6 +90,7 @@ export function FeedView() {
               setDraft("");
             }}
             onRetry={results.reload}
+            language={language}
           />
           <CurrencyRail className="order-first xl:order-none xl:sticky xl:top-5 xl:self-start" />
         </div>
@@ -98,6 +105,7 @@ export function FeedView() {
                 categories={categories}
                 category={category}
                 onCategory={setCategory}
+                language={language}
               />
             )}
             <FeedList
@@ -105,6 +113,7 @@ export function FeedView() {
               error={feed.error}
               items={visible}
               onRetry={feed.reload}
+              language={language}
             />
           </section>
           <CurrencyRail className="order-first xl:order-none xl:sticky xl:top-5 xl:self-start" />
@@ -121,6 +130,7 @@ function Toolbar({
   categories,
   category,
   onCategory,
+  language,
 }: {
   count: number;
   sort: SortKey;
@@ -128,26 +138,27 @@ function Toolbar({
   categories: string[];
   category: string | null;
   onCategory: (c: string | null) => void;
+  language: string;
 }) {
   return (
     <div className="flex flex-col gap-3 border-b border-slate-200 pb-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm font-medium text-slate-600">
-          {count} signal{count === 1 ? "" : "s"}
+          {t(language, count === 1 ? "feed.countOne" : "feed.countMany", { count })}
         </span>
-        <div className="flex rounded-md bg-slate-100 p-1" aria-label="Sort feed">
+        <div className="flex rounded-md bg-slate-100 p-1" aria-label={t(language, "feed.sortAria")}>
           <SortButton active={sort === "relevance"} onClick={() => onSort("relevance")}>
-            Relevance
+            {t(language, "feed.sortRelevance")}
           </SortButton>
           <SortButton active={sort === "newest"} onClick={() => onSort("newest")}>
-            Newest
+            {t(language, "feed.sortNewest")}
           </SortButton>
         </div>
       </div>
       {categories.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           <FilterChip active={category === null} onClick={() => onCategory(null)}>
-            All
+            {t(language, "feed.all")}
           </FilterChip>
           {categories.map((c) => (
             <FilterChip key={c} active={category === c} onClick={() => onCategory(c)}>
@@ -211,33 +222,37 @@ function FeedList({
   error,
   items,
   onRetry,
+  language,
 }: {
   loading: boolean;
   error: string | null;
   items: FeedArticle[];
   onRetry: () => void;
+  language: string;
 }) {
   const readIds = useReadStore((s) => s.ids);
   const markRead = useReadStore((s) => s.markRead);
 
-  if (loading) return <Spinner label="Loading feed..." />;
+  if (loading) return <Spinner label={t(language, "feed.loading")} />;
   if (error)
     return (
       <Card className="border-red-200 bg-red-50/70">
-        <p className="text-sm font-semibold text-red-800">Feed unavailable</p>
+        <p className="text-sm font-semibold text-red-800">
+          {t(language, "feed.unavailableTitle")}
+        </p>
         <p className="mt-1 text-sm text-red-700">
-          The feed service did not respond. Retry when the API is available.
+          {t(language, "feed.unavailableHint")}
         </p>
         <Button className="mt-3" variant="secondary" onClick={onRetry}>
-          Retry
+          {t(language, "common.retry")}
         </Button>
       </Card>
     );
   if (items.length === 0)
     return (
       <EmptyState
-        title="No articles yet"
-        hint="Preferences can be saved now; signals will appear as matching articles are processed."
+        title={t(language, "feed.noArticlesTitle")}
+        hint={t(language, "feed.noArticlesHint")}
       />
     );
   return (
@@ -257,32 +272,42 @@ function SearchResults({
   items,
   onClear,
   onRetry,
+  language,
 }: {
   loading: boolean;
   error: string | null;
   items: SearchResult[];
   onClear: () => void;
   onRetry: () => void;
+  language: string;
 }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-950">Search results</h2>
+        <h2 className="text-lg font-semibold text-slate-950">
+          {t(language, "search.resultsTitle")}
+        </h2>
         <Button variant="ghost" onClick={onClear}>
-          Back to feed
+          {t(language, "search.backToFeed")}
         </Button>
       </div>
-      {loading ? <Spinner label="Searching..." /> : null}
+      {loading ? <Spinner label={t(language, "search.loading")} /> : null}
       {error ? (
         <Card className="border-red-200 bg-red-50/70">
-          <p className="text-sm font-semibold text-red-800">Search unavailable</p>
-          <p className="mt-1 text-sm text-red-700">The search service did not respond.</p>
+          <p className="text-sm font-semibold text-red-800">
+            {t(language, "search.unavailableTitle")}
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            {t(language, "search.unavailableHint")}
+          </p>
           <Button className="mt-3" variant="secondary" onClick={onRetry}>
-            Retry
+            {t(language, "common.retry")}
           </Button>
         </Card>
       ) : null}
-      {!loading && !error && items.length === 0 ? <EmptyState title="No results" /> : null}
+      {!loading && !error && items.length === 0 ? (
+        <EmptyState title={t(language, "search.noResults")} />
+      ) : null}
       {items.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
           <div className="divide-y divide-slate-100">

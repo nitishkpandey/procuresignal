@@ -16,12 +16,43 @@ REGION_ALIASES: dict[str, str] = {
     "eu": "European Union",
     "european union": "European Union",
     "europe": "Europe",
+    "european": "Europe",
+    "eurozone": "Europe",
+    "brussels": "European Union",
     "asia": "Asia",
     "china": "China",
+    "chinese": "China",
     "germany": "Germany",
+    "german": "Germany",
     "france": "France",
+    "french": "France",
     "italy": "Italy",
+    "italian": "Italy",
+    "netherlands": "Netherlands",
+    "dutch": "Netherlands",
+    "spain": "Spain",
+    "spanish": "Spain",
     "poland": "Poland",
+    "polish": "Poland",
+    "czech republic": "Czech Republic",
+    "czechia": "Czech Republic",
+    "austria": "Austria",
+    "belgium": "Belgium",
+    "sweden": "Sweden",
+    "switzerland": "Switzerland",
+    "swiss": "Switzerland",
+    "denmark": "Denmark",
+    "finland": "Finland",
+    "norway": "Norway",
+    "ireland": "Ireland",
+    "portugal": "Portugal",
+    "hungary": "Hungary",
+    "romania": "Romania",
+    "slovakia": "Slovakia",
+    "slovenia": "Slovenia",
+    "lithuania": "Lithuania",
+    "latvia": "Latvia",
+    "estonia": "Estonia",
     "india": "India",
     "japan": "Japan",
     "mexico": "Mexico",
@@ -66,6 +97,15 @@ def merge_entities(*groups: Iterable[str] | None) -> list[str]:
             if text and text not in merged:
                 merged.append(text)
     return merged
+
+
+def canonical_region_name(value: str) -> str:
+    """Return the canonical label for a user-entered or extracted region."""
+
+    text = str(value).strip()
+    if not text:
+        return ""
+    return REGION_ALIASES.get(text.lower(), text)
 
 
 def extract_regions_from_text(text: str) -> list[str]:

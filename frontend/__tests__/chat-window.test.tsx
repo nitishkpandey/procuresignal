@@ -6,8 +6,11 @@ vi.mock("@/lib/api", () => ({ getMessages: vi.fn() }));
 import * as api from "@/lib/api";
 import { ChatWindow } from "@/components/chat-window";
 import type { ChatFrame } from "@/lib/types";
+import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
+  localStorage.clear();
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.getMessages).mockResolvedValue({
     conversation_id: "c1",
     total_count: 0,
@@ -38,5 +41,17 @@ describe("ChatWindow", () => {
     });
 
     await waitFor(() => expect(screen.getByText("It raises costs.")).toBeInTheDocument());
+  });
+
+  it("uses the selected platform language for chat controls", async () => {
+    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    const fakeFactory = () => ({ send: vi.fn(), close: vi.fn() });
+
+    render(<ChatWindow userId="u1" conversationId="c1" socketFactory={fakeFactory as never} />);
+    await waitFor(() => expect(api.getMessages).toHaveBeenCalled());
+
+    expect(screen.getByRole("heading", { name: "Beschaffungsassistent" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Nachricht")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Senden" })).toBeInTheDocument();
   });
 });
