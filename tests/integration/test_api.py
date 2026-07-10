@@ -251,6 +251,39 @@ def test_feed_without_preferences_returns_general_news(api_client: TestClient) -
     assert payload["articles"]
 
 
+def test_feed_with_unmatched_preferences_falls_back_to_general_news(
+    api_client: TestClient,
+) -> None:
+    saved = api_client.post(
+        "/api/preferences",
+        json={
+            "user_id": "unmatched-user",
+            "interested_signals": ["warning"],
+        },
+    )
+    assert saved.status_code == 200
+
+    response = api_client.get("/api/feed", params={"user_id": "unmatched-user", "limit": 20})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "unmatched-user"
+    assert payload["articles"]
+
+
+def test_feed_tops_up_when_existing_rows_are_below_requested_limit(
+    api_client: TestClient,
+) -> None:
+    first = api_client.get("/api/feed", params={"user_id": "top-up-user", "limit": 1})
+    assert first.status_code == 200
+    assert len(first.json()["articles"]) == 1
+
+    second = api_client.get("/api/feed", params={"user_id": "top-up-user", "limit": 20})
+
+    assert second.status_code == 200
+    assert len(second.json()["articles"]) > 1
+
+
 def test_preference_update_clears_stale_feed(api_client: TestClient) -> None:
     first = api_client.get("/api/feed", params={"user_id": "user-123", "limit": 20})
     assert first.status_code == 200

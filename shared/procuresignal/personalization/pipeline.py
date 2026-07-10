@@ -11,11 +11,51 @@ from procuresignal.models import (
     UserNewsFeed,
     UserNewsPreference,
 )
-from procuresignal.personalization.matcher import PreferenceMatcher
+from procuresignal.personalization.matcher import MatchScore, PreferenceMatcher
 
 
 class PersonalizationPipeline:
     """Orchestrate personalized feed generation."""
+
+    @staticmethod
+    def _fallback_preference(user_id: str, preference: UserNewsPreference) -> UserNewsPreference:
+        """Build a baseline preference that keeps exclusions but clears positive filters."""
+
+        return UserNewsPreference(
+            user_id=user_id,
+            preferred_categories=[],
+            preferred_suppliers=[],
+            preferred_regions=[],
+            preferred_signals=[],
+            excluded_categories=preference.excluded_categories or [],
+            excluded_suppliers=preference.excluded_suppliers or [],
+            excluded_regions=preference.excluded_regions or [],
+            excluded_signals=preference.excluded_signals or [],
+            excluded_topics=preference.excluded_topics or [],
+        )
+
+    @staticmethod
+    async def _score_articles(
+        articles: list[NewsArticleProcessed],
+        preference: UserNewsPreference,
+        existing_article_ids: set[int],
+    ) -> list[tuple[NewsArticleProcessed, MatchScore]]:
+        scored_articles = []
+
+        for article in articles:
+            if article.id in existing_article_ids:
+                continue
+
+            if not PreferenceMatcher.should_include_article(article, preference):
+                continue
+
+            score = await PreferenceMatcher.score_article(article, preference)
+
+            # Only include if score > threshold (0.3)
+            if score.overall_score >= 0.3:
+                scored_articles.append((article, score))
+
+        return scored_articles
 
     @staticmethod
     async def generate_feed(
@@ -72,20 +112,17 @@ class PersonalizationPipeline:
         articles = articles_query.scalars().all()
 
         # Score and rank articles
-        scored_articles = []
-
-        for article in articles:
-            if article.id in existing_article_ids:
-                continue
-
-            if not PreferenceMatcher.should_include_article(article, pref):
-                continue
-
-            score = await PreferenceMatcher.score_article(article, pref)
-
-            # Only include if score > threshold (0.3)
-            if score.overall_score >= 0.3:
-                scored_articles.append((article, score))
+        scored_articles = await PersonalizationPipeline._score_articles(
+            list(articles),
+            pref,
+            existing_article_ids,
+        )
+        if not scored_articles:
+            scored_articles = await PersonalizationPipeline._score_articles(
+                list(articles),
+                PersonalizationPipeline._fallback_preference(user_id, pref),
+                existing_article_ids,
+            )
 
         # Sort by score (descending)
         scored_articles.sort(key=lambda x: x[1].overall_score, reverse=True)

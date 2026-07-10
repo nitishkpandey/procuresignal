@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: procuresignal
       POSTGRES_DB: procuresignal
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # ponytail: init scripts dropped — macOS bind mounts are exec'd noexec ("bad interpreter").
@@ -23,7 +23,7 @@ services:
     image: redis:7-alpine
     container_name: procuresignal-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:

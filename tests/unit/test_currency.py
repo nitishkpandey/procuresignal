@@ -39,6 +39,17 @@ class _FakeAsyncClient:
         return _FakeResponse(self.responses.pop(0))
 
 
+class _FailingAsyncClient:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+    async def get(self, url, **kwargs):
+        raise TimeoutError("provider unavailable")
+
+
 @pytest.mark.asyncio
 async def test_currency_monitor_computes_range_position():
     fake_client = _FakeAsyncClient(
@@ -73,6 +84,22 @@ async def test_currency_monitor_computes_range_position():
     assert result.currencies[0].range_low == 1.1
     assert result.currencies[0].range_position == 1.0
     assert "near its 30-day high" in result.currencies[0].procurement_signal
+
+
+@pytest.mark.asyncio
+async def test_currency_monitor_returns_neutral_rows_when_provider_fails():
+    monitor = CurrencyMonitor(client_factory=lambda: _FailingAsyncClient())
+
+    result = await monitor.get_eur_monitor(
+        quotes=["USD", "GBP"],
+        days=30,
+        today=date(2026, 7, 9),
+    )
+
+    assert result.as_of == "2026-07-09"
+    assert [item.currency for item in result.currencies] == ["USD", "GBP"]
+    assert all(item.range_position == 0.5 for item in result.currencies)
+    assert all("provider unavailable" in item.procurement_signal for item in result.currencies)
 
 
 @pytest.mark.asyncio

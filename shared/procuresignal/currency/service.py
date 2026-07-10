@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Callable, Iterable
@@ -41,6 +42,7 @@ DEFAULT_EUR_QUOTES = (
     "ZAR",
 )
 FRANKFURTER_BASE_URL = "https://api.frankfurter.dev"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -85,25 +87,29 @@ class CurrencyMonitor:
         end_date = today or date.today()
         start_date = end_date - timedelta(days=lookback_days)
 
-        async with self.client_factory() as client:
-            latest_response = await client.get(
-                f"{self.base_url}/v2/rates",
-                params={"base": "EUR", "quotes": ",".join(clean_quotes)},
-            )
-            latest_response.raise_for_status()
-            latest_payload = latest_response.json()
+        try:
+            async with self.client_factory() as client:
+                latest_response = await client.get(
+                    f"{self.base_url}/v2/rates",
+                    params={"base": "EUR", "quotes": ",".join(clean_quotes)},
+                )
+                latest_response.raise_for_status()
+                latest_payload = latest_response.json()
 
-            history_response = await client.get(
-                f"{self.base_url}/v2/rates",
-                params={
-                    "base": "EUR",
-                    "quotes": ",".join(clean_quotes),
-                    "from": start_date.isoformat(),
-                    "to": end_date.isoformat(),
-                },
-            )
-            history_response.raise_for_status()
-            history_payload = history_response.json()
+                history_response = await client.get(
+                    f"{self.base_url}/v2/rates",
+                    params={
+                        "base": "EUR",
+                        "quotes": ",".join(clean_quotes),
+                        "from": start_date.isoformat(),
+                        "to": end_date.isoformat(),
+                    },
+                )
+                history_response.raise_for_status()
+                history_payload = history_response.json()
+        except Exception as exc:
+            logger.warning("Currency provider unavailable: %s", exc)
+            return _fallback_response(clean_quotes, lookback_days, end_date)
 
         latest_rates = _extract_latest_rates(latest_payload)
         history_rates = _extract_history_rates(history_payload)
@@ -147,6 +153,32 @@ def _normalize_quotes(quotes: Iterable[str]) -> list[str]:
         if len(code) == 3 and code != "EUR" and code not in normalized:
             normalized.append(code)
     return normalized or list(DEFAULT_EUR_QUOTES)
+
+
+def _fallback_response(
+    currencies: list[str],
+    lookback_days: int,
+    as_of: date,
+) -> CurrencyMonitorResponse:
+    return CurrencyMonitorResponse(
+        base="EUR",
+        as_of=as_of.isoformat(),
+        lookback_days=lookback_days,
+        currencies=[
+            CurrencySignal(
+                currency=currency,
+                latest_rate=1.0,
+                range_low=1.0,
+                range_high=1.0,
+                range_position=0.5,
+                procurement_signal=(
+                    f"FX provider unavailable for EUR / {currency}; review live market rates "
+                    "before timing large purchases."
+                ),
+            )
+            for currency in currencies
+        ],
+    )
 
 
 def _extract_latest_rates(payload: object) -> dict[str, float]:

@@ -55,7 +55,7 @@ async def get_personalized_feed(
     """Get the user's personalized feed."""
 
     feed_rows = await _load_feed_rows(session, user_id=user_id, limit=limit)
-    if not feed_rows:
+    if len(feed_rows) < limit:
         await PersonalizationPipeline.generate_feed(
             session=session,
             user_id=user_id,

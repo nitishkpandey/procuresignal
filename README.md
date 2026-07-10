@@ -48,8 +48,8 @@ python scripts/smoke_test.py --wait
 | Grafana     | http://localhost:3001 (admin/admin) |
 | Flower      | http://localhost:5555        |
 | Prometheus  | http://localhost:9090        |
-| Postgres    | localhost:5433               |
-| Redis       | localhost:6379               |
+| Postgres    | localhost:5434               |
+| Redis       | localhost:6380               |
 
 Migrations run automatically (the `migrate` service runs `alembic upgrade head`
 before the API starts). The one-shot `bootstrap` service triggers the
@@ -101,8 +101,8 @@ Frontend (Next.js)
 | Service | Port | Purpose |
 |---------|------|---------|
 | Frontend | 3002 | Next.js web UI |
-| PostgreSQL | 5433 | Data persistence |
-| Redis | 6379 | Message broker & caching |
+| PostgreSQL | 5434 | Data persistence |
+| Redis | 6380 | Message broker & caching |
 | FastAPI | 8000 | REST API & Swagger docs |
 | Celery Worker | N/A | Background pipeline jobs |
 | Grafana | 3001 | Metrics dashboards |
