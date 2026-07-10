@@ -41,9 +41,10 @@ describe("ArticleCard", () => {
     expect(screen.getByRole("link")).toHaveAttribute("href", "/articles/7");
   });
 
-  it("labels neutral scoring as a baseline match", () => {
+  it("shows only the numeric match percentage", () => {
     render(<ArticleCard article={{ ...article, relevance_score: 0.5 }} />);
-    expect(screen.getByText("Baseline match 50%")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.queryByText("Baseline match 50%")).not.toBeInTheDocument();
     expect(screen.queryByText("Medium relevance 50%")).not.toBeInTheDocument();
   });
 });

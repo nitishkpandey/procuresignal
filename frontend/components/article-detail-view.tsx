@@ -7,20 +7,26 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { SignalBadge } from "@/components/signal-badge";
 import { getArticle } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import { formatDate, humanize } from "@/lib/labels";
 import { useApi } from "@/lib/useApi";
+import { useUserStore } from "@/store/user";
 
 export function ArticleDetailView({ id }: { id: number }) {
-  const { data, loading, error } = useApi(() => getArticle(id), [id]);
+  const language = useUserStore((s) => s.platformLanguage);
+  const { data, loading, error } = useApi(
+    () => getArticle(id, { language }),
+    [id, language],
+  );
 
-  if (loading) return <Spinner label="Loading article…" />;
-  if (error) return <EmptyState title="Article not found" hint={error} />;
-  if (!data) return <EmptyState title="Article not found" />;
+  if (loading) return <Spinner label={t(language, "article.loading")} />;
+  if (error) return <EmptyState title={t(language, "article.notFound")} hint={error} />;
+  if (!data) return <EmptyState title={t(language, "article.notFound")} />;
 
   return (
     <article className="space-y-4">
       <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-950">
-        Back to feed
+        {t(language, "search.backToFeed")}
       </Link>
       <Card className="p-5">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -47,9 +53,9 @@ export function ArticleDetailView({ id }: { id: number }) {
           <p className="mt-3 text-sm leading-6 text-slate-600">{data.description}</p>
         ) : null}
         <dl className="mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-          <Detail label="Suppliers" items={data.detected_suppliers} />
-          <Detail label="Regions" items={data.detected_regions} />
-          <Detail label="Categories" items={data.detected_categories} />
+          <Detail label={t(language, "article.suppliers")} items={data.detected_suppliers} language={language} />
+          <Detail label={t(language, "article.regions")} items={data.detected_regions} language={language} />
+          <Detail label={t(language, "preferences.categories")} items={data.detected_categories} language={language} />
         </dl>
         <a
           href={data.article_url}
@@ -57,19 +63,19 @@ export function ArticleDetailView({ id }: { id: number }) {
           rel="noreferrer"
           className="mt-5 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
         >
-          Read original article
+          {t(language, "article.readOriginal")}
         </a>
       </Card>
     </article>
   );
 }
 
-function Detail({ label, items }: { label: string; items: string[] }) {
+function Detail({ label, items, language }: { label: string; items: string[]; language: string }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
       <dt className="text-xs font-semibold uppercase text-slate-500">{label}</dt>
       <dd className="mt-1 text-slate-800">
-        {items.length ? items.map(humanize).join(", ") : "Not detected"}
+        {items.length ? items.map(humanize).join(", ") : t(language, "article.notDetected")}
       </dd>
     </div>
   );

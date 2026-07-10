@@ -28,10 +28,10 @@ export function FeedView() {
   const [sort, setSort] = useState<SortKey>("relevance");
   const [category, setCategory] = useState<string | null>(null);
 
-  const feed = useApi(() => getFeed(userId), [userId]);
+  const feed = useApi(() => getFeed(userId, { language }), [userId, language]);
   const results = useApi(
-    () => (query ? search(query) : Promise.resolve(null)),
-    [query],
+    () => (query ? search(query, { language }) : Promise.resolve(null)),
+    [query, language],
   );
 
   const articles = useMemo(() => feed.data?.articles ?? [], [feed.data?.articles]);

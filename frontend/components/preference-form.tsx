@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { getPreferences, savePreferences } from "@/lib/api";
-import { LANGUAGE_OPTIONS, t, type TranslationKey } from "@/lib/i18n";
+import { t, type TranslationKey } from "@/lib/i18n";
 import type { Preferences } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
@@ -152,7 +152,7 @@ export function PreferenceForm() {
   const onSave = async () => {
     setStatus(null);
     try {
-      await savePreferences({ ...prefs, user_id: userId });
+      await savePreferences({ ...prefs, user_id: userId, platform_language: language });
       setStatus(t(language, "preferences.saved"));
     } catch (err) {
       setStatus(err instanceof Error ? `Save failed: ${err.message}` : "Save failed.");
@@ -162,27 +162,6 @@ export function PreferenceForm() {
   return (
     <main className="space-y-5">
       <PageHeader language={language} />
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="platform-language">
-          {t(language, "preferences.language")}
-        </label>
-        <select
-          id="platform-language"
-          aria-label={t(language, "preferences.language")}
-          value={prefs.platform_language || "en"}
-          onChange={(e) => {
-            setPrefs({ ...prefs, platform_language: e.target.value });
-            setPlatformLanguage(e.target.value);
-          }}
-          className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:max-w-xs"
-        >
-          {LANGUAGE_OPTIONS.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </section>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {PREFERENCE_GROUPS.map((group) => (
           <PreferenceSection key={group.titleKey} title={t(language, group.titleKey)}>

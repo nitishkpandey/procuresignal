@@ -41,6 +41,15 @@ describe("ChatView", () => {
     expect(screen.getByText("No conversation selected")).toBeInTheDocument();
   });
 
+  it("uses the selected platform language on the chat workspace", async () => {
+    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    render(<ChatView />);
+    await waitFor(() => expect(api.listConversations).toHaveBeenCalled());
+
+    expect(screen.getByRole("heading", { name: "Beschaffungsassistent" })).toBeInTheDocument();
+    expect(screen.getByText("Keine Unterhaltung ausgewaehlt")).toBeInTheDocument();
+  });
+
   it("shows a retry state when conversations cannot load", async () => {
     vi.mocked(api.listConversations).mockRejectedValueOnce(new Error("Network Error"));
     render(<ChatView />);

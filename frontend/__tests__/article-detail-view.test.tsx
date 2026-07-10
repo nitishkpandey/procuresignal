@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({ getArticle: vi.fn() }));
 import * as api from "@/lib/api";
 import { ArticleDetailView } from "@/components/article-detail-view";
+import { useUserStore } from "@/store/user";
 
 beforeEach(() => {
+  localStorage.clear();
+  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
   vi.mocked(api.getArticle).mockResolvedValue({
     id: 5,
     title: "Tariff news",
@@ -32,6 +35,7 @@ describe("ArticleDetailView", () => {
   it("renders article details", async () => {
     render(<ArticleDetailView id={5} />);
     await waitFor(() => expect(screen.getByText("Tariff news")).toBeInTheDocument());
+    expect(api.getArticle).toHaveBeenCalledWith(5, { language: "en" });
     expect(screen.getByText("A summary")).toBeInTheDocument();
     expect(screen.getByText("Bosch")).toBeInTheDocument();
     expect(screen.getByText("Germany")).toBeInTheDocument();
@@ -39,5 +43,14 @@ describe("ArticleDetailView", () => {
       "href",
       "https://example.com/a",
     );
+  });
+
+  it("requests article details in the selected platform language", async () => {
+    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    render(<ArticleDetailView id={5} />);
+    await waitFor(() => expect(screen.getByText("Tariff news")).toBeInTheDocument());
+
+    expect(api.getArticle).toHaveBeenCalledWith(5, { language: "de" });
+    expect(screen.getByText("Zurueck zum Feed")).toBeInTheDocument();
   });
 });

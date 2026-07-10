@@ -22,7 +22,6 @@ export function ArticleCard({
   const pct = Math.round(article.relevance_score * 100);
   const suppliers = article.detected_suppliers ?? [];
   const regions = article.detected_regions ?? [];
-  const scoreLabel = t(language, tier.labelKey);
 
   return (
     <article className={`transition ${read ? "opacity-60" : ""}`}>
@@ -45,7 +44,7 @@ export function ArticleCard({
             className={`shrink-0 text-xs font-semibold ${tier.tone}`}
             title={t(language, "article.matchTitle", { pct })}
           >
-            {t(language, "article.matchText", { label: scoreLabel, pct })}
+            {pct}%
           </span>
         </div>
 

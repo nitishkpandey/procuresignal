@@ -30,25 +30,14 @@ describe("PreferenceForm", () => {
     expect(saved.user_id).toBe("u1");
   });
 
-  it("shows the four preference groups and platform language", async () => {
+  it("shows the four preference groups without duplicating the header language control", async () => {
     render(<PreferenceForm />);
 
     await waitFor(() => expect(screen.getByText("Supplier")).toBeInTheDocument());
     expect(screen.getByText("Location")).toBeInTheDocument();
     expect(screen.getByText("Categories")).toBeInTheDocument();
     expect(screen.getByText("Misc")).toBeInTheDocument();
-    expect(screen.getByLabelText("Platform language")).toBeInTheDocument();
-  });
-
-  it("applies platform language changes to visible app labels", async () => {
-    render(<PreferenceForm />);
-
-    await waitFor(() => expect(screen.getByLabelText("Platform language")).toBeInTheDocument());
-    await userEvent.selectOptions(screen.getByLabelText("Platform language"), "de");
-
-    expect(screen.getByText("Einstellungen")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Einstellungen speichern" })).toBeInTheDocument();
-    expect(useUserStore.getState().platformLanguage).toBe("de");
+    expect(screen.queryByLabelText("Platform language")).not.toBeInTheDocument();
   });
 
   it("shows a retry state when preferences cannot load", async () => {

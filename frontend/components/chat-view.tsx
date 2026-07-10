@@ -8,11 +8,13 @@ import { ConversationList } from "@/components/conversation-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { clearConversationHistory, createConversation, listConversations } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import type { Conversation } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
 export function ChatView() {
   const userId = useUserStore((s) => s.userId);
+  const language = useUserStore((s) => s.platformLanguage);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ export function ChatView() {
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Unable to load conversations.");
+        setError(err instanceof Error ? err.message : t(language, "chat.loadFailed"));
         setConversations([]);
         setActiveId(null);
       })
@@ -41,7 +43,7 @@ export function ChatView() {
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [language, userId]);
 
   const reload = async () => {
     setLoading(true);
@@ -51,7 +53,7 @@ export function ChatView() {
       setConversations(res.conversations);
       setActiveId(res.conversations[0]?.conversation_id ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load conversations.");
+      setError(err instanceof Error ? err.message : t(language, "chat.loadFailed"));
       setConversations([]);
       setActiveId(null);
     } finally {
@@ -66,13 +68,13 @@ export function ChatView() {
       setConversations((prev) => [conv, ...prev]);
       setActiveId(conv.conversation_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create a conversation.");
+      setError(err instanceof Error ? err.message : t(language, "chat.createFailed"));
     }
   };
 
   const onClearHistory = async () => {
     if (conversations.length === 0 || clearing) return;
-    if (!window.confirm("Clear all chat history for this email?")) return;
+    if (!window.confirm(t(language, "chat.clearConfirm"))) return;
 
     setClearing(true);
     setError(null);
@@ -81,7 +83,7 @@ export function ChatView() {
       setConversations([]);
       setActiveId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to clear chat history.");
+      setError(err instanceof Error ? err.message : t(language, "chat.clearFailed"));
     } finally {
       setClearing(false);
     }
@@ -96,6 +98,7 @@ export function ChatView() {
         onNew={onNew}
         onClearHistory={onClearHistory}
         clearing={clearing}
+        language={language}
       />
       <div className="min-w-0 flex-1">
         {activeId ? (
@@ -108,26 +111,28 @@ export function ChatView() {
             <ChatWindow key={activeId} userId={userId} conversationId={activeId} />
           </div>
         ) : loading ? (
-          <AssistantShell>
-            <Spinner label="Loading conversations..." />
+          <AssistantShell language={language}>
+            <Spinner label={t(language, "chat.loading")} />
           </AssistantShell>
         ) : error ? (
-          <AssistantShell>
+          <AssistantShell language={language}>
             <div className="rounded-lg border border-red-200 bg-red-50/70 p-4">
-              <p className="text-sm font-semibold text-red-800">Conversations unavailable</p>
+              <p className="text-sm font-semibold text-red-800">
+                {t(language, "chat.unavailableTitle")}
+              </p>
               <p className="mt-1 text-sm text-red-700">
-                The assistant service did not respond. Retry when the API is available.
+                {t(language, "chat.unavailableHint")}
               </p>
               <Button className="mt-3" variant="secondary" onClick={reload}>
-                Retry
+                {t(language, "common.retry")}
               </Button>
             </div>
           </AssistantShell>
         ) : (
-          <AssistantShell>
+          <AssistantShell language={language}>
             <EmptyState
-              title="No conversation selected"
-              hint="Start a new conversation to ask questions grounded in the current feed."
+              title={t(language, "chat.noConversationTitle")}
+              hint={t(language, "chat.noConversationHint")}
             />
           </AssistantShell>
         )}
@@ -136,13 +141,15 @@ export function ChatView() {
   );
 }
 
-function AssistantShell({ children }: { children: ReactNode }) {
+function AssistantShell({ children, language }: { children: ReactNode; language: string }) {
   return (
     <section className="flex min-h-[70vh] flex-col rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
       <div className="border-b border-slate-200 px-4 py-3">
-        <h1 className="text-base font-semibold text-slate-950">Procurement assistant</h1>
+        <h1 className="text-base font-semibold text-slate-950">
+          {t(language, "chat.assistantTitle")}
+        </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Ask focused questions about suppliers, risks, regions, and recent signals.
+          {t(language, "chat.assistantSubtitle")}
         </p>
       </div>
       <div className="flex flex-1 items-center justify-center p-4">{children}</div>

@@ -70,6 +70,14 @@ describe("FeedView", () => {
   it("renders the feed by default", async () => {
     render(<FeedView />);
     await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
+    expect(api.getFeed).toHaveBeenCalledWith("u1", { language: "en" });
+  });
+
+  it("requests translated feed content for the selected platform language", async () => {
+    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    render(<FeedView />);
+    await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
+    expect(api.getFeed).toHaveBeenCalledWith("u1", { language: "de" });
   });
 
   it("shows the EUR timing rail beside the feed", async () => {
@@ -87,6 +95,7 @@ describe("FeedView", () => {
     const input = screen.getByLabelText("Search articles");
     await userEvent.type(input, "tariff{enter}");
     await waitFor(() => expect(screen.getByText("Search hit")).toBeInTheDocument());
+    expect(api.search).toHaveBeenCalledWith("tariff", { language: "en" });
     expect(screen.queryByText("Feed article")).not.toBeInTheDocument();
   });
 

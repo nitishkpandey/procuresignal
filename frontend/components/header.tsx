@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
-import { t, type TranslationKey } from "@/lib/i18n";
+import { updatePlatformLanguage } from "@/lib/api";
+import { LANGUAGE_OPTIONS, t, type TranslationKey } from "@/lib/i18n";
 import { useUserStore } from "@/store/user";
 
 const NAV = [
@@ -16,7 +18,22 @@ export function Header() {
   const pathname = usePathname() ?? "/";
   const userId = useUserStore((s) => s.userId);
   const language = useUserStore((s) => s.platformLanguage);
+  const setPlatformLanguage = useUserStore((s) => s.setPlatformLanguage);
   const clearUser = useUserStore((s) => s.clearUser);
+  const [savingLanguage, setSavingLanguage] = useState(false);
+
+  const onLanguageChange = async (nextLanguage: string) => {
+    setPlatformLanguage(nextLanguage);
+    if (!userId) return;
+    setSavingLanguage(true);
+    try {
+      await updatePlatformLanguage(userId, nextLanguage);
+    } catch {
+      // Keep the local language responsive; the next full preference load can reconcile persistence.
+    } finally {
+      setSavingLanguage(false);
+    }
+  };
 
   return (
     <header className="mb-6 border-b border-slate-200 pb-4">
@@ -49,6 +66,19 @@ export function Header() {
           </nav>
         </div>
         <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600 sm:justify-start">
+          <select
+            aria-label={t(language, "preferences.language")}
+            value={language}
+            disabled={savingLanguage}
+            onChange={(e) => void onLanguageChange(e.target.value)}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
+          >
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.code.toUpperCase()}
+              </option>
+            ))}
+          </select>
           <span className="max-w-[220px] truncate font-medium text-slate-800">{userId}</span>
           <button
             type="button"
