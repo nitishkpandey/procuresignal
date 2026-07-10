@@ -35,8 +35,15 @@ NEWSAPI_QUERIES = [
     "tariff changes",
     "logistics disruption",
     "regulatory compliance",
+    "European business procurement",
 ]
-GDELT_QUERY_GROUPS = ["supplier_risk", "logistics_disruption", "tariff_changes", "regulatory"]
+GDELT_QUERY_GROUPS = [
+    "supplier_risk",
+    "logistics_disruption",
+    "tariff_changes",
+    "regulatory",
+    "europe_business",
+]
 RSS_QUERY_GROUPS = ["supplier_risk", "regulatory", "logistics", "commodities"]
 
 # Cap enrichment per run so a backlog cannot monopolize the shared LLM budget.
