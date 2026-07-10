@@ -6,6 +6,7 @@ from typing import Iterable, List, Optional
 from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, UserNewsPreference
 from procuresignal.personalization.categories import canonical_category, canonical_category_set
+from procuresignal.signals.taxonomy import expand_signal_terms, text_matches_signal_terms
 
 
 @dataclass
@@ -65,7 +66,7 @@ class PreferenceMatcher:
 
     @staticmethod
     def _preferred_signals(preference: UserNewsPreference) -> set[str]:
-        return PreferenceMatcher._normalized(
+        return expand_signal_terms(
             getattr(preference, "preferred_signals", getattr(preference, "interested_signals", []))
         )
 
@@ -122,8 +123,35 @@ class PreferenceMatcher:
 
     @staticmethod
     def _article_signals(article: NewsArticleProcessed) -> set[str]:
-        return PreferenceMatcher._normalized(
-            [article.priority_signal, *(article.signal_tags or [])]
+        return expand_signal_terms([article.priority_signal, *(article.signal_tags or [])])
+
+    @staticmethod
+    def _excluded_signals(preference: UserNewsPreference) -> set[str]:
+        return expand_signal_terms(getattr(preference, "excluded_signals", []))
+
+    @staticmethod
+    def _article_signal_context(article: NewsArticleProcessed) -> str:
+        parts = [PreferenceMatcher._article_text(article)]
+        parts.extend(PreferenceMatcher._article_regions_for_matching(article))
+        return " ".join(part for part in parts if part)
+
+    @staticmethod
+    def _signal_matches_article(
+        article: NewsArticleProcessed,
+        signals: Iterable[str],
+    ) -> bool:
+        signal_terms = expand_signal_terms(signals)
+        if not signal_terms:
+            return False
+
+        article_terms = set(PreferenceMatcher._article_signals(article))
+        article_terms.update(
+            expand_signal_terms(PreferenceMatcher._article_regions_for_matching(article))
+        )
+
+        return bool(article_terms & signal_terms) or text_matches_signal_terms(
+            PreferenceMatcher._article_signal_context(article),
+            signal_terms,
         )
 
     @staticmethod
@@ -139,9 +167,7 @@ class PreferenceMatcher:
             getattr(preference, "excluded_regions", [])
         )
         excluded_regions = PreferenceMatcher._region_tokens(excluded_regions)
-        excluded_signals = PreferenceMatcher._normalized(
-            getattr(preference, "excluded_signals", [])
-        )
+        excluded_signals = PreferenceMatcher._excluded_signals(preference)
 
         return bool(
             (
@@ -150,7 +176,7 @@ class PreferenceMatcher:
             )
             or (PreferenceMatcher._article_suppliers(article) & excluded_suppliers)
             or (PreferenceMatcher._article_regions_for_matching(article) & excluded_regions)
-            or (PreferenceMatcher._article_signals(article) & excluded_signals)
+            or PreferenceMatcher._signal_matches_article(article, excluded_signals)
         )
 
     @staticmethod
@@ -180,7 +206,7 @@ class PreferenceMatcher:
         region_match = bool(
             PreferenceMatcher._article_regions_for_matching(article) & preferred_regions
         )
-        signal_match = bool(PreferenceMatcher._article_signals(article) & preferred_signals)
+        signal_match = PreferenceMatcher._signal_matches_article(article, preferred_signals)
 
         if preferred_categories or preferred_suppliers:
             return category_match or supplier_match
@@ -293,6 +319,7 @@ class PreferenceMatcher:
         article_signal_tags: List[str],
         article_priority_signal: Optional[str],
         preference: UserNewsPreference,
+        article_signal_context: str = "",
     ) -> float:
         """Calculate signal match score.
 
@@ -305,14 +332,13 @@ class PreferenceMatcher:
             Score 0.0-1.0
         """
         preferred_signals = PreferenceMatcher._preferred_signals(preference)
-        excluded_signals = PreferenceMatcher._normalized(
-            getattr(preference, "excluded_signals", [])
-        )
-        article_tags_lower = PreferenceMatcher._normalized(article_signal_tags)
-        if article_priority_signal:
-            article_tags_lower.add(article_priority_signal.lower())
+        excluded_signals = PreferenceMatcher._excluded_signals(preference)
+        article_tags_lower = expand_signal_terms([*article_signal_tags, article_priority_signal])
 
-        if article_tags_lower & excluded_signals:
+        if (article_tags_lower & excluded_signals) or text_matches_signal_terms(
+            article_signal_context,
+            excluded_signals,
+        ):
             return 0.0
 
         if not preferred_signals:
@@ -320,11 +346,13 @@ class PreferenceMatcher:
 
         # Priority signals get higher weight
         if article_priority_signal:
-            if article_priority_signal.lower() in preferred_signals:
+            if expand_signal_terms([article_priority_signal]) & preferred_signals:
                 return 1.0
 
         # Check regular signal tags
         matches = len(article_tags_lower & preferred_signals)
+        if text_matches_signal_terms(article_signal_context, preferred_signals):
+            matches += 1
 
         if matches > 0:
             return min(1.0, 0.5 + (matches * 0.25))
@@ -371,6 +399,7 @@ class PreferenceMatcher:
             article.signal_tags or [],
             article.priority_signal,
             preference,
+            PreferenceMatcher._article_signal_context(article),
         )
 
         # Calculate weighted overall score

@@ -1,5 +1,6 @@
 """Article enrichment orchestration."""
 
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -15,6 +16,8 @@ from procuresignal.enrichment.output_parser import OutputParser
 from procuresignal.enrichment.prompts import EnrichmentPrompts
 from procuresignal.models import NewsArticleProcessed
 from procuresignal.retrieval import RawArticle
+
+logger = logging.getLogger(__name__)
 
 
 class ArticleEnricher:
@@ -102,9 +105,8 @@ class ArticleEnricher:
 
             return processed
 
-        except Exception as e:
-            # Log error but don't crash
-            print(f"Error enriching article {raw_article_id}: {e}")
+        except Exception:
+            logger.exception("Error enriching article %s", raw_article_id)
             return None
 
     async def enrich_batch(

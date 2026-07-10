@@ -71,6 +71,19 @@ def test_enrichment_output_filters_invalid_tags():
     assert "invalid_tag" not in output.signal_tags
 
 
+def test_enrichment_output_canonicalizes_signal_aliases():
+    """User-facing and model-facing signal aliases should map to stored tags."""
+    output = EnrichmentOutput(
+        summary="Test summary",
+        category="logistics",
+        signal_tags=["supply chain", "merger", "unknown"],
+        priority_signal="supply chain",
+    )
+
+    assert output.signal_tags == ["supply_disruption", "m_and_a"]
+    assert output.priority_signal == "supply_disruption"
+
+
 def test_output_parser_valid_json():
     """Test parsing valid JSON response."""
     json_response = json.dumps(

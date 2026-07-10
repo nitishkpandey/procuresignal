@@ -462,3 +462,106 @@ def test_region_exclusion_matches_region_mentioned_in_text():
     )
 
     assert PreferenceMatcher.should_include_article(article, pref) is False
+
+
+def test_misc_signal_preference_matches_supply_chain_language():
+    """Misc risk signals should accept natural procurement wording."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=["supply chain"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Manufacturers warn of renewed supply chain disruption",
+        summary="Logistics delays are affecting component deliveries across Europe.",
+        top_level_category="logistics",
+        signal_tags=[],
+        priority_signal=None,
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["logistics"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
+    score = asyncio.run(PreferenceMatcher.score_article(article, pref))
+    assert score.signal_match > 0.5
+
+
+def test_misc_signal_preference_matches_middle_east_risk_language():
+    """Risk signals can represent regional risk topics such as the Middle East."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=["middle east"],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=[],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="LNG tanker attack threatens Qatar exports through Hormuz",
+        summary="Energy buyers are reviewing Middle East shipping risk after the incident.",
+        top_level_category="energy",
+        signal_tags=[],
+        priority_signal=None,
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["energy"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is True
+    score = asyncio.run(PreferenceMatcher.score_article(article, pref))
+    assert score.signal_match > 0.5
+
+
+def test_misc_signal_exclusion_matches_text_language():
+    """Natural-language risk exclusions should suppress text matches."""
+    pref = PreferenceStub(
+        user_id="user1",
+        preferred_categories=[],
+        preferred_suppliers=[],
+        preferred_regions=[],
+        preferred_signals=[],
+        excluded_topics=[],
+        excluded_suppliers=[],
+        excluded_regions=[],
+        excluded_signals=["war"],
+    )
+    article = NewsArticleProcessed(
+        raw_article_id=1,
+        normalized_title="Trade war raises supplier pricing risk",
+        summary="Importers are reviewing contracts after tariff threats escalated.",
+        top_level_category="regulatory",
+        signal_tags=[],
+        priority_signal=None,
+        detected_suppliers=[],
+        detected_regions=[],
+        detected_categories=["regulatory"],
+        signal_score=0.8,
+        processing_status="completed",
+        llm_model="test",
+        language="en",
+        processed_at=datetime.utcnow(),
+    )
+
+    assert PreferenceMatcher.should_include_article(article, pref) is False

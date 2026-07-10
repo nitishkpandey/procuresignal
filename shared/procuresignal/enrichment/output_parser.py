@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from procuresignal.personalization.categories import CANONICAL_CATEGORIES, canonical_category
+from procuresignal.signals.taxonomy import canonical_signal_tag, canonical_signal_tags
 
 
 class EnrichmentOutput(BaseModel):
@@ -55,20 +56,17 @@ class EnrichmentOutput(BaseModel):
     @classmethod
     def validate_tags(cls, v):
         """Ensure tags are valid and lowercase (Pydantic v2)."""
-        allowed = {
-            "bankruptcy",
-            "m_and_a",
-            "strike",
-            "tariff",
-            "sanctions",
-            "port_strike",
-            "quality_issue",
-            "labor_dispute",
-            "expansion",
-        }
         if not isinstance(v, list):
             return []
-        return [tag.lower() for tag in v if isinstance(tag, str) and tag.lower() in allowed]
+        return canonical_signal_tags(v)
+
+    @field_validator("priority_signal", mode="after")
+    @classmethod
+    def validate_priority_signal(cls, v):
+        """Normalize priority signals to stored tag values."""
+        if not isinstance(v, str):
+            return None
+        return canonical_signal_tag(v)
 
     def to_json(self) -> str:
         """Return a JSON string representation compatible with Pydantic v1/v2.
