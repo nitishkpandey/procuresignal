@@ -86,6 +86,28 @@ class PreferenceResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class PreferenceLanguageUpdate(BaseModel):
+    """Request to update only the saved platform language."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: str = Field(..., min_length=1, max_length=100)
+    platform_language: str = Field("en", min_length=2, max_length=10)
+
+    @field_validator("user_id", mode="before")
+    @classmethod
+    def normalize_user_id(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("platform_language", mode="before")
+    @classmethod
+    def normalize_platform_language(cls, value: Any) -> str:
+        text = str(value or "en").strip().lower()
+        return text or "en"
+
+
 class PreferenceBulkUpdate(BaseModel):
     """Bulk preference update request."""
 

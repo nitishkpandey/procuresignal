@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
+from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, UserNewsPreference
 from procuresignal.personalization.categories import canonical_category, canonical_category_set
 
@@ -58,7 +59,7 @@ class PreferenceMatcher:
 
     @staticmethod
     def _preferred_regions(preference: UserNewsPreference) -> set[str]:
-        return PreferenceMatcher._normalized(
+        return PreferenceMatcher._region_tokens(
             getattr(preference, "preferred_regions", getattr(preference, "interested_regions", []))
         )
 
@@ -95,8 +96,29 @@ class PreferenceMatcher:
         return {supplier for supplier in preferred_suppliers if supplier in text}
 
     @staticmethod
+    def _region_tokens(values: Iterable[str] | None) -> set[str]:
+        """Normalize regions through the shared alias map before matching."""
+        return {
+            canonical_region_name(str(value)).strip().lower()
+            for value in values or []
+            if canonical_region_name(str(value)).strip()
+        }
+
+    @staticmethod
     def _article_regions(article: NewsArticleProcessed) -> set[str]:
-        return PreferenceMatcher._normalized(article.detected_regions or [])
+        return PreferenceMatcher._region_tokens(article.detected_regions or [])
+
+    @staticmethod
+    def _text_regions(article: NewsArticleProcessed) -> set[str]:
+        return PreferenceMatcher._region_tokens(
+            extract_regions_from_text(PreferenceMatcher._article_text(article))
+        )
+
+    @staticmethod
+    def _article_regions_for_matching(article: NewsArticleProcessed) -> set[str]:
+        regions = set(PreferenceMatcher._article_regions(article))
+        regions.update(PreferenceMatcher._text_regions(article))
+        return regions
 
     @staticmethod
     def _article_signals(article: NewsArticleProcessed) -> set[str]:
@@ -116,6 +138,7 @@ class PreferenceMatcher:
         excluded_regions = PreferenceMatcher._normalized(
             getattr(preference, "excluded_regions", [])
         )
+        excluded_regions = PreferenceMatcher._region_tokens(excluded_regions)
         excluded_signals = PreferenceMatcher._normalized(
             getattr(preference, "excluded_signals", [])
         )
@@ -126,7 +149,7 @@ class PreferenceMatcher:
                 & PreferenceMatcher._excluded_categories(preference)
             )
             or (PreferenceMatcher._article_suppliers(article) & excluded_suppliers)
-            or (PreferenceMatcher._article_regions(article) & excluded_regions)
+            or (PreferenceMatcher._article_regions_for_matching(article) & excluded_regions)
             or (PreferenceMatcher._article_signals(article) & excluded_signals)
         )
 
@@ -154,7 +177,9 @@ class PreferenceMatcher:
             (PreferenceMatcher._article_suppliers(article) & preferred_suppliers)
             or PreferenceMatcher._supplier_text_matches(article, preferred_suppliers)
         )
-        region_match = bool(PreferenceMatcher._article_regions(article) & preferred_regions)
+        region_match = bool(
+            PreferenceMatcher._article_regions_for_matching(article) & preferred_regions
+        )
         signal_match = bool(PreferenceMatcher._article_signals(article) & preferred_signals)
 
         if preferred_categories or preferred_suppliers:
@@ -244,10 +269,10 @@ class PreferenceMatcher:
             Score 0.0-1.0
         """
         preferred_regions = PreferenceMatcher._preferred_regions(preference)
-        excluded_regions = PreferenceMatcher._normalized(
+        excluded_regions = PreferenceMatcher._region_tokens(
             getattr(preference, "excluded_regions", [])
         )
-        article_regions_lower = PreferenceMatcher._normalized(article_regions)
+        article_regions_lower = PreferenceMatcher._region_tokens(article_regions)
 
         if article_regions_lower & excluded_regions:
             return 0.0
@@ -338,7 +363,7 @@ class PreferenceMatcher:
         )
 
         region_score = PreferenceMatcher.calculate_region_match(
-            article.detected_regions or [],
+            list(PreferenceMatcher._article_regions_for_matching(article)),
             preference,
         )
 
