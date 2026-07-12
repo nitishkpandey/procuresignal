@@ -60,14 +60,21 @@ async def generate_risk_events(
 
     for processed, raw in rows:
         try:
-            for candidate in detect_risk_events(processed, raw):
-                was_created = await _upsert_event(session, processed, raw, candidate)
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
+            article_created = 0
+            article_updated = 0
+            async with session.begin_nested():
+                for candidate in detect_risk_events(processed, raw):
+                    was_created = await _upsert_event(session, processed, raw, candidate)
+                    if was_created:
+                        article_created += 1
+                    else:
+                        article_updated += 1
+                await session.flush()
         except Exception:
             errors += 1
+        else:
+            created += article_created
+            updated += article_updated
 
     await session.commit()
     return RiskEventGenerationResult(

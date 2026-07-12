@@ -104,3 +104,54 @@ async def test_generate_risk_events_skips_article_failures(
     assert result.created == 1
     assert result.errors == 1
     assert len((await risk_session.execute(select(RiskEvent))).scalars().all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_risk_events_isolates_persistence_failures(
+    risk_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed_article = await _seed_article(risk_session, "1")
+    await _seed_article(risk_session, "2")
+
+    from procuresignal.risk_events import persistence
+
+    original_upsert = persistence._upsert_event
+
+    async def upsert_with_duplicate_event_key(session, processed, raw, candidate):
+        was_created = await original_upsert(session, processed, raw, candidate)
+        if processed.id == failed_article.id:
+            session.add(
+                RiskEvent(
+                    event_key=build_event_key(
+                        processed.id,
+                        candidate.risk_type,
+                        candidate.affected_suppliers,
+                        candidate.affected_locations,
+                    ),
+                    processed_article_id=processed.id,
+                    risk_type=candidate.risk_type,
+                    severity=candidate.severity,
+                    confidence=candidate.confidence,
+                    affected_suppliers=candidate.affected_suppliers,
+                    affected_locations=candidate.affected_locations,
+                    affected_categories=candidate.affected_categories,
+                    evidence_snippet=candidate.evidence_snippet,
+                    recommendation=candidate.recommendation,
+                    source_name=raw.source_name,
+                    source_url=raw.article_url,
+                    published_at=raw.published_at,
+                    status="new",
+                )
+            )
+        return was_created
+
+    monkeypatch.setattr(persistence, "_upsert_event", upsert_with_duplicate_event_key)
+
+    result = await generate_risk_events(risk_session, days_back=7, limit=50)
+    events = (await risk_session.execute(select(RiskEvent))).scalars().all()
+
+    assert result.scanned == 2
+    assert result.created == 1
+    assert result.errors == 1
+    assert len(events) == 1
+    assert events[0].processed_article_id != failed_article.id
