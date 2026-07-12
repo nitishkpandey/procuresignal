@@ -207,12 +207,61 @@ def test_detector_ignores_broad_single_word_aliases() -> None:
         assert events == []
 
 
+def test_detector_ignores_generic_risk_nouns_without_a_risk_phrase() -> None:
+    cases = [
+        ("Compliance team expands", "The compliance team hired two analysts."),
+        ("Legislation briefing published", "The legislation briefing summarizes current law."),
+        ("Logistics team grows", "The logistics team opened a new office."),
+        ("Customs training scheduled", "Customs training is available for new hires."),
+        ("Commodity research released", "The commodity research covers market history."),
+    ]
+
+    for title, summary in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[],
+                priority_signal=None,
+                detected_regions=[],
+                detected_categories=[],
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events == []
+
+
 def test_detector_keeps_conservative_risk_phrases() -> None:
     cases = [
         ("Acquisition announced", "The supplier announced an acquisition."),
         ("Quality issue triggers recall", "A quality issue led to a product recall."),
         ("FX risk rises", "Exchange rate volatility creates currency risk."),
         ("Raw material shortage", "A raw material shortage threatens production."),
+    ]
+
+    for title, summary in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[],
+                priority_signal=None,
+                detected_regions=[],
+                detected_categories=[],
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events
+
+
+def test_detector_keeps_strong_generic_noun_risk_phrases() -> None:
+    cases = [
+        ("Customs change raises duties", "A customs change increases import duties."),
+        ("New regulation takes effect", "The new regulation creates a supplier mandate."),
+        ("Port delay disrupts shipments", "A shipping delay is affecting deliveries."),
+        ("Commodity price rises", "Raw material shortage threatens production."),
     ]
 
     for title, summary in cases:

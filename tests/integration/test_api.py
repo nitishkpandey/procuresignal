@@ -22,7 +22,6 @@ from api.main import app
 from api.routers import articles as articles_router
 from api.routers import currency as currency_router
 from api.routers import feed as feed_router
-from api.routers import risk_events as risk_events_router
 
 
 @pytest.fixture()
@@ -115,6 +114,26 @@ def api_client():
                 processed_at=datetime.utcnow(),
             )
             session.add(processed_missing_entities)
+            await session.flush()
+
+            session.add(
+                RiskEvent(
+                    event_key="seed-risk-event",
+                    processed_article_id=processed_missing_entities.id,
+                    risk_type="strike",
+                    severity="medium",
+                    confidence=0.82,
+                    affected_suppliers=[],
+                    affected_locations=["Italy"],
+                    affected_categories=["risk_events"],
+                    evidence_snippet="Supplier continuity is at risk after a strike warning.",
+                    recommendation="Review logistics buffers and supplier delivery commitments.",
+                    source_name="Industry Week",
+                    source_url="https://example.com/article-456",
+                    published_at=datetime.utcnow(),
+                    status="new",
+                )
+            )
 
             pref = UserNewsPreference(
                 user_id="user-123",
@@ -221,36 +240,27 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["articles"]
 
 
-def test_risk_events_endpoint_generates_and_lists_events(api_client: TestClient) -> None:
+def test_risk_events_endpoint_lists_persisted_events(api_client: TestClient) -> None:
     response = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["user_id"] == "user-123"
-    assert payload["total_count"] >= 0
-    assert "events" in payload
+    assert payload["total_count"] == 1
+    assert payload["events"][0]["risk_type"] == "strike"
 
 
 def test_risk_event_status_update(api_client: TestClient) -> None:
-    created = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
-    assert created.status_code == 200
-    events = created.json()["events"]
-    if not events:
-        pytest.skip("seed data did not produce a risk event")
-
-    event_id = events[0]["id"]
+    listed = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
+    assert listed.status_code == 200
+    event_id = listed.json()["events"][0]["id"]
     response = api_client.patch(f"/api/risk-events/{event_id}/status", json={"status": "reviewed"})
 
     assert response.status_code == 200
     assert response.json()["status"] == "reviewed"
 
 
-def test_risk_events_paginates_after_preference_ranking(
-    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def skip_generation(*args, **kwargs) -> None:
-        return None
-
+def test_risk_events_paginates_after_preference_ranking(api_client: TestClient) -> None:
     async def seed_events() -> list[int]:
         session_maker = database_module.db_config.session_maker
         assert session_maker is not None
@@ -305,8 +315,6 @@ def test_risk_events_paginates_after_preference_ranking(
             return [event.id for event in events[:-1]]
 
     older_preferred_ids = asyncio.run(seed_events())[-2:]
-    monkeypatch.setattr(risk_events_router, "generate_risk_events", skip_generation)
-
     response = api_client.get(
         "/api/risk-events",
         params={
@@ -323,12 +331,7 @@ def test_risk_events_paginates_after_preference_ranking(
     assert payload["events"][0]["id"] == older_preferred_ids[1]
 
 
-def test_risk_events_supports_all_filters(
-    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def skip_generation(*args, **kwargs) -> None:
-        return None
-
+def test_risk_events_supports_all_filters(api_client: TestClient) -> None:
     async def seed_events() -> None:
         session_maker = database_module.db_config.session_maker
         assert session_maker is not None
@@ -373,17 +376,15 @@ def test_risk_events_supports_all_filters(
             await session.commit()
 
     asyncio.run(seed_events())
-    monkeypatch.setattr(risk_events_router, "generate_risk_events", skip_generation)
-
     expected = {
-        "risk_type": "geopolitical",
-        "severity": "high",
-        "status": "new",
-        "supplier": "Bosch",
-        "location": "Poland",
-        "category": "automotive",
+        "risk_type": ("geopolitical", 301),
+        "severity": ("high", 301),
+        "status": ("reviewed", 302),
+        "supplier": ("Bosch", 301),
+        "location": ("Poland", 301),
+        "category": ("energy", 302),
     }
-    for filter_name, filter_value in expected.items():
+    for filter_name, (filter_value, processed_article_id) in expected.items():
         response = api_client.get(
             "/api/risk-events",
             params={"user_id": "user-123", filter_name: filter_value, "limit": 20},
@@ -391,7 +392,63 @@ def test_risk_events_supports_all_filters(
 
         assert response.status_code == 200
         assert response.json()["total_count"] == 1
-        assert response.json()["events"][0]["processed_article_id"] == 301
+        assert response.json()["events"][0]["processed_article_id"] == processed_article_id
+
+
+def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient) -> None:
+    async def seed_events() -> int:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        events = [
+            RiskEvent(
+                event_key=f"unmatched-{index}",
+                processed_article_id=1_000 + index,
+                risk_type="strike",
+                severity="medium",
+                confidence=0.5,
+                affected_suppliers=["Other supplier"],
+                affected_locations=["Italy"],
+                affected_categories=["automotive"],
+                evidence_snippet="Unmatched risk event.",
+                recommendation="Review buffers.",
+                source_name="Test source",
+                source_url=None,
+                published_at=now - timedelta(seconds=index),
+                status="new",
+            )
+            for index in range(1_001)
+        ]
+        matching = RiskEvent(
+            event_key="older-matching-event",
+            processed_article_id=2_100,
+            risk_type="strike",
+            severity="medium",
+            confidence=0.5,
+            affected_suppliers=["TargetCo"],
+            affected_locations=["Italy"],
+            affected_categories=["automotive"],
+            evidence_snippet="Matching risk event.",
+            recommendation="Review buffers.",
+            source_name="Test source",
+            source_url=None,
+            published_at=now - timedelta(seconds=1_001),
+            status="new",
+        )
+        async with session_maker() as session:
+            session.add_all([*events, matching])
+            await session.commit()
+            return matching.id
+
+    matching_id = asyncio.run(seed_events())
+    response = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "targetco", "limit": 20},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total_count"] == 1
+    assert response.json()["events"][0]["id"] == matching_id
 
 
 def test_feed_translates_articles_when_language_requested(

@@ -5,9 +5,8 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.models import RiskEvent, UserNewsPreference
 from procuresignal.personalization.matcher import PreferenceMatcher
-from procuresignal.risk_events.persistence import generate_risk_events
 from procuresignal.risk_events.taxonomy import risk_terms_for
-from sqlalchemy import desc, select
+from sqlalchemy import String, case, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_session
@@ -17,7 +16,6 @@ from api.translation import translate_risk_events
 router = APIRouter(prefix="/api/risk-events", tags=["risk-events"])
 
 RISK_EVENT_RETENTION_DAYS = 14
-RISK_EVENT_CANDIDATE_CAP = 1000
 
 
 @router.get("", response_model=RiskEventResponse)
@@ -36,43 +34,32 @@ async def list_risk_events(
 ) -> RiskEventResponse:
     """List procurement risk events."""
 
-    await generate_risk_events(
-        session,
-        days_back=RISK_EVENT_RETENTION_DAYS,
-        limit=RISK_EVENT_CANDIDATE_CAP,
-    )
     cutoff = datetime.utcnow() - timedelta(days=RISK_EVENT_RETENTION_DAYS)
     stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter).where(
         RiskEvent.published_at >= cutoff
     )
-    result = await session.execute(
-        stmt.order_by(desc(RiskEvent.published_at)).limit(RISK_EVENT_CANDIDATE_CAP)
-    )
-    all_events = list(result.scalars().all())
+    stmt = _apply_json_filters(stmt, supplier, location, category)
+    total_count = await session.scalar(select(func.count()).select_from(stmt.subquery()))
 
     preference = await session.scalar(
         select(UserNewsPreference).where(UserNewsPreference.user_id == user_id)
     )
-    filtered = [
-        event
-        for event in all_events
-        if _contains(event.affected_suppliers, supplier)
-        and _contains(event.affected_locations, location)
-        and _contains(event.affected_categories, category)
-    ]
-    ranked = sorted(
-        filtered,
-        key=lambda event: (_rank_score(event, preference), event.published_at, event.id),
-        reverse=True,
-    )
-    page = ranked[offset : offset + limit]
-    items = [_to_item(event, _rank_score(event, preference)) for event in page]
+    rank_score = _rank_score_expression(preference)
+    rows = (
+        await session.execute(
+            stmt.add_columns(rank_score)
+            .order_by(desc(rank_score), desc(RiskEvent.published_at), desc(RiskEvent.id))
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+    items = [_to_item(event, float(score)) for event, score in rows]
     items = await translate_risk_events(items, language)
 
     return RiskEventResponse(
         user_id=user_id,
         events=items,
-        total_count=len(ranked),
+        total_count=total_count or 0,
         generated_at=datetime.utcnow(),
     )
 
@@ -119,31 +106,49 @@ def _apply_filters(stmt, risk_type, severity, status_filter):
     return stmt
 
 
-def _contains(values: list[str], expected: str | None) -> bool:
-    if not expected:
-        return True
-    expected_lower = expected.strip().lower()
-    return any(expected_lower in value.lower() for value in values)
+def _apply_json_filters(stmt, supplier, location, category):
+    for column, expected in (
+        (RiskEvent.affected_suppliers, supplier),
+        (RiskEvent.affected_locations, location),
+        (RiskEvent.affected_categories, category),
+    ):
+        if expected and expected.strip():
+            stmt = stmt.where(_json_contains(column, expected))
+    return stmt
 
 
-def _rank_score(event: RiskEvent, preference: UserNewsPreference | None) -> float:
+def _json_contains(column, expected: str):
+    return func.lower(cast(column, String)).contains(expected.strip().lower())
+
+
+def _json_matches_any(column, values: set[str]):
+    return or_(*(_json_contains(column, value) for value in sorted(values)))
+
+
+def _rank_score_expression(preference: UserNewsPreference | None):
+    score = RiskEvent.confidence
     if preference is None:
-        return event.confidence
+        return score.label("rank_score")
 
-    score = event.confidence
-    if PreferenceMatcher._normalized(
-        event.affected_suppliers
-    ) & PreferenceMatcher._preferred_suppliers(preference):
-        score += 0.15
-    if PreferenceMatcher._region_tokens(
-        event.affected_locations
-    ) & PreferenceMatcher._preferred_regions(preference):
-        score += 0.15
-    if set(event.affected_categories or []) & PreferenceMatcher._preferred_categories(preference):
-        score += 0.1
-    if event.risk_type in risk_terms_for(PreferenceMatcher._preferred_signals(preference)):
-        score += 0.1
-    return min(score, 1.0)
+    suppliers = PreferenceMatcher._preferred_suppliers(preference)
+    regions = PreferenceMatcher._preferred_regions(preference)
+    categories = PreferenceMatcher._preferred_categories(preference)
+    risk_types = risk_terms_for(PreferenceMatcher._preferred_signals(preference))
+    if suppliers:
+        score = score + case(
+            (_json_matches_any(RiskEvent.affected_suppliers, suppliers), 0.15), else_=0.0
+        )
+    if regions:
+        score = score + case(
+            (_json_matches_any(RiskEvent.affected_locations, regions), 0.15), else_=0.0
+        )
+    if categories:
+        score = score + case(
+            (_json_matches_any(RiskEvent.affected_categories, categories), 0.1), else_=0.0
+        )
+    if risk_types:
+        score = score + case((RiskEvent.risk_type.in_(risk_types), 0.1), else_=0.0)
+    return case((score > 1.0, 1.0), else_=score).label("rank_score")
 
 
 def _to_item(event: RiskEvent, rank_score: float) -> RiskEventItem:

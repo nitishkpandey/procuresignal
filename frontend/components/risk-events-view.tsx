@@ -95,16 +95,19 @@ function RiskEventList({
 function RiskEventRow({ event, language }: { event: RiskEvent; language: string }) {
   const [status, setStatus] = useState<RiskEventStatus>(event.status);
   const [updating, setUpdating] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const confidence = Math.round(event.confidence * 100);
 
   const changeStatus = async (nextStatus: RiskEventStatus) => {
     const previousStatus = status;
+    setStatusError(null);
     setStatus(nextStatus);
     setUpdating(true);
     try {
       await updateRiskEventStatus(event.id, nextStatus);
     } catch {
       setStatus(previousStatus);
+      setStatusError("Unable to update status. Try again.");
     } finally {
       setUpdating(false);
     }
@@ -138,17 +141,24 @@ function RiskEventRow({ event, language }: { event: RiskEvent; language: string 
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="text-sm font-semibold text-slate-950">{confidence}%</span>
-          <select
-            aria-label={`Status for risk event ${event.id}`}
-            value={status}
-            onChange={(e) => void changeStatus(e.target.value as RiskEventStatus)}
-            disabled={updating}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm"
-          >
-            <option value="new">{t(language, "risks.new")}</option>
-            <option value="reviewed">{t(language, "risks.reviewed")}</option>
-            <option value="dismissed">{t(language, "risks.dismissed")}</option>
-          </select>
+          <div>
+            <select
+              aria-label={`Status for risk event ${event.id}`}
+              value={status}
+              onChange={(e) => void changeStatus(e.target.value as RiskEventStatus)}
+              disabled={updating}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm"
+            >
+              <option value="new">{t(language, "risks.new")}</option>
+              <option value="reviewed">{t(language, "risks.reviewed")}</option>
+              <option value="dismissed">{t(language, "risks.dismissed")}</option>
+            </select>
+            {statusError ? (
+              <p role="alert" className="mt-1 max-w-40 text-xs text-red-700">
+                {statusError}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">

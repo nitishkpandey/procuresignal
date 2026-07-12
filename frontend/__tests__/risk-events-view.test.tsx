@@ -80,7 +80,7 @@ describe("RiskEventsView", () => {
     expect(api.updateRiskEventStatus).toHaveBeenCalledWith(1, "reviewed");
   });
 
-  it("disables status changes while pending and restores the prior status on failure", async () => {
+  it("shows an error and restores the prior status when an update fails", async () => {
     let rejectUpdate!: (error: Error) => void;
     vi.mocked(api.updateRiskEventStatus).mockImplementationOnce(
       () =>
@@ -99,5 +99,6 @@ describe("RiskEventsView", () => {
     rejectUpdate(new Error("update failed"));
     await waitFor(() => expect(select).toHaveValue("new"));
     expect(select).not.toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to update status. Try again.");
   });
 });

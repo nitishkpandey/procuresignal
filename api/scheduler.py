@@ -54,7 +54,8 @@ async def _run_retention() -> None:
     async with session_scope() as session:
         result = await prune_expired_records(session, policy=RetentionPolicy())
         logger.info(
-            "Retention pruned raw=%s processed=%s feed=%s",
+            "Retention pruned risk_events=%s raw=%s processed=%s feed=%s",
+            result.risk_events_deleted,
             result.raw_deleted,
             result.processed_deleted,
             result.feed_deleted,

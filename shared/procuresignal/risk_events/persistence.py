@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 
-from sqlalchemy import desc, select
+from sqlalchemy import asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, RiskEvent
@@ -50,14 +50,17 @@ async def generate_risk_events(
     days_back: int = 7,
     limit: int = 500,
 ) -> RiskEventGenerationResult:
-    """Generate or update risk events from recent processed articles."""
+    """Generate risk events from recently processed, unscanned articles."""
 
     cutoff = datetime.utcnow() - timedelta(days=days_back)
     result = await session.execute(
         select(NewsArticleProcessed, NewsArticleRaw)
         .join(NewsArticleRaw, NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
-        .where(NewsArticleProcessed.processed_at >= cutoff)
-        .order_by(desc(NewsArticleProcessed.processed_at))
+        .where(
+            NewsArticleProcessed.processed_at >= cutoff,
+            NewsArticleProcessed.risk_event_checked_at.is_(None),
+        )
+        .order_by(asc(NewsArticleProcessed.processed_at), asc(NewsArticleProcessed.id))
         .limit(limit)
     )
     rows = result.all()
@@ -66,6 +69,7 @@ async def generate_risk_events(
     errors = 0
 
     for processed, raw in rows:
+        processed_article_id = processed.id
         try:
             article_created = 0
             article_updated = 0
@@ -76,10 +80,11 @@ async def generate_risk_events(
                         article_created += 1
                     else:
                         article_updated += 1
+                processed.risk_event_checked_at = datetime.utcnow()
                 await session.flush()
         except Exception:
             logger.exception(
-                "Failed to generate risk events for processed_article_id=%s", processed.id
+                "Failed to generate risk events for processed_article_id=%s", processed_article_id
             )
             errors += 1
         else:

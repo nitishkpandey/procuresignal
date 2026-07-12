@@ -23,9 +23,33 @@ from .taxonomy import (
 
 _GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(RISK_ALIASES["geopolitical"])
 _CONSERVATIVE_TEXT_ALIASES = {
+    "tariff": {
+        "tariff increase",
+        "tariff hike",
+        "new tariff",
+        "customs change",
+        "customs duty increase",
+        "duty increase",
+        "import duty",
+        "trade duty",
+    },
+    "regulatory": {
+        "new regulation",
+        "regulatory mandate",
+        "compliance requirement",
+        "legislation passed",
+        "legislative requirement",
+    },
     "quality": {"quality issue", "recall", "defect"},
     "m_and_a": {"m&a", "m_and_a", "merger", "acquisition", "takeover"},
     "currency": {"foreign exchange", "fx", "exchange rate", "currency risk"},
+    "logistics": {
+        "logistics disruption",
+        "port delay",
+        "shipping delay",
+        "transport disruption",
+        "shipping disruption",
+    },
     "commodity": {"commodity price", "raw material shortage", "critical minerals", "energy price"},
 }
 
