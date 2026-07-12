@@ -75,4 +75,25 @@ describe("RiskEventsView", () => {
     await userEvent.selectOptions(screen.getByLabelText("Status for risk event 1"), "reviewed");
     expect(api.updateRiskEventStatus).toHaveBeenCalledWith(1, "reviewed");
   });
+
+  it("disables status changes while pending and restores the prior status on failure", async () => {
+    let rejectUpdate!: (error: Error) => void;
+    vi.mocked(api.updateRiskEventStatus).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectUpdate = reject;
+        }),
+    );
+
+    render(<RiskEventsView />);
+    await waitFor(() => expect(screen.getByText("Geopolitical")).toBeInTheDocument());
+    const select = screen.getByLabelText("Status for risk event 1");
+
+    await userEvent.selectOptions(select, "reviewed");
+    expect(select).toBeDisabled();
+
+    rejectUpdate(new Error("update failed"));
+    await waitFor(() => expect(select).toHaveValue("new"));
+    expect(select).not.toBeDisabled();
+  });
 });

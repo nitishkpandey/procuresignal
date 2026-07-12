@@ -94,14 +94,19 @@ function RiskEventList({
 
 function RiskEventRow({ event, language }: { event: RiskEvent; language: string }) {
   const [status, setStatus] = useState<RiskEventStatus>(event.status);
+  const [updating, setUpdating] = useState(false);
   const confidence = Math.round(event.confidence * 100);
 
   const changeStatus = async (nextStatus: RiskEventStatus) => {
+    const previousStatus = status;
     setStatus(nextStatus);
+    setUpdating(true);
     try {
       await updateRiskEventStatus(event.id, nextStatus);
     } catch {
-      setStatus(event.status);
+      setStatus(previousStatus);
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -126,6 +131,7 @@ function RiskEventRow({ event, language }: { event: RiskEvent; language: string 
             aria-label={`Status for risk event ${event.id}`}
             value={status}
             onChange={(e) => void changeStatus(e.target.value as RiskEventStatus)}
+            disabled={updating}
             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm"
           >
             <option value="new">{t(language, "risks.new")}</option>
