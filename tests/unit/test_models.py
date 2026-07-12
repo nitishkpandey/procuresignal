@@ -10,6 +10,7 @@ from shared.procuresignal.models import (
     NewsArticleProcessed,
     NewsArticleRaw,
     NewsPipelineRun,
+    RiskEvent,
     UserNewsPreference,
 )
 
@@ -127,3 +128,32 @@ async def test_pipeline_run_metrics(async_session: AsyncSession) -> None:
     assert run.status == "success"
     assert run.articles_fetched == 100
     assert run.articles_kept + run.articles_rejected == 100
+
+
+@pytest.mark.asyncio
+async def test_create_risk_event(async_session: AsyncSession) -> None:
+    """Test creating an idempotent risk event."""
+
+    event = RiskEvent(
+        event_key="article-1:tariff:germany",
+        processed_article_id=1,
+        risk_type="tariff",
+        severity="medium",
+        confidence=0.82,
+        affected_suppliers=["Bosch"],
+        affected_locations=["Germany"],
+        affected_categories=["automotive"],
+        evidence_snippet="New import duty raises landed cost exposure.",
+        recommendation="Check landed cost and tariff exposure before confirming new purchase orders.",
+        source_name="Reuters",
+        source_url="https://example.com",
+        published_at=datetime.utcnow(),
+        status="new",
+    )
+
+    async_session.add(event)
+    await async_session.commit()
+
+    assert event.id is not None
+    assert event.event_key == "article-1:tariff:germany"
+    assert event.affected_suppliers == ["Bosch"]
