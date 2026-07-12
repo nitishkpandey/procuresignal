@@ -62,6 +62,10 @@ describe("RiskEventsView", () => {
     render(<RiskEventsView />);
     await waitFor(() => expect(screen.getByText("Geopolitical")).toBeInTheDocument());
     expect(screen.getByText("82%")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reuters" })).toHaveAttribute(
+      "href",
+      "https://example.com/risk",
+    );
     expect(screen.queryByText(/match/i)).not.toBeInTheDocument();
     expect(api.getRiskEvents).toHaveBeenCalledWith("buyer@example.com", {
       language: "en",

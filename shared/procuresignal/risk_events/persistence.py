@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, RiskEvent
 
 from .detector import RiskEventCandidate, detect_risk_events
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,9 @@ async def generate_risk_events(
                         article_updated += 1
                 await session.flush()
         except Exception:
+            logger.exception(
+                "Failed to generate risk events for processed_article_id=%s", processed.id
+            )
             errors += 1
         else:
             created += article_created

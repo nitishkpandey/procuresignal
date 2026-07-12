@@ -119,7 +119,18 @@ function RiskEventRow({ event, language }: { event: RiskEvent; language: string 
             <span aria-hidden>|</span>
             <span>{humanize(event.severity)}</span>
             <span aria-hidden>|</span>
-            <span>{event.source_name}</span>
+            {event.source_url ? (
+              <a
+                href={event.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-slate-300 underline-offset-2 hover:text-slate-900"
+              >
+                {event.source_name}
+              </a>
+            ) : (
+              <span>{event.source_name}</span>
+            )}
             <span aria-hidden>|</span>
             <span>{formatDate(event.published_at)}</span>
           </div>

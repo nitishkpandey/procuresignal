@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
-from procuresignal.signals.taxonomy import expand_signal_terms, text_matches_signal_terms
+from procuresignal.signals.taxonomy import (
+    expand_signal_terms,
+    normalize_signal_term,
+    text_matches_signal_terms,
+)
 
 from .taxonomy import (
     RECOMMENDATIONS,
@@ -17,6 +22,12 @@ from .taxonomy import (
 )
 
 _GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(RISK_ALIASES["geopolitical"])
+_CONSERVATIVE_TEXT_ALIASES = {
+    "quality": {"quality issue", "recall", "defect"},
+    "m_and_a": {"m&a", "m_and_a", "merger", "acquisition", "takeover"},
+    "currency": {"foreign exchange", "fx", "exchange rate", "currency risk"},
+    "commodity": {"commodity price", "raw material shortage", "critical minerals", "energy price"},
+}
 
 
 @dataclass(frozen=True)
@@ -44,8 +55,13 @@ def detect_risk_events(
 
     for risk_type in RISK_TYPE_ORDER:
         terms = risk_terms_for([risk_type])
+        text_terms = _text_terms_for(risk_type, terms)
         metadata_match = bool(article_signal_terms & terms)
-        text_match = text_matches_signal_terms(text, terms)
+        text_match = (
+            _text_matches_exact(text, text_terms)
+            if risk_type in _CONSERVATIVE_TEXT_ALIASES
+            else text_matches_signal_terms(text, text_terms)
+        )
         if risk_type in {"geopolitical", "regional_conflict"} and not (
             article_signal_terms & _GEOPOLITICAL_ACTION_TERMS
             or text_matches_signal_terms(text, _GEOPOLITICAL_ACTION_TERMS)
@@ -68,12 +84,37 @@ def detect_risk_events(
                 affected_categories=_dedupe(
                     [processed.top_level_category, *(processed.detected_categories or [])]
                 ),
-                evidence_snippet=_evidence(text, terms),
+                evidence_snippet=_evidence(text, text_terms),
                 recommendation=RECOMMENDATIONS[risk_type],
             )
         )
 
     return _dedupe_events(events)
+
+
+def _text_terms_for(risk_type: str, terms: set[str]) -> set[str]:
+    aliases = _CONSERVATIVE_TEXT_ALIASES.get(risk_type)
+    if aliases is None:
+        return terms
+    return {
+        variant
+        for alias in aliases
+        for variant in (
+            normalize_signal_term(alias),
+            normalize_signal_term(alias).replace("_", " "),
+        )
+    }
+
+
+def _text_matches_exact(text: str, terms: set[str]) -> bool:
+    normalized_text = normalize_signal_term(text)
+    return any(
+        re.search(
+            rf"(?<![a-z0-9]){re.escape(normalize_signal_term(term))}(?![a-z0-9])",
+            normalized_text,
+        )
+        for term in terms
+    )
 
 
 def _article_text(processed: NewsArticleProcessed, raw: NewsArticleRaw | None) -> str:

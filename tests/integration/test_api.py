@@ -281,10 +281,28 @@ def test_risk_events_paginates_after_preference_ranking(
                     status="new",
                 )
             )
+        events.append(
+            RiskEvent(
+                event_key="pagination-expired",
+                processed_article_id=199,
+                risk_type="strike",
+                severity="medium",
+                confidence=0.99,
+                affected_suppliers=["Bosch"],
+                affected_locations=["Italy"],
+                affected_categories=["automotive"],
+                evidence_snippet="Expired event.",
+                recommendation="Ignore expired event.",
+                source_name="Test source",
+                source_url="https://example.com/expired",
+                published_at=now - timedelta(days=15),
+                status="new",
+            )
+        )
         async with session_maker() as session:
             session.add_all(events)
             await session.commit()
-            return [event.id for event in events]
+            return [event.id for event in events[:-1]]
 
     older_preferred_ids = asyncio.run(seed_events())[-2:]
     monkeypatch.setattr(risk_events_router, "generate_risk_events", skip_generation)
@@ -303,6 +321,77 @@ def test_risk_events_paginates_after_preference_ranking(
     payload = response.json()
     assert payload["total_count"] == 5
     assert payload["events"][0]["id"] == older_preferred_ids[1]
+
+
+def test_risk_events_supports_all_filters(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def skip_generation(*args, **kwargs) -> None:
+        return None
+
+    async def seed_events() -> None:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        async with session_maker() as session:
+            session.add_all(
+                [
+                    RiskEvent(
+                        event_key="filters-geopolitical",
+                        processed_article_id=301,
+                        risk_type="geopolitical",
+                        severity="high",
+                        confidence=0.9,
+                        affected_suppliers=["Bosch"],
+                        affected_locations=["Poland"],
+                        affected_categories=["automotive"],
+                        evidence_snippet="Conflict risk.",
+                        recommendation="Review exposure.",
+                        source_name="Test source",
+                        source_url="https://example.com/filter-1",
+                        published_at=now,
+                        status="new",
+                    ),
+                    RiskEvent(
+                        event_key="filters-strike",
+                        processed_article_id=302,
+                        risk_type="strike",
+                        severity="medium",
+                        confidence=0.8,
+                        affected_suppliers=["Acme"],
+                        affected_locations=["Italy"],
+                        affected_categories=["energy"],
+                        evidence_snippet="Strike risk.",
+                        recommendation="Review buffers.",
+                        source_name="Test source",
+                        source_url="https://example.com/filter-2",
+                        published_at=now - timedelta(seconds=1),
+                        status="reviewed",
+                    ),
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(seed_events())
+    monkeypatch.setattr(risk_events_router, "generate_risk_events", skip_generation)
+
+    expected = {
+        "risk_type": "geopolitical",
+        "severity": "high",
+        "status": "new",
+        "supplier": "Bosch",
+        "location": "Poland",
+        "category": "automotive",
+    }
+    for filter_name, filter_value in expected.items():
+        response = api_client.get(
+            "/api/risk-events",
+            params={"user_id": "user-123", filter_name: filter_value, "limit": 20},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total_count"] == 1
+        assert response.json()["events"][0]["processed_article_id"] == 301
 
 
 def test_feed_translates_articles_when_language_requested(

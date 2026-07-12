@@ -181,3 +181,51 @@ def test_detector_returns_empty_list_for_non_procurement_article() -> None:
     )
 
     assert events == []
+
+
+def test_detector_ignores_broad_single_word_aliases() -> None:
+    cases = [
+        ("Company signs supplier deal", "The supplier deal expands commercial cooperation."),
+        ("Quality leadership changes", "The company announced new quality leadership."),
+        ("Euro sales rise", "Euro sales increased across the region."),
+        ("Metals demand grows", "Metals demand is rising in automotive markets."),
+    ]
+
+    for title, summary in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[],
+                priority_signal=None,
+                detected_regions=[],
+                detected_categories=[],
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events == []
+
+
+def test_detector_keeps_conservative_risk_phrases() -> None:
+    cases = [
+        ("Acquisition announced", "The supplier announced an acquisition."),
+        ("Quality issue triggers recall", "A quality issue led to a product recall."),
+        ("FX risk rises", "Exchange rate volatility creates currency risk."),
+        ("Raw material shortage", "A raw material shortage threatens production."),
+    ]
+
+    for title, summary in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[],
+                priority_signal=None,
+                detected_regions=[],
+                detected_categories=[],
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events

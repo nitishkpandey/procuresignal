@@ -1,6 +1,6 @@
 """Risk event endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.models import RiskEvent, UserNewsPreference
@@ -15,6 +15,9 @@ from api.schemas.risk_event import RiskEventItem, RiskEventResponse, RiskEventSt
 from api.translation import translate_risk_events
 
 router = APIRouter(prefix="/api/risk-events", tags=["risk-events"])
+
+RISK_EVENT_RETENTION_DAYS = 14
+RISK_EVENT_CANDIDATE_CAP = 1000
 
 
 @router.get("", response_model=RiskEventResponse)
@@ -33,9 +36,18 @@ async def list_risk_events(
 ) -> RiskEventResponse:
     """List procurement risk events."""
 
-    await generate_risk_events(session, days_back=7, limit=500)
-    stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter)
-    result = await session.execute(stmt.order_by(desc(RiskEvent.published_at)))
+    await generate_risk_events(
+        session,
+        days_back=RISK_EVENT_RETENTION_DAYS,
+        limit=RISK_EVENT_CANDIDATE_CAP,
+    )
+    cutoff = datetime.utcnow() - timedelta(days=RISK_EVENT_RETENTION_DAYS)
+    stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter).where(
+        RiskEvent.published_at >= cutoff
+    )
+    result = await session.execute(
+        stmt.order_by(desc(RiskEvent.published_at)).limit(RISK_EVENT_CANDIDATE_CAP)
+    )
     all_events = list(result.scalars().all())
 
     preference = await session.scalar(
