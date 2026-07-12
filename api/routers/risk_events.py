@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.models import RiskEvent, UserNewsPreference
 from procuresignal.personalization.matcher import PreferenceMatcher
 from procuresignal.risk_events.taxonomy import risk_terms_for
+from procuresignal.signals.taxonomy import normalize_signal_term
 from sqlalchemy import String, case, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,11 +119,16 @@ def _apply_json_filters(stmt, supplier, location, category):
 
 
 def _json_contains(column, expected: str):
-    return func.lower(cast(column, String)).contains(expected.strip().lower())
+    normalized = _escape_like(normalize_signal_term(expected))
+    return func.lower(cast(column, String)).like(f'%"{normalized}"%', escape="\\")
 
 
 def _json_matches_any(column, values: set[str]):
     return or_(*(_json_contains(column, value) for value in sorted(values)))
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _rank_score_expression(preference: UserNewsPreference | None):

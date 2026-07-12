@@ -16,7 +16,7 @@ beforeEach(() => {
   useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "en" });
   vi.mocked(api.getRiskEvents).mockResolvedValue({
     user_id: "buyer@example.com",
-    total_count: 1,
+    total_count: 87,
     generated_at: "2026-07-12T10:00:00Z",
     events: [
       {
@@ -61,6 +61,7 @@ describe("RiskEventsView", () => {
   it("renders risk events with a clean percentage", async () => {
     render(<RiskEventsView />);
     await waitFor(() => expect(screen.getByText("Geopolitical")).toBeInTheDocument());
+    expect(screen.getByText("87 risks")).toBeInTheDocument();
     expect(screen.getByText("82%")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reuters" })).toHaveAttribute(
       "href",

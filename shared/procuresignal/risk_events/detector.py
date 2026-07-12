@@ -15,14 +15,27 @@ from procuresignal.signals.taxonomy import (
 
 from .taxonomy import (
     RECOMMENDATIONS,
-    RISK_ALIASES,
     RISK_TYPE_ORDER,
     SEVERITY_BY_RISK_TYPE,
     risk_terms_for,
 )
 
-_GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(RISK_ALIASES["geopolitical"])
+_GEOPOLITICAL_TEXT_ALIASES = {
+    "war",
+    "armed conflict",
+    "regional conflict",
+    "geopolitical risk",
+    "hostilities",
+    "military action",
+    "missile attack",
+    "shipping attack",
+    "attack threatens",
+    "attack disrupts",
+    "escalation of hostilities",
+}
+_GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(_GEOPOLITICAL_TEXT_ALIASES)
 _CONSERVATIVE_TEXT_ALIASES = {
+    "geopolitical": _GEOPOLITICAL_TEXT_ALIASES,
     "tariff": {
         "tariff increase",
         "tariff hike",
@@ -42,6 +55,19 @@ _CONSERVATIVE_TEXT_ALIASES = {
     },
     "quality": {"quality issue", "recall", "defect"},
     "m_and_a": {"m&a", "m_and_a", "merger", "acquisition", "takeover"},
+    "strike": {
+        "port strike",
+        "labor strike",
+        "labour strike",
+        "union strike",
+        "worker strike",
+        "workers strike",
+        "factory strike",
+        "strike disruption",
+        "labor dispute",
+        "labour dispute",
+        "walkout",
+    },
     "currency": {"foreign exchange", "fx", "exchange rate", "currency risk"},
     "logistics": {
         "logistics disruption",

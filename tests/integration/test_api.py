@@ -407,7 +407,7 @@ def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient)
                 risk_type="strike",
                 severity="medium",
                 confidence=0.5,
-                affected_suppliers=["Other supplier"],
+                affected_suppliers=["Walmart" if index == 1 else "Other supplier"],
                 affected_locations=["Italy"],
                 affected_categories=["automotive"],
                 evidence_snippet="Unmatched risk event.",
@@ -449,6 +449,20 @@ def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient)
     assert response.status_code == 200
     assert response.json()["total_count"] == 1
     assert response.json()["events"][0]["id"] == matching_id
+
+    partial = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "art", "limit": 20},
+    )
+    wildcard = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "%", "limit": 20},
+    )
+
+    assert partial.status_code == 200
+    assert partial.json()["total_count"] == 0
+    assert wildcard.status_code == 200
+    assert wildcard.json()["total_count"] == 0
 
 
 def test_feed_translates_articles_when_language_requested(

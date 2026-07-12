@@ -189,6 +189,9 @@ def test_detector_ignores_broad_single_word_aliases() -> None:
         ("Quality leadership changes", "The company announced new quality leadership."),
         ("Euro sales rise", "Euro sales increased across the region."),
         ("Metals demand grows", "Metals demand is rising in automotive markets."),
+        ("Company leaders strike a deal", "The leaders will strike a deal this week."),
+        ("Conflict of interest policy updated", "The new conflict of interest policy applies."),
+        ("Pricing attack gains attention", "A marketing attack won customer attention."),
     ]
 
     for title, summary in cases:
@@ -238,6 +241,8 @@ def test_detector_keeps_conservative_risk_phrases() -> None:
         ("Quality issue triggers recall", "A quality issue led to a product recall."),
         ("FX risk rises", "Exchange rate volatility creates currency risk."),
         ("Raw material shortage", "A raw material shortage threatens production."),
+        ("Port strike threatens deliveries", "A port strike is disrupting supplier shipments."),
+        ("Tanker attack threatens exports", "A shipping attack threatens energy exports."),
     ]
 
     for title, summary in cases:

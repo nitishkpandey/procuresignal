@@ -46,6 +46,7 @@ CELERY_TASK_ROUTES = {
         "queue": "personalization",
         "routing_key": "personalization",
     },
+    "worker.tasks.prune_retention_task": {"queue": "default", "routing_key": "default"},
     "worker.tasks.health_check_task": {"queue": "default", "routing_key": "default"},
 }
 
@@ -74,6 +75,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "worker.tasks.personalize_feeds_task",
         "schedule": crontab(minute=0, hour="*"),
         "options": {"queue": "personalization"},
+    },
+    "prune-retention-daily": {
+        "task": "worker.tasks.prune_retention_task",
+        "schedule": crontab(minute=15, hour=2),
+        "options": {"queue": "default"},
     },
 }
 

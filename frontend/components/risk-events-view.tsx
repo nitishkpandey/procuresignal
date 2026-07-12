@@ -18,6 +18,7 @@ export function RiskEventsView() {
   const language = useUserStore((s) => s.platformLanguage);
   const risks = useApi(() => getRiskEvents(userId, { language, limit: 50 }), [userId, language]);
   const events = useMemo(() => risks.data?.events ?? [], [risks.data?.events]);
+  const totalCount = risks.data?.total_count ?? events.length;
 
   return (
     <main className="space-y-5">
@@ -33,10 +34,10 @@ export function RiskEventsView() {
             {t(language, "risks.subtitle")}
           </p>
         </div>
-        {events.length > 0 ? (
+        {totalCount > 0 ? (
           <span className="text-sm font-medium text-slate-600">
-            {t(language, events.length === 1 ? "risks.countOne" : "risks.countMany", {
-              count: events.length,
+            {t(language, totalCount === 1 ? "risks.countOne" : "risks.countMany", {
+              count: totalCount,
             })}
           </span>
         ) : null}
@@ -107,7 +108,7 @@ function RiskEventRow({ event, language }: { event: RiskEvent; language: string 
       await updateRiskEventStatus(event.id, nextStatus);
     } catch {
       setStatus(previousStatus);
-      setStatusError("Unable to update status. Try again.");
+      setStatusError(t(language, "risks.statusUpdateFailed"));
     } finally {
       setUpdating(false);
     }
