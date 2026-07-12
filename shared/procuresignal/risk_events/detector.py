@@ -180,8 +180,6 @@ def _article_text(processed: NewsArticleProcessed, raw: NewsArticleRaw | None) -
         raw.title if raw else "",
         raw.description if raw else "",
         raw.content_snippet if raw else "",
-        " ".join(processed.detected_regions or []),
-        " ".join(processed.detected_categories or []),
     ]
     return " ".join(part.strip() for part in parts if part and part.strip())
 

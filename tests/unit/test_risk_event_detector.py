@@ -270,6 +270,47 @@ def test_detector_requires_context_for_ambiguous_metadata() -> None:
         assert events == []
 
 
+def test_detector_does_not_treat_detected_entities_as_text_evidence() -> None:
+    cases = [
+        (
+            "Company update draws market attention",
+            "The company announced a routine commercial update.",
+            "m&a",
+            ["merger"],
+            [],
+        ),
+        (
+            "Supplier update draws market attention",
+            "The supplier announced a routine commercial update.",
+            "strike",
+            ["port strike"],
+            [],
+        ),
+        (
+            "Regional update draws market attention",
+            "The company announced a routine commercial update.",
+            "geopolitical",
+            ["geopolitical risk"],
+            ["Qatar"],
+        ),
+    ]
+
+    for title, summary, signal, categories, regions in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[signal],
+                priority_signal=signal,
+                detected_regions=regions,
+                detected_categories=categories,
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events == []
+
+
 def test_detector_keeps_conservative_risk_phrases() -> None:
     cases = [
         ("Acquisition announced", "The supplier announced an acquisition."),
