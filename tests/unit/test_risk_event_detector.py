@@ -68,6 +68,43 @@ def test_detector_creates_geopolitical_event_with_evidence() -> None:
     assert "Review supplier exposure" in event.recommendation
 
 
+def test_detector_merges_processed_and_text_extracted_locations() -> None:
+    events = detect_risk_events(
+        _processed(
+            normalized_title="Attack disrupts exports from Qatar",
+            summary="An attack threatens shipments to Germany.",
+            detected_regions=["Qatar"],
+        ),
+        _raw(
+            title="Attack disrupts exports from Qatar",
+            description="An attack threatens shipments to Germany.",
+            content_snippet="Buyers are reviewing the conflict impact.",
+        ),
+    )
+
+    assert len(events) == 1
+    assert events[0].affected_locations == ["Qatar", "Germany"]
+
+
+def test_detector_ignores_location_only_geopolitical_aliases() -> None:
+    events = detect_risk_events(
+        _processed(
+            normalized_title="Qatar investment supports regional growth",
+            summary="The company announced a new business investment in Qatar.",
+            detected_regions=["Qatar"],
+            signal_tags=[],
+            priority_signal=None,
+        ),
+        _raw(
+            title="Qatar investment supports regional growth",
+            description="The company announced a new business investment in Qatar.",
+            content_snippet="The project is focused on commercial expansion and jobs.",
+        ),
+    )
+
+    assert events == []
+
+
 def test_detector_uses_existing_signal_tags() -> None:
     events = detect_risk_events(
         _processed(

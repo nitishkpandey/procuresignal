@@ -6,9 +6,17 @@ from dataclasses import dataclass
 
 from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
-from procuresignal.signals.taxonomy import text_matches_signal_terms
+from procuresignal.signals.taxonomy import expand_signal_terms, text_matches_signal_terms
 
-from .taxonomy import RECOMMENDATIONS, RISK_TYPE_ORDER, SEVERITY_BY_RISK_TYPE, risk_terms_for
+from .taxonomy import (
+    RECOMMENDATIONS,
+    RISK_ALIASES,
+    RISK_TYPE_ORDER,
+    SEVERITY_BY_RISK_TYPE,
+    risk_terms_for,
+)
+
+_GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(RISK_ALIASES["geopolitical"])
 
 
 @dataclass(frozen=True)
@@ -38,6 +46,11 @@ def detect_risk_events(
         terms = risk_terms_for([risk_type])
         metadata_match = bool(article_signal_terms & terms)
         text_match = text_matches_signal_terms(text, terms)
+        if risk_type in {"geopolitical", "regional_conflict"} and not (
+            article_signal_terms & _GEOPOLITICAL_ACTION_TERMS
+            or text_matches_signal_terms(text, _GEOPOLITICAL_ACTION_TERMS)
+        ):
+            continue
         if not metadata_match and not text_match:
             continue
 
@@ -99,9 +112,10 @@ def _severity(risk_type: str, text: str) -> str:
 
 
 def _locations(processed: NewsArticleProcessed, text: str) -> list[str]:
-    detected = list(processed.detected_regions or [])
-    if not detected:
-        detected.extend(extract_regions_from_text(text))
+    detected = [
+        *(processed.detected_regions or []),
+        *extract_regions_from_text(text),
+    ]
     return _dedupe(canonical_region_name(value) for value in detected)
 
 
