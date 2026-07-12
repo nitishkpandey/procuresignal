@@ -12,6 +12,7 @@ from procuresignal.enrichment.openai_client import OpenAILLMClient
 
 from api.schemas.article import ArticleDetail, SearchResult
 from api.schemas.feed import ArticleInFeed
+from api.schemas.risk_event import RiskEventItem
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,9 @@ SUPPORTED_TARGETS = {
 _TRANSLATION_CACHE: dict[str, dict[str, str | None]] = {}
 _FEED_FIELDS = ("title", "summary")
 _DETAIL_FIELDS = ("title", "summary", "description", "content_snippet")
+_RISK_EVENT_FIELDS = ("evidence_snippet", "recommendation")
 
-ArticleModel = TypeVar("ArticleModel", ArticleInFeed, ArticleDetail, SearchResult)
+ArticleModel = TypeVar("ArticleModel", ArticleInFeed, ArticleDetail, SearchResult, RiskEventItem)
 
 
 async def translate_feed_articles(
@@ -53,6 +55,15 @@ async def translate_article_detail(
     """Translate article detail text for non-English users."""
 
     return (await _translate_models([article], language, _DETAIL_FIELDS, "detail"))[0]
+
+
+async def translate_risk_events(
+    events: list[RiskEventItem],
+    language: str | None,
+) -> list[RiskEventItem]:
+    """Translate user-facing risk event text for non-English users."""
+
+    return await _translate_models(events, language, _RISK_EVENT_FIELDS, "risk-event")
 
 
 async def _translate_models(

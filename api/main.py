@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
-from api.routers import articles, chat, currency, feed, health, preferences, signals
+from api.routers import articles, chat, currency, feed, health, preferences, risk_events, signals
 from api.scheduler import create_scheduler, scheduler_enabled
 
 
@@ -50,6 +50,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(health.router)
 app.include_router(feed.router)
+app.include_router(risk_events.router)
 app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(articles.router)

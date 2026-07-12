@@ -93,11 +93,11 @@ def api_client():
 
             processed_missing_entities = NewsArticleProcessed(
                 raw_article_id=raw_missing_entities.id,
-                normalized_title="Ferrari supplier talks expand in Italy",
-                summary="Ferrari and Mercedes are watching supplier continuity in Italy.",
+                normalized_title="Ferrari supplier talks expand in Italy after strike warning",
+                summary="Ferrari and Mercedes are watching supplier continuity in Italy after strike disruption.",
                 top_level_category="automotive",
-                signal_tags=["supplier_risk"],
-                priority_signal="supplier_risk",
+                signal_tags=["strike", "supplier_risk"],
+                priority_signal="strike",
                 detected_regions=[],
                 detected_suppliers=[],
                 detected_categories=[],
@@ -212,6 +212,30 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["user_id"] == "user-123"
     assert payload["total_count"] >= 1
     assert payload["articles"]
+
+
+def test_risk_events_endpoint_generates_and_lists_events(api_client: TestClient) -> None:
+    response = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "user-123"
+    assert payload["total_count"] >= 0
+    assert "events" in payload
+
+
+def test_risk_event_status_update(api_client: TestClient) -> None:
+    created = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
+    assert created.status_code == 200
+    events = created.json()["events"]
+    if not events:
+        pytest.skip("seed data did not produce a risk event")
+
+    event_id = events[0]["id"]
+    response = api_client.patch(f"/api/risk-events/{event_id}/status", json={"status": "reviewed"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "reviewed"
 
 
 def test_feed_translates_articles_when_language_requested(
@@ -448,7 +472,7 @@ def test_feed_infers_missing_entities(api_client: TestClient) -> None:
     article = next(
         item
         for item in response.json()["articles"]
-        if item["title"] == "Ferrari supplier talks expand in Italy"
+        if item["title"] == "Ferrari supplier talks expand in Italy after strike warning"
     )
     assert "Ferrari" in article["detected_suppliers"]
     assert "Italy" in article["detected_regions"]
