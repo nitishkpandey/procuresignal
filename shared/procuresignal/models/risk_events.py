@@ -14,7 +14,7 @@ class RiskEvent(BaseModel):
 
     __tablename__ = "risk_events"
 
-    event_key: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    event_key: Mapped[str] = mapped_column(String(500), nullable=False)
     processed_article_id: Mapped[int] = mapped_column(nullable=False)
 
     risk_type: Mapped[str] = mapped_column(String(50), nullable=False)
