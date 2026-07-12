@@ -25,8 +25,12 @@ from api.routers import feed as feed_router
 
 
 @pytest.fixture()
-def api_client():
+def api_client(monkeypatch: pytest.MonkeyPatch):
     """Create a test client backed by a seeded in-memory SQLite database."""
+
+    # The app lifespan initializes DATABASE_URL when CI provides it, which would
+    # replace this fixture's isolated SQLite session with an unmigrated Postgres.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     engine = create_async_engine(
         "sqlite+aiosqlite://",
