@@ -77,12 +77,54 @@ def test_detector_uses_existing_signal_tags() -> None:
             priority_signal="tariff",
             detected_regions=["Germany"],
         ),
-        _raw(title="New import duty raises cost pressure"),
+        _raw(
+            title="New import duty raises cost pressure",
+            description="Procurement teams are reviewing the updated customs rules.",
+            content_snippet="Procurement teams are reviewing the updated customs rules.",
+        ),
     )
 
     assert [event.risk_type for event in events] == ["tariff"]
     assert events[0].affected_locations == ["Germany"]
     assert events[0].confidence >= 0.75
+
+
+def test_detector_uses_content_snippet_when_other_article_text_is_neutral() -> None:
+    events = detect_risk_events(
+        _processed(
+            normalized_title="Supplier update draws market attention",
+            summary="Procurement teams are monitoring the supplier update.",
+            signal_tags=[],
+            priority_signal=None,
+            detected_regions=[],
+        ),
+        _raw(
+            title="Supplier update draws market attention",
+            description="Procurement teams are monitoring the supplier update.",
+            content_snippet="The supplier filed for bankruptcy after missing debt payments.",
+        ),
+    )
+
+    assert [event.risk_type for event in events] == ["bankruptcy"]
+    assert "bankruptcy" in events[0].evidence_snippet.lower()
+
+
+def test_unrelated_signal_metadata_does_not_suppress_explicit_text_risk() -> None:
+    events = detect_risk_events(
+        _processed(
+            normalized_title="Supplier seeks court protection",
+            summary="The company filed for bankruptcy after prolonged losses.",
+            signal_tags=["supplier_risk"],
+            priority_signal=None,
+        ),
+        _raw(
+            title="Supplier seeks court protection",
+            description="The company filed for bankruptcy after prolonged losses.",
+            content_snippet="Creditors are reviewing the filing.",
+        ),
+    )
+
+    assert [event.risk_type for event in events] == ["bankruptcy"]
 
 
 def test_detector_returns_empty_list_for_non_procurement_article() -> None:
@@ -94,7 +136,11 @@ def test_detector_returns_empty_list_for_non_procurement_article() -> None:
             priority_signal=None,
             detected_regions=[],
         ),
-        _raw(title="Markets move slightly after earnings", description="A quiet session."),
+        _raw(
+            title="Markets move slightly after earnings",
+            description="A quiet session.",
+            content_snippet="Investors watched technology stocks during a quiet session.",
+        ),
     )
 
     assert events == []

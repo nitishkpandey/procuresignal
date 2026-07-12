@@ -38,8 +38,6 @@ def detect_risk_events(
         terms = risk_terms_for([risk_type])
         metadata_match = bool(article_signal_terms & terms)
         text_match = text_matches_signal_terms(text, terms)
-        if article_signal_terms and not metadata_match:
-            continue
         if not metadata_match and not text_match:
             continue
 
@@ -71,6 +69,7 @@ def _article_text(processed: NewsArticleProcessed, raw: NewsArticleRaw | None) -
         processed.summary,
         raw.title if raw else "",
         raw.description if raw else "",
+        raw.content_snippet if raw else "",
         " ".join(processed.detected_regions or []),
         " ".join(processed.detected_categories or []),
     ]
