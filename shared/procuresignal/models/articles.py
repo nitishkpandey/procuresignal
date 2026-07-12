@@ -73,10 +73,12 @@ class NewsArticleProcessed(BaseModel):
     llm_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
     processed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    risk_event_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_raw_article_id", "raw_article_id"),
         Index("idx_top_level_category", "top_level_category"),
         Index("idx_signal_score", "signal_score"),
         Index("idx_processed_at", "processed_at"),
+        Index("idx_risk_event_scan_pending", "risk_event_checked_at", "processed_at"),
     )

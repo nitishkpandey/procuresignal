@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 
 from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, OpenAILLMClient
+from procuresignal.jobs import RetentionPolicy, prune_expired_records
 from procuresignal.models import NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
@@ -21,6 +22,7 @@ from procuresignal.retrieval import (
     RawArticle,
     RSSProvider,
 )
+from procuresignal.risk_events.persistence import generate_risk_events
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -348,6 +350,56 @@ def personalize_feeds_task(self) -> dict[str, Any]:
 
 
 @app.task(
+    name="worker.tasks.generate_risk_events_task",
+    bind=True,
+    max_retries=2,
+    queue="personalization",
+    time_limit=1800,
+)
+def generate_risk_events_task(self) -> dict[str, Any]:
+    """Generate idempotent procurement risk events from processed articles."""
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            result = await generate_risk_events(session, days_back=7, limit=500)
+            return {
+                "status": "success",
+                "created": result.created,
+                "updated": result.updated,
+                "scanned": result.scanned,
+                "errors": result.errors,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.prune_retention_task",
+    bind=True,
+    max_retries=2,
+    queue="default",
+    time_limit=1800,
+)
+def prune_retention_task(self) -> dict[str, Any]:
+    """Prune expired raw, processed, feed, and risk event records."""
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            result = await prune_expired_records(session, policy=RetentionPolicy())
+            return {
+                "status": "success",
+                "raw_deleted": result.raw_deleted,
+                "processed_deleted": result.processed_deleted,
+                "feed_deleted": result.feed_deleted,
+                "risk_events_deleted": result.risk_events_deleted,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
     name="worker.tasks.health_check_task",
     bind=True,
     queue="default",
@@ -365,8 +417,10 @@ def health_check_task(self) -> dict[str, str]:
 __all__ = [
     "health_check_task",
     "enrich_articles_task",
+    "generate_risk_events_task",
     "normalize_articles_task",
     "personalize_feeds_task",
+    "prune_retention_task",
     "process_article_for_signals",
     "retrieve_news_task",
 ]

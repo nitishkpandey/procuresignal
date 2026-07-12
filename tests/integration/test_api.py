@@ -1,13 +1,19 @@
 """Integration tests for REST API."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.config import database as database_module
 from procuresignal.currency.service import CurrencyMonitorResponse
-from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
+from procuresignal.models import (
+    Base,
+    NewsArticleProcessed,
+    NewsArticleRaw,
+    RiskEvent,
+    UserNewsPreference,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -93,11 +99,11 @@ def api_client():
 
             processed_missing_entities = NewsArticleProcessed(
                 raw_article_id=raw_missing_entities.id,
-                normalized_title="Ferrari supplier talks expand in Italy",
-                summary="Ferrari and Mercedes are watching supplier continuity in Italy.",
+                normalized_title="Ferrari supplier talks expand in Italy after strike warning",
+                summary="Ferrari and Mercedes are watching supplier continuity in Italy after strike disruption.",
                 top_level_category="automotive",
-                signal_tags=["supplier_risk"],
-                priority_signal="supplier_risk",
+                signal_tags=["strike", "supplier_risk"],
+                priority_signal="strike",
                 detected_regions=[],
                 detected_suppliers=[],
                 detected_categories=[],
@@ -108,6 +114,26 @@ def api_client():
                 processed_at=datetime.utcnow(),
             )
             session.add(processed_missing_entities)
+            await session.flush()
+
+            session.add(
+                RiskEvent(
+                    event_key="seed-risk-event",
+                    processed_article_id=processed_missing_entities.id,
+                    risk_type="strike",
+                    severity="medium",
+                    confidence=0.82,
+                    affected_suppliers=[],
+                    affected_locations=["Italy"],
+                    affected_categories=["risk_events"],
+                    evidence_snippet="Supplier continuity is at risk after a strike warning.",
+                    recommendation="Review logistics buffers and supplier delivery commitments.",
+                    source_name="Industry Week",
+                    source_url="https://example.com/article-456",
+                    published_at=datetime.utcnow(),
+                    status="new",
+                )
+            )
 
             pref = UserNewsPreference(
                 user_id="user-123",
@@ -212,6 +238,256 @@ def test_feed_endpoint(api_client: TestClient) -> None:
     assert payload["user_id"] == "user-123"
     assert payload["total_count"] >= 1
     assert payload["articles"]
+
+
+def test_risk_events_endpoint_lists_persisted_events(api_client: TestClient) -> None:
+    response = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "user-123"
+    assert payload["total_count"] == 1
+    assert payload["events"][0]["risk_type"] == "strike"
+
+
+def test_risk_event_status_update(api_client: TestClient) -> None:
+    listed = api_client.get("/api/risk-events", params={"user_id": "user-123", "limit": 20})
+    assert listed.status_code == 200
+    event_id = listed.json()["events"][0]["id"]
+    response = api_client.patch(f"/api/risk-events/{event_id}/status", json={"status": "reviewed"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "reviewed"
+
+
+def test_risk_events_paginates_after_preference_ranking(api_client: TestClient) -> None:
+    async def seed_events() -> list[int]:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        events = []
+        for index, confidence, suppliers in [
+            (1, 0.60, []),
+            (2, 0.60, []),
+            (3, 0.60, []),
+            (4, 0.70, ["Bosch"]),
+            (5, 0.65, ["Bosch"]),
+        ]:
+            events.append(
+                RiskEvent(
+                    event_key=f"pagination-{index}",
+                    processed_article_id=100 + index,
+                    risk_type="strike",
+                    severity="medium",
+                    confidence=confidence,
+                    affected_suppliers=suppliers,
+                    affected_locations=["Italy"],
+                    affected_categories=["automotive"],
+                    evidence_snippet="Supplier continuity risk.",
+                    recommendation="Review contingency plans.",
+                    source_name="Test source",
+                    source_url="https://example.com/risk-event",
+                    published_at=now - timedelta(seconds=index),
+                    status="new",
+                )
+            )
+        events.append(
+            RiskEvent(
+                event_key="pagination-expired",
+                processed_article_id=199,
+                risk_type="strike",
+                severity="medium",
+                confidence=0.99,
+                affected_suppliers=["Bosch"],
+                affected_locations=["Italy"],
+                affected_categories=["automotive"],
+                evidence_snippet="Expired event.",
+                recommendation="Ignore expired event.",
+                source_name="Test source",
+                source_url="https://example.com/expired",
+                published_at=now - timedelta(days=15),
+                status="new",
+            )
+        )
+        async with session_maker() as session:
+            session.add_all(events)
+            await session.commit()
+            return [event.id for event in events[:-1]]
+
+    older_preferred_ids = asyncio.run(seed_events())[-2:]
+    response = api_client.get(
+        "/api/risk-events",
+        params={
+            "user_id": "user-123",
+            "category": "automotive",
+            "limit": 1,
+            "offset": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_count"] == 5
+    assert payload["events"][0]["id"] == older_preferred_ids[1]
+
+
+def test_risk_events_supports_all_filters(api_client: TestClient) -> None:
+    async def seed_events() -> None:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        async with session_maker() as session:
+            session.add_all(
+                [
+                    RiskEvent(
+                        event_key="filters-geopolitical",
+                        processed_article_id=301,
+                        risk_type="geopolitical",
+                        severity="high",
+                        confidence=0.9,
+                        affected_suppliers=["Bosch"],
+                        affected_locations=["Poland"],
+                        affected_categories=["automotive"],
+                        evidence_snippet="Conflict risk.",
+                        recommendation="Review exposure.",
+                        source_name="Test source",
+                        source_url="https://example.com/filter-1",
+                        published_at=now,
+                        status="new",
+                    ),
+                    RiskEvent(
+                        event_key="filters-strike",
+                        processed_article_id=302,
+                        risk_type="strike",
+                        severity="medium",
+                        confidence=0.8,
+                        affected_suppliers=["Acme"],
+                        affected_locations=["Italy"],
+                        affected_categories=["energy"],
+                        evidence_snippet="Strike risk.",
+                        recommendation="Review buffers.",
+                        source_name="Test source",
+                        source_url="https://example.com/filter-2",
+                        published_at=now - timedelta(seconds=1),
+                        status="reviewed",
+                    ),
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(seed_events())
+    expected = {
+        "risk_type": ("geopolitical", 301),
+        "severity": ("high", 301),
+        "status": ("reviewed", 302),
+        "supplier": ("Bosch", 301),
+        "location": ("Poland", 301),
+        "category": ("energy", 302),
+    }
+    for filter_name, (filter_value, processed_article_id) in expected.items():
+        response = api_client.get(
+            "/api/risk-events",
+            params={"user_id": "user-123", filter_name: filter_value, "limit": 20},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total_count"] == 1
+        assert response.json()["events"][0]["processed_article_id"] == processed_article_id
+
+
+def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient) -> None:
+    async def seed_events() -> tuple[int, int]:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        events = [
+            RiskEvent(
+                event_key=f"unmatched-{index}",
+                processed_article_id=1_000 + index,
+                risk_type="strike",
+                severity="medium",
+                confidence=0.5,
+                affected_suppliers=["Walmart" if index == 1 else "Other supplier"],
+                affected_locations=["Italy"],
+                affected_categories=["automotive"],
+                evidence_snippet="Unmatched risk event.",
+                recommendation="Review buffers.",
+                source_name="Test source",
+                source_url=None,
+                published_at=now - timedelta(seconds=index),
+                status="new",
+            )
+            for index in range(1_001)
+        ]
+        matching = RiskEvent(
+            event_key="older-matching-event",
+            processed_article_id=2_100,
+            risk_type="strike",
+            severity="medium",
+            confidence=0.5,
+            affected_suppliers=["TargetCo"],
+            affected_locations=["Italy"],
+            affected_categories=["automotive"],
+            evidence_snippet="Matching risk event.",
+            recommendation="Review buffers.",
+            source_name="Test source",
+            source_url=None,
+            published_at=now - timedelta(seconds=1_001),
+            status="new",
+        )
+        escaped = RiskEvent(
+            event_key="escaped-matching-event",
+            processed_article_id=2_101,
+            risk_type="strike",
+            severity="medium",
+            confidence=0.5,
+            affected_suppliers=['Müller "Steel"'],
+            affected_locations=["Munich"],
+            affected_categories=["automotive"],
+            evidence_snippet="Escaped supplier risk event.",
+            recommendation="Review buffers.",
+            source_name="Test source",
+            source_url=None,
+            published_at=now - timedelta(seconds=1_002),
+            status="new",
+        )
+        async with session_maker() as session:
+            session.add_all([*events, matching, escaped])
+            await session.commit()
+            return matching.id, escaped.id
+
+    matching_id, escaped_id = asyncio.run(seed_events())
+    response = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "targetco", "limit": 20},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total_count"] == 1
+    assert response.json()["events"][0]["id"] == matching_id
+
+    partial = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "art", "limit": 20},
+    )
+    wildcard = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": "%", "limit": 20},
+    )
+
+    assert partial.status_code == 200
+    assert partial.json()["total_count"] == 0
+    assert wildcard.status_code == 200
+    assert wildcard.json()["total_count"] == 0
+
+    escaped = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": 'Müller "Steel"', "limit": 20},
+    )
+
+    assert escaped.status_code == 200
+    assert escaped.json()["total_count"] == 1
+    assert escaped.json()["events"][0]["id"] == escaped_id
 
 
 def test_feed_translates_articles_when_language_requested(
@@ -448,7 +724,7 @@ def test_feed_infers_missing_entities(api_client: TestClient) -> None:
     article = next(
         item
         for item in response.json()["articles"]
-        if item["title"] == "Ferrari supplier talks expand in Italy"
+        if item["title"] == "Ferrari supplier talks expand in Italy after strike warning"
     )
     assert "Ferrari" in article["detected_suppliers"]
     assert "Italy" in article["detected_regions"]

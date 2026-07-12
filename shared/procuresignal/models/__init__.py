@@ -5,6 +5,7 @@ from .base import Base, BaseModel
 from .chat import ChatConversation, ChatMessage
 from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
+from .risk_events import RiskEvent
 from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "Signal",
     "SignalMetadata",
     "SignalSupplyChainImpact",
+    "RiskEvent",
 ]

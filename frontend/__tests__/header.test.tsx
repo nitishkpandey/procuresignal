@@ -29,6 +29,7 @@ describe("Header", () => {
     render(<Header />);
     expect(screen.getByRole("link", { name: "Feed" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Currency" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Risks" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Preferences" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });

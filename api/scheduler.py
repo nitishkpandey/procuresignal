@@ -14,6 +14,7 @@ SCHEDULED_JOB_IDS = (
     "retrieve-news",
     "normalize-articles",
     "enrich-articles",
+    "generate-risk-events",
     "personalize-feeds",
     "prune-retention",
 )
@@ -37,6 +38,12 @@ def _enqueue_enrich_articles() -> None:
     enrich_articles_task.delay()
 
 
+def _enqueue_generate_risk_events() -> None:
+    from worker.tasks import generate_risk_events_task
+
+    generate_risk_events_task.delay()
+
+
 def _enqueue_personalize_feeds() -> None:
     from worker.tasks import personalize_feeds_task
 
@@ -47,7 +54,8 @@ async def _run_retention() -> None:
     async with session_scope() as session:
         result = await prune_expired_records(session, policy=RetentionPolicy())
         logger.info(
-            "Retention pruned raw=%s processed=%s feed=%s",
+            "Retention pruned risk_events=%s raw=%s processed=%s feed=%s",
+            result.risk_events_deleted,
             result.raw_deleted,
             result.processed_deleted,
             result.feed_deleted,
@@ -87,6 +95,13 @@ def configure_scheduler(scheduler) -> None:
         minute=45,
         hour="*/2",
         **_job_options("enrich-articles"),
+    )
+    scheduler.add_job(
+        _enqueue_generate_risk_events,
+        "cron",
+        minute=50,
+        hour="*/2",
+        **_job_options("generate-risk-events"),
     )
     scheduler.add_job(
         _enqueue_personalize_feeds,

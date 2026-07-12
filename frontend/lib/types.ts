@@ -129,3 +129,30 @@ export interface ChatFrame {
   type: ChatFrameType;
   content: string;
 }
+
+export type RiskEventStatus = "new" | "reviewed" | "dismissed";
+
+export interface RiskEvent {
+  id: number;
+  processed_article_id: number;
+  risk_type: string;
+  severity: string;
+  confidence: number;
+  affected_suppliers: string[];
+  affected_locations: string[];
+  affected_categories: string[];
+  evidence_snippet: string;
+  recommendation: string;
+  source_name: string;
+  source_url: string | null;
+  published_at: string;
+  status: RiskEventStatus;
+  rank_score: number;
+}
+
+export interface RiskEventResponse {
+  user_id: string;
+  events: RiskEvent[];
+  total_count: number;
+  generated_at: string;
+}

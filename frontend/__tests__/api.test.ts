@@ -91,4 +91,22 @@ describe("api client", () => {
       params: { days: 30 },
     });
   });
+
+  it("getRiskEvents calls /api/risk-events with user_id and language", async () => {
+    mockedGet.mockResolvedValue({ data: { user_id: "u1", events: [], total_count: 0 } });
+    const res = await api.getRiskEvents("u1", { limit: 25, language: "de" });
+    expect(mockedGet).toHaveBeenCalledWith("/api/risk-events", {
+      params: { user_id: "u1", limit: 25, language: "de" },
+    });
+    expect(res.user_id).toBe("u1");
+  });
+
+  it("updateRiskEventStatus patches status", async () => {
+    mockedPatch.mockResolvedValue({ data: { id: 1, status: "reviewed" } });
+    const res = await api.updateRiskEventStatus(1, "reviewed");
+    expect(mockedPatch).toHaveBeenCalledWith("/api/risk-events/1/status", {
+      status: "reviewed",
+    });
+    expect(res.status).toBe("reviewed");
+  });
 });

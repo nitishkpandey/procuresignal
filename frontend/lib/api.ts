@@ -9,6 +9,9 @@ import type {
   FeedResponse,
   MessageListResponse,
   Preferences,
+  RiskEvent,
+  RiskEventResponse,
+  RiskEventStatus,
   SearchResponse,
 } from "@/lib/types";
 
@@ -69,6 +72,28 @@ export async function getCurrencyMonitor(
   const { data } = await client.get("/api/currency/eur-monitor", {
     params,
   });
+  return data;
+}
+
+export async function getRiskEvents(
+  userId: string,
+  opts: { limit?: number; language?: string } = {},
+): Promise<RiskEventResponse> {
+  const { data } = await client.get("/api/risk-events", {
+    params: {
+      user_id: userId,
+      limit: opts.limit ?? 50,
+      language: opts.language ?? "en",
+    },
+  });
+  return data;
+}
+
+export async function updateRiskEventStatus(
+  id: number,
+  status: RiskEventStatus,
+): Promise<RiskEvent> {
+  const { data } = await client.patch(`/api/risk-events/${id}/status`, { status });
   return data;
 }
 

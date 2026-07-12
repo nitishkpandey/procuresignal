@@ -6,6 +6,7 @@ from worker.tasks import (
     health_check_task,
     normalize_articles_task,
     personalize_feeds_task,
+    prune_retention_task,
     retrieve_news_task,
 )
 
@@ -25,11 +26,13 @@ def test_task_names_and_retry_config() -> None:
     assert normalize_articles_task.name == "worker.tasks.normalize_articles_task"
     assert enrich_articles_task.name == "worker.tasks.enrich_articles_task"
     assert personalize_feeds_task.name == "worker.tasks.personalize_feeds_task"
+    assert prune_retention_task.name == "worker.tasks.prune_retention_task"
 
     assert retrieve_news_task.max_retries == 3
     assert normalize_articles_task.max_retries == 3
     assert enrich_articles_task.max_retries == 2
     assert personalize_feeds_task.max_retries == 2
+    assert prune_retention_task.max_retries == 2
 
 
 def test_celery_routes_and_schedule() -> None:
@@ -38,9 +41,19 @@ def test_celery_routes_and_schedule() -> None:
     assert app.conf.task_routes["worker.tasks.normalize_articles_task"]["queue"] == "processing"
     assert app.conf.task_routes["worker.tasks.enrich_articles_task"]["queue"] == "enrichment"
     assert app.conf.task_routes["worker.tasks.personalize_feeds_task"]["queue"] == "personalization"
+    assert app.conf.task_routes["worker.tasks.prune_retention_task"]["queue"] == "default"
 
     schedule = app.conf.beat_schedule
     assert schedule["retrieve-news-every-6-hours"]["options"]["queue"] == "retrieval"
     assert schedule["normalize-articles-every-2-hours"]["options"]["queue"] == "processing"
     assert schedule["enrich-articles-every-2-hours"]["options"]["queue"] == "enrichment"
     assert schedule["personalize-feeds-every-hour"]["options"]["queue"] == "personalization"
+    assert schedule["prune-retention-daily"]["task"] == "worker.tasks.prune_retention_task"
+    assert schedule["prune-retention-daily"]["options"]["queue"] == "default"
+
+
+def test_generate_risk_events_task_is_exported() -> None:
+    from worker.tasks import __all__
+
+    assert "generate_risk_events_task" in __all__
+    assert "prune_retention_task" in __all__

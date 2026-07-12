@@ -10,6 +10,7 @@ import { useUserStore } from "@/store/user";
 
 const NAV = [
   { href: "/", labelKey: "nav.feed" },
+  { href: "/risk-events", labelKey: "nav.risks" },
   { href: "/preferences", labelKey: "nav.preferences" },
   { href: "/chat", labelKey: "nav.chat" },
 ] satisfies { href: string; labelKey: TranslationKey }[];

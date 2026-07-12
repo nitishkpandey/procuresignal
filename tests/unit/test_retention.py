@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 from procuresignal.jobs.retention import RetentionPolicy, prune_expired_records
-from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw, UserNewsFeed
+from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw, RiskEvent, UserNewsFeed
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -119,9 +119,50 @@ def test_prune_expired_records_is_idempotent():
                     ),
                 ]
             )
+            session.add_all(
+                [
+                    RiskEvent(
+                        event_key="old-risk-event",
+                        processed_article_id=old_processed.id,
+                        risk_type="strike",
+                        severity="medium",
+                        confidence=0.8,
+                        affected_suppliers=[],
+                        affected_locations=[],
+                        affected_categories=["general"],
+                        evidence_snippet="Old risk event.",
+                        recommendation="Review buffers.",
+                        source_name="Example",
+                        source_url=None,
+                        published_at=now - timedelta(days=20),
+                        status="new",
+                    ),
+                    RiskEvent(
+                        event_key="recent-risk-event",
+                        processed_article_id=recent_processed.id,
+                        risk_type="strike",
+                        severity="medium",
+                        confidence=0.8,
+                        affected_suppliers=[],
+                        affected_locations=[],
+                        affected_categories=["general"],
+                        evidence_snippet="Recent risk event.",
+                        recommendation="Review buffers.",
+                        source_name="Example",
+                        source_url=None,
+                        published_at=now,
+                        status="new",
+                    ),
+                ]
+            )
             await session.commit()
 
-            policy = RetentionPolicy(raw_days=14, processed_days=30, feed_days=14)
+            policy = RetentionPolicy(
+                raw_days=14,
+                processed_days=30,
+                feed_days=14,
+                risk_event_days=14,
+            )
             first = await prune_expired_records(session, policy=policy, now=now)
             second = await prune_expired_records(session, policy=policy, now=now)
 
@@ -130,16 +171,20 @@ def test_prune_expired_records_is_idempotent():
                 select(func.count()).select_from(NewsArticleProcessed)
             )
             feed_count = await session.scalar(select(func.count()).select_from(UserNewsFeed))
-            return first, second, raw_count, processed_count, feed_count
+            risk_event_count = await session.scalar(select(func.count()).select_from(RiskEvent))
+            return first, second, raw_count, processed_count, feed_count, risk_event_count
 
-    first, second, raw_count, processed_count, feed_count = asyncio.run(run())
+    first, second, raw_count, processed_count, feed_count, risk_event_count = asyncio.run(run())
 
     assert first.raw_deleted == 1
     assert first.processed_deleted == 1
     assert first.feed_deleted == 1
+    assert first.risk_events_deleted == 1
     assert second.raw_deleted == 0
     assert second.processed_deleted == 0
     assert second.feed_deleted == 0
+    assert second.risk_events_deleted == 0
     assert raw_count == 1
     assert processed_count == 1
     assert feed_count == 1
+    assert risk_event_count == 1

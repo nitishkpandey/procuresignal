@@ -38,10 +38,15 @@ CELERY_TASK_ROUTES = {
         "routing_key": "processing",
     },
     "worker.tasks.enrich_articles_task": {"queue": "enrichment", "routing_key": "enrichment"},
+    "worker.tasks.generate_risk_events_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
     "worker.tasks.personalize_feeds_task": {
         "queue": "personalization",
         "routing_key": "personalization",
     },
+    "worker.tasks.prune_retention_task": {"queue": "default", "routing_key": "default"},
     "worker.tasks.health_check_task": {"queue": "default", "routing_key": "default"},
 }
 
@@ -61,10 +66,20 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=45, hour="*/2"),
         "options": {"queue": "enrichment"},
     },
+    "generate-risk-events-hourly": {
+        "task": "worker.tasks.generate_risk_events_task",
+        "schedule": crontab(minute=50, hour="*"),
+        "options": {"queue": "personalization"},
+    },
     "personalize-feeds-every-hour": {
         "task": "worker.tasks.personalize_feeds_task",
         "schedule": crontab(minute=0, hour="*"),
         "options": {"queue": "personalization"},
+    },
+    "prune-retention-daily": {
+        "task": "worker.tasks.prune_retention_task",
+        "schedule": crontab(minute=15, hour=2),
+        "options": {"queue": "default"},
     },
 }
 
