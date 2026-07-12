@@ -36,6 +36,7 @@ _GEOPOLITICAL_TEXT_ALIASES = {
 _GEOPOLITICAL_ACTION_TERMS = expand_signal_terms(_GEOPOLITICAL_TEXT_ALIASES)
 _CONSERVATIVE_TEXT_ALIASES = {
     "geopolitical": _GEOPOLITICAL_TEXT_ALIASES,
+    "regional_conflict": _GEOPOLITICAL_TEXT_ALIASES,
     "tariff": {
         "tariff increase",
         "tariff hike",
@@ -106,11 +107,16 @@ def detect_risk_events(
     for risk_type in RISK_TYPE_ORDER:
         terms = risk_terms_for([risk_type])
         text_terms = _text_terms_for(risk_type, terms)
-        metadata_match = bool(article_signal_terms & terms)
+        raw_metadata_match = bool(article_signal_terms & terms)
         text_match = (
             _text_matches_exact(text, text_terms)
             if risk_type in _CONSERVATIVE_TEXT_ALIASES
             else text_matches_signal_terms(text, text_terms)
+        )
+        metadata_match = (
+            raw_metadata_match and text_match
+            if risk_type in _CONSERVATIVE_TEXT_ALIASES
+            else raw_metadata_match
         )
         if risk_type in {"geopolitical", "regional_conflict"} and not (
             article_signal_terms & _GEOPOLITICAL_ACTION_TERMS

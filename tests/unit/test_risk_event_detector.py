@@ -235,6 +235,41 @@ def test_detector_ignores_generic_risk_nouns_without_a_risk_phrase() -> None:
         assert events == []
 
 
+def test_detector_requires_context_for_ambiguous_metadata() -> None:
+    cases = [
+        (
+            "Company leaders strike a deal",
+            "The leaders will strike a deal this week.",
+            "strike",
+        ),
+        (
+            "Supplier deal expands cooperation",
+            "The supplier deal expands commercial cooperation.",
+            "m&a",
+        ),
+        (
+            "Conflict of interest policy updated",
+            "The policy describes internal conflict of interest rules.",
+            "geopolitical",
+        ),
+    ]
+
+    for title, summary, signal in cases:
+        events = detect_risk_events(
+            _processed(
+                normalized_title=title,
+                summary=summary,
+                signal_tags=[signal],
+                priority_signal=signal,
+                detected_regions=[],
+                detected_categories=[],
+            ),
+            _raw(title=title, description=summary, content_snippet=summary),
+        )
+
+        assert events == []
+
+
 def test_detector_keeps_conservative_risk_phrases() -> None:
     cases = [
         ("Acquisition announced", "The supplier announced an acquisition."),

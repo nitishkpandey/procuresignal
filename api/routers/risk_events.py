@@ -8,6 +8,7 @@ from procuresignal.personalization.matcher import PreferenceMatcher
 from procuresignal.risk_events.taxonomy import risk_terms_for
 from procuresignal.signals.taxonomy import normalize_signal_term
 from sqlalchemy import String, case, cast, desc, func, or_, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_session
@@ -39,13 +40,14 @@ async def list_risk_events(
     stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter).where(
         RiskEvent.published_at >= cutoff
     )
-    stmt = _apply_json_filters(stmt, supplier, location, category)
+    dialect_name = session.bind.dialect.name if session.bind else ""
+    stmt = _apply_json_filters(stmt, supplier, location, category, dialect_name)
     total_count = await session.scalar(select(func.count()).select_from(stmt.subquery()))
 
     preference = await session.scalar(
         select(UserNewsPreference).where(UserNewsPreference.user_id == user_id)
     )
-    rank_score = _rank_score_expression(preference)
+    rank_score = _rank_score_expression(preference, dialect_name)
     rows = (
         await session.execute(
             stmt.add_columns(rank_score)
@@ -107,31 +109,40 @@ def _apply_filters(stmt, risk_type, severity, status_filter):
     return stmt
 
 
-def _apply_json_filters(stmt, supplier, location, category):
+def _apply_json_filters(stmt, supplier, location, category, dialect_name):
     for column, expected in (
         (RiskEvent.affected_suppliers, supplier),
         (RiskEvent.affected_locations, location),
         (RiskEvent.affected_categories, category),
     ):
         if expected and expected.strip():
-            stmt = stmt.where(_json_contains(column, expected))
+            stmt = stmt.where(_json_contains(column, expected, dialect_name))
     return stmt
 
 
-def _json_contains(column, expected: str):
-    normalized = _escape_like(normalize_signal_term(expected))
-    return func.lower(cast(column, String)).like(f'%"{normalized}"%', escape="\\")
+def _json_contains(column, expected: str, dialect_name: str):
+    normalized = normalize_signal_term(expected)
+    if dialect_name == "postgresql":
+        element = (
+            func.jsonb_array_elements_text(cast(column, postgresql.JSONB))
+            .table_valued("value")
+            .alias("risk_json_element")
+        )
+    else:
+        element = func.json_each(column).table_valued("value").alias("risk_json_element")
+    return (
+        select(1)
+        .select_from(element)
+        .where(func.lower(cast(element.c.value, String)) == normalized)
+        .exists()
+    )
 
 
-def _json_matches_any(column, values: set[str]):
-    return or_(*(_json_contains(column, value) for value in sorted(values)))
+def _json_matches_any(column, values: set[str], dialect_name: str):
+    return or_(*(_json_contains(column, value, dialect_name) for value in sorted(values)))
 
 
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _rank_score_expression(preference: UserNewsPreference | None):
+def _rank_score_expression(preference: UserNewsPreference | None, dialect_name: str):
     score = RiskEvent.confidence
     if preference is None:
         return score.label("rank_score")
@@ -142,15 +153,18 @@ def _rank_score_expression(preference: UserNewsPreference | None):
     risk_types = risk_terms_for(PreferenceMatcher._preferred_signals(preference))
     if suppliers:
         score = score + case(
-            (_json_matches_any(RiskEvent.affected_suppliers, suppliers), 0.15), else_=0.0
+            (_json_matches_any(RiskEvent.affected_suppliers, suppliers, dialect_name), 0.15),
+            else_=0.0,
         )
     if regions:
         score = score + case(
-            (_json_matches_any(RiskEvent.affected_locations, regions), 0.15), else_=0.0
+            (_json_matches_any(RiskEvent.affected_locations, regions, dialect_name), 0.15),
+            else_=0.0,
         )
     if categories:
         score = score + case(
-            (_json_matches_any(RiskEvent.affected_categories, categories), 0.1), else_=0.0
+            (_json_matches_any(RiskEvent.affected_categories, categories, dialect_name), 0.1),
+            else_=0.0,
         )
     if risk_types:
         score = score + case((RiskEvent.risk_type.in_(risk_types), 0.1), else_=0.0)

@@ -396,7 +396,7 @@ def test_risk_events_supports_all_filters(api_client: TestClient) -> None:
 
 
 def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient) -> None:
-    async def seed_events() -> int:
+    async def seed_events() -> tuple[int, int]:
         session_maker = database_module.db_config.session_maker
         assert session_maker is not None
         now = datetime.utcnow()
@@ -435,12 +435,28 @@ def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient)
             published_at=now - timedelta(seconds=1_001),
             status="new",
         )
+        escaped = RiskEvent(
+            event_key="escaped-matching-event",
+            processed_article_id=2_101,
+            risk_type="strike",
+            severity="medium",
+            confidence=0.5,
+            affected_suppliers=['Müller "Steel"'],
+            affected_locations=["Munich"],
+            affected_categories=["automotive"],
+            evidence_snippet="Escaped supplier risk event.",
+            recommendation="Review buffers.",
+            source_name="Test source",
+            source_url=None,
+            published_at=now - timedelta(seconds=1_002),
+            status="new",
+        )
         async with session_maker() as session:
-            session.add_all([*events, matching])
+            session.add_all([*events, matching, escaped])
             await session.commit()
-            return matching.id
+            return matching.id, escaped.id
 
-    matching_id = asyncio.run(seed_events())
+    matching_id, escaped_id = asyncio.run(seed_events())
     response = api_client.get(
         "/api/risk-events",
         params={"user_id": "user-123", "supplier": "targetco", "limit": 20},
@@ -463,6 +479,15 @@ def test_risk_event_json_filters_apply_before_pagination(api_client: TestClient)
     assert partial.json()["total_count"] == 0
     assert wildcard.status_code == 200
     assert wildcard.json()["total_count"] == 0
+
+    escaped = api_client.get(
+        "/api/risk-events",
+        params={"user_id": "user-123", "supplier": 'Müller "Steel"', "limit": 20},
+    )
+
+    assert escaped.status_code == 200
+    assert escaped.json()["total_count"] == 1
+    assert escaped.json()["events"][0]["id"] == escaped_id
 
 
 def test_feed_translates_articles_when_language_requested(
