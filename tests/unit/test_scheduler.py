@@ -21,3 +21,9 @@ def test_scheduler_registers_stable_idempotent_jobs():
     assert all(job["replace_existing"] is True for job in scheduler.jobs)
     assert all(job["max_instances"] == 1 for job in scheduler.jobs)
     assert all(job["coalesce"] is True for job in scheduler.jobs)
+
+
+def test_scheduler_registers_risk_event_job() -> None:
+    from api.scheduler import SCHEDULED_JOB_IDS
+
+    assert "generate-risk-events" in SCHEDULED_JOB_IDS

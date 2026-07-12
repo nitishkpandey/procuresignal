@@ -38,6 +38,10 @@ CELERY_TASK_ROUTES = {
         "routing_key": "processing",
     },
     "worker.tasks.enrich_articles_task": {"queue": "enrichment", "routing_key": "enrichment"},
+    "worker.tasks.generate_risk_events_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
     "worker.tasks.personalize_feeds_task": {
         "queue": "personalization",
         "routing_key": "personalization",
@@ -60,6 +64,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "worker.tasks.enrich_articles_task",
         "schedule": crontab(minute=45, hour="*/2"),
         "options": {"queue": "enrichment"},
+    },
+    "generate-risk-events-hourly": {
+        "task": "worker.tasks.generate_risk_events_task",
+        "schedule": crontab(minute=50, hour="*"),
+        "options": {"queue": "personalization"},
     },
     "personalize-feeds-every-hour": {
         "task": "worker.tasks.personalize_feeds_task",

@@ -14,6 +14,7 @@ SCHEDULED_JOB_IDS = (
     "retrieve-news",
     "normalize-articles",
     "enrich-articles",
+    "generate-risk-events",
     "personalize-feeds",
     "prune-retention",
 )
@@ -35,6 +36,12 @@ def _enqueue_enrich_articles() -> None:
     from worker.tasks import enrich_articles_task
 
     enrich_articles_task.delay()
+
+
+def _enqueue_generate_risk_events() -> None:
+    from worker.tasks import generate_risk_events_task
+
+    generate_risk_events_task.delay()
 
 
 def _enqueue_personalize_feeds() -> None:
@@ -87,6 +94,13 @@ def configure_scheduler(scheduler) -> None:
         minute=45,
         hour="*/2",
         **_job_options("enrich-articles"),
+    )
+    scheduler.add_job(
+        _enqueue_generate_risk_events,
+        "cron",
+        minute=50,
+        hour="*/2",
+        **_job_options("generate-risk-events"),
     )
     scheduler.add_job(
         _enqueue_personalize_feeds,

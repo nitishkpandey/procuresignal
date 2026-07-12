@@ -44,3 +44,9 @@ def test_celery_routes_and_schedule() -> None:
     assert schedule["normalize-articles-every-2-hours"]["options"]["queue"] == "processing"
     assert schedule["enrich-articles-every-2-hours"]["options"]["queue"] == "enrichment"
     assert schedule["personalize-feeds-every-hour"]["options"]["queue"] == "personalization"
+
+
+def test_generate_risk_events_task_is_exported() -> None:
+    from worker.tasks import __all__
+
+    assert "generate_risk_events_task" in __all__
