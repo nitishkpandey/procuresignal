@@ -35,9 +35,7 @@ async def list_risk_events(
 
     await generate_risk_events(session, days_back=7, limit=500)
     stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter)
-    result = await session.execute(
-        stmt.order_by(desc(RiskEvent.published_at)).limit(limit + offset)
-    )
+    result = await session.execute(stmt.order_by(desc(RiskEvent.published_at)))
     all_events = list(result.scalars().all())
 
     preference = await session.scalar(

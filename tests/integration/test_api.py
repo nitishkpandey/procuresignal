@@ -1,13 +1,19 @@
 """Integration tests for REST API."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.config import database as database_module
 from procuresignal.currency.service import CurrencyMonitorResponse
-from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
+from procuresignal.models import (
+    Base,
+    NewsArticleProcessed,
+    NewsArticleRaw,
+    RiskEvent,
+    UserNewsPreference,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -16,6 +22,7 @@ from api.main import app
 from api.routers import articles as articles_router
 from api.routers import currency as currency_router
 from api.routers import feed as feed_router
+from api.routers import risk_events as risk_events_router
 
 
 @pytest.fixture()
@@ -236,6 +243,66 @@ def test_risk_event_status_update(api_client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "reviewed"
+
+
+def test_risk_events_paginates_after_preference_ranking(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def skip_generation(*args, **kwargs) -> None:
+        return None
+
+    async def seed_events() -> list[int]:
+        session_maker = database_module.db_config.session_maker
+        assert session_maker is not None
+        now = datetime.utcnow()
+        events = []
+        for index, confidence, suppliers in [
+            (1, 0.60, []),
+            (2, 0.60, []),
+            (3, 0.60, []),
+            (4, 0.70, ["Bosch"]),
+            (5, 0.65, ["Bosch"]),
+        ]:
+            events.append(
+                RiskEvent(
+                    event_key=f"pagination-{index}",
+                    processed_article_id=100 + index,
+                    risk_type="strike",
+                    severity="medium",
+                    confidence=confidence,
+                    affected_suppliers=suppliers,
+                    affected_locations=["Italy"],
+                    affected_categories=["automotive"],
+                    evidence_snippet="Supplier continuity risk.",
+                    recommendation="Review contingency plans.",
+                    source_name="Test source",
+                    source_url="https://example.com/risk-event",
+                    published_at=now - timedelta(seconds=index),
+                    status="new",
+                )
+            )
+        async with session_maker() as session:
+            session.add_all(events)
+            await session.commit()
+            return [event.id for event in events]
+
+    older_preferred_ids = asyncio.run(seed_events())[-2:]
+    monkeypatch.setattr(risk_events_router, "generate_risk_events", skip_generation)
+
+    response = api_client.get(
+        "/api/risk-events",
+        params={
+            "user_id": "user-123",
+            "category": "automotive",
+            "limit": 1,
+            "offset": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_count"] == 5
+    assert payload["events"][0]["id"] == older_preferred_ids[1]
 
 
 def test_feed_translates_articles_when_language_requested(
