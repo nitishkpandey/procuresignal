@@ -222,9 +222,7 @@ SIGNAL_ALIAS_GROUPS = (
     ),
 )
 
-_SIGNAL_ALIAS_LOOKUP = {
-    alias: group for group in SIGNAL_ALIAS_GROUPS for alias in group
-}
+_SIGNAL_ALIAS_LOOKUP = {alias: group for group in SIGNAL_ALIAS_GROUPS for alias in group}
 
 
 def normalize_signal_term(value: str) -> str:

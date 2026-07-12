@@ -30,8 +30,12 @@ def build_event_key(
 ) -> str:
     """Build a deterministic idempotency key for a risk event."""
 
-    supplier_part = ",".join(sorted({value.strip().lower() for value in suppliers if value.strip()}))
-    location_part = ",".join(sorted({value.strip().lower() for value in locations if value.strip()}))
+    supplier_part = ",".join(
+        sorted({value.strip().lower() for value in suppliers if value.strip()})
+    )
+    location_part = ",".join(
+        sorted({value.strip().lower() for value in locations if value.strip()})
+    )
     digest = sha256(
         f"{processed_article_id}:{risk_type}:{supplier_part}:{location_part}".encode()
     ).hexdigest()

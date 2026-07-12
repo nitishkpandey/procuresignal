@@ -119,13 +119,13 @@ def _rank_score(event: RiskEvent, preference: UserNewsPreference | None) -> floa
         return event.confidence
 
     score = event.confidence
-    if PreferenceMatcher._normalized(event.affected_suppliers) & PreferenceMatcher._preferred_suppliers(
-        preference
-    ):
+    if PreferenceMatcher._normalized(
+        event.affected_suppliers
+    ) & PreferenceMatcher._preferred_suppliers(preference):
         score += 0.15
-    if PreferenceMatcher._region_tokens(event.affected_locations) & PreferenceMatcher._preferred_regions(
-        preference
-    ):
+    if PreferenceMatcher._region_tokens(
+        event.affected_locations
+    ) & PreferenceMatcher._preferred_regions(preference):
         score += 0.15
     if set(event.affected_categories or []) & PreferenceMatcher._preferred_categories(preference):
         score += 0.1
