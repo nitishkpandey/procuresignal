@@ -57,15 +57,19 @@ def test_extracts_signals_entities_category_and_bounded_scores() -> None:
 def test_summary_falls_back_from_description_to_snippet_to_title(
     description: str | None, snippet: str | None, expected: str
 ) -> None:
-    output = DeterministicEnricher().analyze(
-        article(description=description, content_snippet=snippet), summary_max_chars=120
-    ).output
+    output = (
+        DeterministicEnricher()
+        .analyze(article(description=description, content_snippet=snippet), summary_max_chars=120)
+        .output
+    )
 
     assert output.summary.startswith(expected)
 
 
 def test_summary_truncation_is_stable_and_respects_bound() -> None:
-    source = "Bosch announced an automotive supply update for Germany with several additional details."
+    source = (
+        "Bosch announced an automotive supply update for Germany with several additional details."
+    )
     enricher = DeterministicEnricher()
 
     first = enricher.analyze(article(description=source), summary_max_chars=40).output.summary
@@ -77,10 +81,14 @@ def test_summary_truncation_is_stable_and_respects_bound() -> None:
 
 
 def test_word_boundary_truncation_preserves_minimum_at_ten_chars() -> None:
-    summary = DeterministicEnricher().analyze(
-        article(description="This is sufficiently long"),
-        summary_max_chars=10,
-    ).output.summary
+    summary = (
+        DeterministicEnricher()
+        .analyze(
+            article(description="This is sufficiently long"),
+            summary_max_chars=10,
+        )
+        .output.summary
+    )
 
     assert summary == "This is s…"
     assert len(summary) == 10
@@ -104,24 +112,32 @@ def test_general_news_has_no_signal_and_low_relevance() -> None:
 
 
 def test_multiple_signals_preserve_classifier_order() -> None:
-    output = DeterministicEnricher().analyze(
-        article(description="Bosch faces a tariff and a labor strike in Germany."),
-        summary_max_chars=120,
-    ).output
+    output = (
+        DeterministicEnricher()
+        .analyze(
+            article(description="Bosch faces a tariff and a labor strike in Germany."),
+            summary_max_chars=120,
+        )
+        .output
+    )
 
     assert output.signal_tags == ["tariff", "strike"]
     assert output.priority_signal == "tariff"
 
 
 def test_entities_are_deduplicated_across_article_fields() -> None:
-    output = DeterministicEnricher().analyze(
-        article(
-            title="Bosch strike in Germany",
-            description="Bosch workers in Germany began a strike.",
-            content_snippet="Bosch operations across Germany were affected.",
-        ),
-        summary_max_chars=120,
-    ).output
+    output = (
+        DeterministicEnricher()
+        .analyze(
+            article(
+                title="Bosch strike in Germany",
+                description="Bosch workers in Germany began a strike.",
+                content_snippet="Bosch operations across Germany were affected.",
+            ),
+            summary_max_chars=120,
+        )
+        .output
+    )
 
     assert output.detected_suppliers == ["Bosch"]
     assert output.detected_regions == ["Germany"]
@@ -147,23 +163,31 @@ def test_summary_is_schema_valid_for_empty_whitespace_and_short_sources(
     snippet: str | None,
     max_chars: int,
 ) -> None:
-    summary = DeterministicEnricher().analyze(
-        article(title=title, description=description, content_snippet=snippet),
-        summary_max_chars=max_chars,
-    ).output.summary
+    summary = (
+        DeterministicEnricher()
+        .analyze(
+            article(title=title, description=description, content_snippet=snippet),
+            summary_max_chars=max_chars,
+        )
+        .output.summary
+    )
 
     assert 10 <= len(summary) <= max_chars
 
 
 def test_summary_skips_whitespace_but_preserves_source_preference() -> None:
-    summary = DeterministicEnricher().analyze(
-        article(
-            title="Title fallback text",
-            description="   ",
-            content_snippet="Snippet preferred over title",
-        ),
-        summary_max_chars=80,
-    ).output.summary
+    summary = (
+        DeterministicEnricher()
+        .analyze(
+            article(
+                title="Title fallback text",
+                description="   ",
+                content_snippet="Snippet preferred over title",
+            ),
+            summary_max_chars=80,
+        )
+        .output.summary
+    )
 
     assert summary.startswith("Snippet preferred over title")
 
@@ -175,27 +199,74 @@ def test_summary_max_chars_requires_an_integer_excluding_bool(invalid: object) -
 
 
 def test_clear_content_category_outweighs_conflicting_query_group() -> None:
-    output = DeterministicEnricher().analyze(
-        article(
-            title="Automotive vehicle production expands",
-            description="Car manufacturers add a new vehicle assembly line.",
-            query_group="regulatory",
-        ),
-        summary_max_chars=120,
-    ).output
+    output = (
+        DeterministicEnricher()
+        .analyze(
+            article(
+                title="Automotive vehicle production expands",
+                description="Car manufacturers add a new vehicle assembly line.",
+                query_group="regulatory",
+            ),
+            summary_max_chars=120,
+        )
+        .output
+    )
 
     assert output.category == "automotive"
 
 
 def test_query_group_category_wins_without_stronger_content_evidence() -> None:
-    output = DeterministicEnricher().analyze(
-        article(
-            title="New requirements announced",
-            description="Officials published details for affected businesses.",
-            query_group="regulatory",
-            source_name="Daily Bulletin",
-        ),
-        summary_max_chars=120,
-    ).output
+    output = (
+        DeterministicEnricher()
+        .analyze(
+            article(
+                title="New requirements announced",
+                description="Officials published details for affected businesses.",
+                query_group="regulatory",
+                source_name="Daily Bulletin",
+            ),
+            summary_max_chars=120,
+        )
+        .output
+    )
 
     assert output.category == "regulatory"
+
+
+@pytest.mark.parametrize(
+    ("title", "description", "query_group", "expected_signal", "expected_region"),
+    [
+        (
+            "Hafenstreik unterbricht Volkswagen-Lieferungen in Deutschland",
+            "Der Arbeitskampf verzögert Bauteile und gefährdet die Lieferkette.",
+            "logistics_disruption",
+            "strike",
+            "Germany",
+        ),
+        (
+            "Une nouvelle réglementation concerne Toyota en France",
+            "La loi impose de nouvelles obligations aux achats automobiles.",
+            "regulatory",
+            "regulatory",
+            "France",
+        ),
+    ],
+)
+def test_multilingual_procurement_vocabulary_is_canonicalized(
+    title: str,
+    description: str,
+    query_group: str,
+    expected_signal: str,
+    expected_region: str,
+) -> None:
+    output = (
+        DeterministicEnricher()
+        .analyze(
+            article(title=title, description=description, query_group=query_group),
+            summary_max_chars=160,
+        )
+        .output
+    )
+
+    assert output.signal_tags == [expected_signal]
+    assert output.detected_regions == [expected_region]

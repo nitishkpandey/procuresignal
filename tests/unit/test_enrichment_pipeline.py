@@ -131,6 +131,47 @@ async def test_deterministic_and_cache_routes_make_zero_llm_calls(session: Async
 
 
 @pytest.mark.asyncio
+async def test_deterministic_route_never_invokes_lazy_client_factory(
+    session: AsyncSession,
+) -> None:
+    raw = _raw("lazy-deterministic")
+    session.add(raw)
+    await session.commit()
+
+    def forbidden_factory():
+        raise AssertionError("deterministic route invoked the OpenAI factory")
+
+    result = await EnrichmentPipeline(
+        llm_client_factory=forbidden_factory,
+        deterministic_enricher=_Analysis(0.9, 0.9),
+    ).process_raw_articles(session, [raw])
+
+    assert result.metrics.deterministic == 1
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_never_invokes_lazy_client_factory(session: AsyncSession) -> None:
+    original, duplicate = _raw("lazy-cache-original"), _raw("lazy-cache-duplicate")
+    duplicate.title = original.title
+    duplicate.description = original.description
+    session.add_all([original, duplicate])
+    await session.commit()
+    await EnrichmentPipeline(deterministic_enricher=_Analysis(0.9, 0.9)).process_raw_articles(
+        session, [original]
+    )
+
+    def forbidden_factory():
+        raise AssertionError("cache route invoked the OpenAI factory")
+
+    result = await EnrichmentPipeline(
+        llm_client_factory=forbidden_factory,
+        deterministic_enricher=_ExplodingAnalysis(),
+    ).process_raw_articles(session, [duplicate])
+
+    assert result.metrics.cached == 1
+
+
+@pytest.mark.asyncio
 async def test_ambiguous_article_calls_llm_once_and_is_idempotent(session: AsyncSession) -> None:
     raw = _raw()
     session.add(raw)
