@@ -27,7 +27,7 @@ for p in <the 9 coverage paths, stale directory, 12 duplicate paths, and intervi
 done
 ```
 
-Result: exit 0. All 23 cleanup targets and `docs/interview-preparation.md` printed `PRESENT`. Worktree status before Task 2 showed the pre-existing modified `.superpowers/sdd/task-1-report.md` and intentional untracked `frontend/node_modules` symlink.
+Result: exit 0. All 22 cleanup targets and the separately checked `docs/interview-preparation.md` printed `PRESENT`. Worktree status before Task 2 showed the pre-existing modified `.superpowers/sdd/task-1-report.md` and intentional untracked `frontend/node_modules` symlink.
 
 ### Scoped deletion
 
