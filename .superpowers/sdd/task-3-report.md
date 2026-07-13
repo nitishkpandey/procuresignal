@@ -23,9 +23,9 @@ Because static absence alone is insufficient for framework-driven code, all dyna
 
 - Added explicit engine/session-factory types and made the database URL fallback visibly non-optional.
 - Added concrete Pydantic validator, API serializer/response, and scheduler option types.
-- Filtered optional signal values before passing them to string-only normalization.
+- Widened signal normalization inputs to their honest runtime type while preserving historical stringification, including `None`.
 - Materialized currency history values into a consistently typed list.
-- Added narrowly scoped MyPy overrides for third-party libraries without type metadata and framework boundaries where Celery decorators or SQLAlchemy dynamic result/column APIs erase types. Strict checking remains enabled for the rest of the codebase.
+- Added missing-import handling only for third-party libraries without typing metadata; first-party code remains fully checked.
 
 ## Commands and results
 
@@ -49,20 +49,24 @@ PYTHONPATH=shared .../.venv/bin/pytest -q
 ## Commit
 
 - `6d6e89e chore: enforce clean backend type checks`
+- `7744a15 fix: address repository audit review`
+- `af7e5e1 fix: model dynamic types explicitly`
+
+Final verification: focused personalization and risk/API tests passed (49), Ruff passed, MyPy found no issues in 80 files, and the full backend suite passed with 143 tests.
 
 ## Self-review
 
 - No public contract, schema, migration, UI, or runtime flow changed.
 - Assertions in the signals router encode the invariant already established by the preceding database-configured guard; they do not alter successful runtime paths.
-- The MyPy overrides are module- and error-code-scoped, rather than global relaxation. They document third-party/framework typing boundaries; they should be reduced later if typed Celery/SQLAlchemy adapters are introduced.
+- MyPy overrides apply only to third-party packages without typing metadata.
 - No dead-code deletion was justified by the evidence threshold, so the safe result is an audited retention decision rather than speculative removal.
 - `docs/interview-preparation.md` was not modified.
 
 ## Reviewer-finding remediation
 
 - Removed all broad first-party MyPy overrides covering worker tasks, preferences, chat, retention, retrieval persistence, and risk detection. Replaced them with explicit parameter/return types and exact dynamic-result access via `getattr`.
-- Restored matcher behavior exactly: optional values, including `None`, continue through the existing normalization path; `cast` only communicates the pre-existing runtime contract to MyPy.
+- Restored matcher behavior exactly and widened signal normalization to `Iterable[object]`, matching its existing `str(value)` implementation without an unsafe cast.
 - Restored exact `DATABASE_URL` semantics: an explicitly empty environment value is not replaced by the worker default.
 - Added literal verification and runtime/history/blame evidence in `.superpowers/sdd/task-3-evidence.txt`.
 - Frontend ESLint and TypeScript checks both pass.
-- One scoped override remains for `api.routers.risk_events`, whose SQLAlchemy expression construction dynamically changes column expression types. This is the remaining concern and is isolated from the modules called out by review.
+- Removed the final first-party override for `api.routers.risk_events`; SQLAlchemy statements and expressions now have explicit `Select`/`ColumnElement` annotations.

@@ -35,3 +35,10 @@ CANDIDATE AUDIT:
 SEMANTIC REGRESSION CHECKS:
 - matcher optional values are still passed through exactly as before (including None stringification downstream); cast changes static interpretation only.
 - session_scope retains `database_url or os.getenv("DATABASE_URL", WORKER_DATABASE_URL)`: an explicitly empty DATABASE_URL remains empty rather than falling back.
+
+FINAL RE-REVIEW COMMANDS:
+- `pytest -q tests/unit/test_personalization.py tests/integration/test_api.py`: 49 passed in 3.10s.
+- `ruff check api worker shared tests`: exit 0.
+- `mypy api worker shared`: Success: no issues found in 80 source files.
+- `pytest -q`: 143 passed in 3.83s.
+- First-party MyPy overrides: none. Only missing-import handling for third-party packages remains.
