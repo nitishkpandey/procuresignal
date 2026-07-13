@@ -84,6 +84,24 @@ explicit_package_bases = true
 namespace_packages = true
 mypy_path = "$MYPY_CONFIG_FILE_DIR/shared"
 
+[[tool.mypy.overrides]]
+module = ["apscheduler.*", "celery.*", "feedparser.*", "kombu.*", "langdetect.*"]
+ignore_missing_imports = true
+
+# Framework decorators and SQLAlchemy's dynamically typed result/column APIs do
+# not preserve callable/result types for mypy. Keep strict checks elsewhere.
+[[tool.mypy.overrides]]
+module = ["worker.main", "worker.signal_tasks", "worker.tasks", "api.scheduler", "api.main"]
+disable_error_code = ["no-untyped-def", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["api.routers.chat", "api.routers.preferences", "api.routers.risk_events", "procuresignal.jobs.retention", "procuresignal.retrieval.persistence"]
+disable_error_code = ["no-untyped-def", "attr-defined", "assignment"]
+
+[[tool.mypy.overrides]]
+module = ["procuresignal.risk_events.detector"]
+disable_error_code = ["no-untyped-def"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

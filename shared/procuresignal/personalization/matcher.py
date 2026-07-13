@@ -123,7 +123,9 @@ class PreferenceMatcher:
 
     @staticmethod
     def _article_signals(article: NewsArticleProcessed) -> set[str]:
-        return expand_signal_terms([article.priority_signal, *(article.signal_tags or [])])
+        return expand_signal_terms(
+            [value for value in [article.priority_signal, *(article.signal_tags or [])] if value]
+        )
 
     @staticmethod
     def _excluded_signals(preference: UserNewsPreference) -> set[str]:
@@ -333,7 +335,9 @@ class PreferenceMatcher:
         """
         preferred_signals = PreferenceMatcher._preferred_signals(preference)
         excluded_signals = PreferenceMatcher._excluded_signals(preference)
-        article_tags_lower = expand_signal_terms([*article_signal_tags, article_priority_signal])
+        article_tags_lower = expand_signal_terms(
+            [value for value in [*article_signal_tags, article_priority_signal] if value]
+        )
 
         if (article_tags_lower & excluded_signals) or text_matches_signal_terms(
             article_signal_context,

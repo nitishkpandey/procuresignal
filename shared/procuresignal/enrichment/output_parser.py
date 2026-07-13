@@ -1,7 +1,7 @@
 """Parse and validate LLM output."""
 
 import json
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,7 +22,7 @@ class EnrichmentOutput(BaseModel):
 
     @field_validator("category", mode="before")
     @classmethod
-    def validate_category(cls, v):
+    def validate_category(cls, v: Any) -> str:
         """Validate category is one of allowed values (Pydantic v2).
 
         Normalizes to lowercase and defaults to `general` if invalid.
@@ -39,7 +39,7 @@ class EnrichmentOutput(BaseModel):
 
     @field_validator("detected_suppliers", "detected_regions", "detected_categories", mode="before")
     @classmethod
-    def normalize_entity_lists(cls, v):
+    def normalize_entity_lists(cls, v: Any) -> list[str]:
         """Normalize entity list fields while preserving order."""
         if not isinstance(v, list):
             return []
@@ -54,7 +54,7 @@ class EnrichmentOutput(BaseModel):
 
     @field_validator("signal_tags", mode="after")
     @classmethod
-    def validate_tags(cls, v):
+    def validate_tags(cls, v: Any) -> list[str]:
         """Ensure tags are valid and lowercase (Pydantic v2)."""
         if not isinstance(v, list):
             return []
@@ -62,7 +62,7 @@ class EnrichmentOutput(BaseModel):
 
     @field_validator("priority_signal", mode="after")
     @classmethod
-    def validate_priority_signal(cls, v):
+    def validate_priority_signal(cls, v: Any) -> str | None:
         """Normalize priority signals to stored tag values."""
         if not isinstance(v, str):
             return None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from os import getenv
+from typing import Any
 
 from procuresignal.config.database import session_scope
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
@@ -62,7 +63,7 @@ async def _run_retention() -> None:
         )
 
 
-def _job_options(job_id: str) -> dict:
+def _job_options(job_id: str) -> dict[str, Any]:
     return {
         "id": job_id,
         "replace_existing": True,
