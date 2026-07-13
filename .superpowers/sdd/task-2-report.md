@@ -95,3 +95,24 @@ Addressed all Task 2 review findings:
 
 No new concerns were identified beyond the existing shared virtual-environment
 path noted above.
+
+## Final word-boundary review fix
+
+Word-boundary truncation now falls back to a deterministic hard prefix plus
+ellipsis when the preferred whole-word result would be shorter than the
+10-character `EnrichmentOutput` minimum.
+
+- Red command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py -k word_boundary -v`
+  Result: exit 1; 1 failed and 20 deselected. The produced `This is…` was only
+  8 characters and failed `EnrichmentOutput` validation.
+- Focused green command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
+  Result: exit 0; 30 passed in 0.85s, including exact output `This is s…` at
+  `summary_max_chars=10`.
+- `/Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py`
+  Result: exit 0; no issues.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/mypy shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py`
+  Result: exit 0; `Success: no issues found in 2 source files`.
+
+No additional concerns were identified.

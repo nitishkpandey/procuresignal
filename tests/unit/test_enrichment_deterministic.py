@@ -76,6 +76,16 @@ def test_summary_truncation_is_stable_and_respects_bound() -> None:
     assert len(first) <= 40
 
 
+def test_word_boundary_truncation_preserves_minimum_at_ten_chars() -> None:
+    summary = DeterministicEnricher().analyze(
+        article(description="This is sufficiently long"),
+        summary_max_chars=10,
+    ).output.summary
+
+    assert summary == "This is s…"
+    assert len(summary) == 10
+
+
 def test_general_news_has_no_signal_and_low_relevance() -> None:
     analysis = DeterministicEnricher().analyze(
         article(

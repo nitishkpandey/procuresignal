@@ -130,6 +130,8 @@ def _summary(article: RawArticle, max_chars: int) -> str:
     prefix = normalized[: max_chars - 1].rstrip()
     if " " in prefix:
         prefix = prefix.rsplit(" ", 1)[0]
+    if len(prefix) + 1 < 10:
+        prefix = normalized[: max_chars - 1]
     return f"{prefix}…"
 
 
