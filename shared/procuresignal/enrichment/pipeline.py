@@ -1,7 +1,7 @@
 """Cost-aware enrichment cascade and route accounting."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Iterator, Optional
 
 from sqlalchemy import select, update
@@ -102,11 +102,14 @@ class EnrichmentPipeline:
         )
         for row in existing:
             processed_raw_ids.add(row[0])
-        terminal_raw_ids = set(
+        unavailable_raw_ids = set(
             await session.scalars(
                 select(NewsArticleRaw.id).where(
                     NewsArticleRaw.id.in_(candidate_ids),
-                    NewsArticleRaw.enrichment_terminal_status.is_not(None),
+                    (
+                        NewsArticleRaw.enrichment_status.in_(("skipped", "quality_rejected"))
+                        | (NewsArticleRaw.enrichment_next_attempt_at > datetime.utcnow())
+                    ),
                 )
             )
         )
@@ -116,7 +119,7 @@ class EnrichmentPipeline:
         articles_to_process = []
         already_processed = 0
         for candidate in raw_articles:
-            if candidate.id in seen_ids or candidate.id in terminal_raw_ids:
+            if candidate.id in seen_ids or candidate.id in unavailable_raw_ids:
                 already_processed += 1
                 continue
             seen_ids.add(candidate.id)
@@ -236,7 +239,21 @@ class EnrichmentPipeline:
                         await session.execute(
                             update(NewsArticleRaw)
                             .where(NewsArticleRaw.id == raw.id)
-                            .values(enrichment_terminal_status="skipped")
+                            .values(
+                                enrichment_status="skipped",
+                                enrichment_next_attempt_at=None,
+                            )
+                        )
+                    elif route == EnrichmentRoute.DEFERRED.value:
+                        await session.execute(
+                            update(NewsArticleRaw)
+                            .where(NewsArticleRaw.id == raw.id)
+                            .values(
+                                enrichment_status="deferred",
+                                enrichment_attempt_count=NewsArticleRaw.enrichment_attempt_count
+                                + 1,
+                                enrichment_next_attempt_at=datetime.utcnow() + timedelta(hours=2),
+                            )
                         )
                     continue
                 processed = self._processed(

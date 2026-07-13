@@ -16,7 +16,8 @@ deterministic confidence when computed, and whether an LLM was used.
 ## Measured Evaluation Evidence
 
 The fixed offline fixture is executed through `EnrichmentPipeline` with SQLite,
-the real deterministic analyzer/router/cache, and recorded offline LLM outputs;
+the real deterministic analyzer/router/cache, and immutable recorded offline LLM
+outputs stored separately from the expected baseline;
 it makes no network call. It contains 20 representative English, German, and French
 records: clear and ambiguous procurement reporting, irrelevant content, exact and
 near duplicates, entity-rich articles, and missing-description cases.
@@ -38,7 +39,10 @@ near duplicates, entity-rich articles, and missing-description cases.
 
 All extraction dimensions therefore have a zero percentage-point loss against
 the fixture's recorded baseline, within the five-point maximum regression gate.
-The three recorded LLM routes report 300 tokens total. Pipeline reservations use
+The three recorded outputs intentionally omit article entities; one also contains
+an invalid category and signal tag. This exercises parser normalization and the
+deterministic-evidence merge without deriving model output from expected answers.
+They report 300 tokens total. Pipeline reservations use
 the production character-based estimate and remain below the default limits of
 five calls and 6,000 tokens.
 
@@ -56,12 +60,17 @@ remains eligible for a later run. Worker results expose cached, deterministic,
 LLM, skipped, deferred, failed, cache-miss, call, token, and avoided-call metrics
 while preserving the previous result keys.
 
-Below-relevance decisions are terminal: the raw row is marked `skipped` in the
-same transaction, and scheduled candidate selection excludes terminal and
-already-processed rows before applying its batch cap. This prevents a newest-first
-backlog of irrelevant rows from starving older eligible work. Deferred rows are
-not marked and remain eligible. Successful LLM results are merged with explicit
-deterministic supplier, region, and category evidence before caching or persistence.
+Raw enrichment has an explicit lifecycle: `skipped` and `quality_rejected` are
+terminal; `normalization_retry` and `deferred` are retryable with a durable
+attempt count and next-attempt timestamp. Normalization pages past deterministic
+rejects and transient exceptions until the post-normalization candidate cap is
+filled. Transient exceptions use capped exponential backoff. This prevents a
+newest-first malformed backlog from starving older eligible work.
+
+Deferred eligibility is independent of ingestion age and therefore lasts until
+retention or explicit expiry; a two-hour next-attempt delay prevents hot loops.
+Successful LLM results are merged with explicit deterministic supplier, region,
+and category evidence before caching or persistence.
 
 Fingerprints normalize content deterministically and include policy and taxonomy
 versions. Only validated deterministic or LLM outputs enter the persistent cache.
@@ -80,8 +89,8 @@ audit columns, the versioned enrichment cache, and one-processed-row-per-raw-row
 uniqueness. Historical duplicates are ranked by completed status, populated audit
 evidence, processing time, and ID. References from article matches, priority
 events, user feeds, and risk events are repointed before duplicate deletion.
-Revision `f7b8c9_terminal_enrichment` adds the indexed raw-article terminal status
-used by scheduled candidate selection.
+Revision `f7b8c9_terminal_enrichment` adds the indexed raw-article lifecycle
+status, attempt count, and next-attempt timestamp used by scheduled selection.
 
 Fresh SQLite upgrade from an empty database completed through the new revision,
 and `alembic heads` reported exactly one head:
@@ -105,7 +114,7 @@ environment.
   new integration test.
 - `../../.venv/bin/ruff check .` — passed.
 - `../../.venv/bin/mypy api worker shared` — no issues in 86 source files.
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 240 passed.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 243 passed.
 - `npm run lint` — no ESLint warnings or errors.
 - `npm run typecheck` — passed.
 - `npm run test:run` — 52 tests passed across 16 files.

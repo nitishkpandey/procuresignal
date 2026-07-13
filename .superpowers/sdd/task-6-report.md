@@ -61,18 +61,24 @@ scan and `git diff --check` were clean.
 
 ## Final Review Fixes
 
-- Added durable raw-row `skipped` terminal state and pre-cap candidate filtering;
-  deferred rows stay eligible. A 25-row regression proves 20 newest terminal rows
-  cannot starve the five older eligible rows, and rerun coverage proves terminal
-  rows are not routed twice.
+- Added a durable raw lifecycle: terminal `skipped`/`quality_rejected` and retryable
+  `normalization_retry`/`deferred`, with attempt count and next-attempt timestamp.
+  Normalization pages until the post-normalization cap is filled, while transient
+  exceptions back off. Tests use more than one cap of initially unmarked newest
+  rejects and prove older valid rows progress; a transient row is retried only
+  after its backoff.
+- Deferred selection is independent of ingestion age and bounded by retention.
+  An aged due row is selected, redeferred, and excluded until its next attempt.
 - Restored deterministic supplier, region, and category evidence merging into
   successful LLM output before cache/persistence, with an omission regression.
 - Replaced the router-only evaluation with a real `EnrichmentPipeline` run using
-  SQLite, production deterministic/cache routing, and recorded offline LLM output.
+  SQLite, production deterministic/cache routing, and immutable LLM recordings
+  stored separately from the expected baseline. The recordings include omitted
+  entities and invalid category/tag data; they are never synthesized in the test.
   The gate remains 12/15 avoided accepted calls (80%) and at least 95% recall per
   extraction dimension; current fixture achieves 100%.
 - Removed dead `EnrichmentPipeline.BATCH_SIZE`.
 - Added Alembic head `f7b8c9_terminal_enrichment`; fresh SQLite upgrade and
   PostgreSQL offline SQL generation pass.
-- Final-fix backend evidence: 240 tests passed, Ruff clean, MyPy clean across 86
+- Final-fix backend evidence: 243 tests passed, Ruff clean, MyPy clean across 86
   source files, and Black clean after formatting.

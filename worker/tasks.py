@@ -104,27 +104,16 @@ async def _load_recent_raw_articles(
     limit: int,
 ) -> list[NewsArticleRaw]:
     cutoff = datetime.utcnow() - timedelta(hours=hours_back)
-    result = await session.execute(
-        select(NewsArticleRaw)
-        .where(NewsArticleRaw.ingested_at >= cutoff)
-        .order_by(desc(NewsArticleRaw.ingested_at))
-        .limit(limit)
-    )
-    return list(result.scalars().all())
-
-
-async def _load_enrichment_candidates(
-    session: AsyncSession, *, hours_back: int, limit: int
-) -> list[NewsArticleRaw]:
-    """Load only unfinished candidates; deferred rows intentionally remain eligible."""
-    cutoff = datetime.utcnow() - timedelta(hours=hours_back)
-    processed = exists().where(NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+    now = datetime.utcnow()
     result = await session.execute(
         select(NewsArticleRaw)
         .where(
             NewsArticleRaw.ingested_at >= cutoff,
-            NewsArticleRaw.enrichment_terminal_status.is_(None),
-            ~processed,
+            NewsArticleRaw.enrichment_status.is_(None)
+            | (
+                NewsArticleRaw.enrichment_status.in_(("normalization_retry", "deferred"))
+                & (NewsArticleRaw.enrichment_next_attempt_at <= now)
+            ),
         )
         .order_by(desc(NewsArticleRaw.ingested_at))
         .limit(limit)
@@ -132,42 +121,99 @@ async def _load_enrichment_candidates(
     return list(result.scalars().all())
 
 
+async def _load_enrichment_candidates(
+    session: AsyncSession, *, hours_back: int, limit: int, exclude_ids: set[int] | None = None
+) -> list[NewsArticleRaw]:
+    """Load due unfinished candidates regardless of ingestion age."""
+    del hours_back  # Enrichment eligibility is bounded by retention, not a recent-time window.
+    now = datetime.utcnow()
+    processed = exists().where(NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+    statement = (
+        select(NewsArticleRaw)
+        .where(~processed)
+        .where(
+            NewsArticleRaw.enrichment_status.is_(None)
+            | (
+                NewsArticleRaw.enrichment_status.in_(("normalization_retry", "deferred"))
+                & (NewsArticleRaw.enrichment_next_attempt_at <= now)
+            )
+        )
+        .order_by(desc(NewsArticleRaw.ingested_at))
+        .limit(limit)
+    )
+    if exclude_ids:
+        statement = statement.where(NewsArticleRaw.id.not_in(exclude_ids))
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
 async def _normalize_articles(
     session: AsyncSession, *, hours_back: int, limit: int, enrichment_candidates: bool = False
 ) -> dict[str, Any]:
-    loader = _load_enrichment_candidates if enrichment_candidates else _load_recent_raw_articles
-    raw_articles = await loader(session, hours_back=hours_back, limit=limit)
+    raw_articles = (
+        []
+        if enrichment_candidates
+        else await _load_recent_raw_articles(session, hours_back=hours_back, limit=limit)
+    )
     normalized_articles: list[_NormalizedArticleRecord] = []
     quality_failures = 0
     errors = 0
+    scanned_ids: set[int] = set()
 
-    for article in raw_articles:
-        try:
-            normalized = await ArticleNormalizer.normalize(_to_raw_article(article))
-            if normalized is None:
-                quality_failures += 1
-                continue
+    async def normalize_batch(batch: list[NewsArticleRaw]) -> None:
+        nonlocal quality_failures, errors
+        for article in batch:
+            scanned_ids.add(article.id)
+            try:
+                normalized = await ArticleNormalizer.normalize(_to_raw_article(article))
+                if normalized is None:
+                    quality_failures += 1
+                    article.enrichment_status = "quality_rejected"
+                    article.enrichment_next_attempt_at = None
+                    continue
 
-            normalized_articles.append(
-                _NormalizedArticleRecord(
-                    id=article.id,
-                    provider=normalized.provider,
-                    provider_article_id=normalized.provider_article_id,
-                    query_group=normalized.query_group,
-                    title=normalized.title,
-                    description=normalized.description,
-                    content_snippet=normalized.content_snippet,
-                    article_url=normalized.article_url,
-                    canonical_url=normalized.canonical_url,
-                    source_name=normalized.source_name,
-                    source_url=normalized.source_url,
-                    published_at=normalized.published_at,
-                    language=normalized.language,
-                    raw_payload_json=normalized.raw_payload_json,
+                normalized_articles.append(
+                    _NormalizedArticleRecord(
+                        id=article.id,
+                        provider=normalized.provider,
+                        provider_article_id=normalized.provider_article_id,
+                        query_group=normalized.query_group,
+                        title=normalized.title,
+                        description=normalized.description,
+                        content_snippet=normalized.content_snippet,
+                        article_url=normalized.article_url,
+                        canonical_url=normalized.canonical_url,
+                        source_name=normalized.source_name,
+                        source_url=normalized.source_url,
+                        published_at=normalized.published_at,
+                        language=normalized.language,
+                        raw_payload_json=normalized.raw_payload_json,
+                    )
                 )
+            except Exception:
+                errors += 1
+                article.enrichment_attempt_count += 1
+                delay_minutes = min(360, 15 * (2 ** (article.enrichment_attempt_count - 1)))
+                article.enrichment_status = "normalization_retry"
+                article.enrichment_next_attempt_at = datetime.utcnow() + timedelta(
+                    minutes=delay_minutes
+                )
+
+    if enrichment_candidates:
+        while len(normalized_articles) < limit:
+            batch = await _load_enrichment_candidates(
+                session,
+                hours_back=hours_back,
+                limit=limit - len(normalized_articles),
+                exclude_ids=scanned_ids,
             )
-        except Exception:
-            errors += 1
+            if not batch:
+                break
+            raw_articles.extend(batch)
+            await normalize_batch(batch)
+            await session.flush()
+    else:
+        await normalize_batch(raw_articles)
 
     return {
         "raw_articles": raw_articles,

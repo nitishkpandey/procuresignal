@@ -206,7 +206,9 @@ async def test_budget_exhaustion_defers_without_persisting(session: AsyncSession
     assert result.saved == 0 and result.metrics.deferred == 1
     assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 0
     await session.refresh(raw)
-    assert raw.enrichment_terminal_status is None
+    assert raw.enrichment_status == "deferred"
+    assert raw.enrichment_attempt_count == 1
+    assert raw.enrichment_next_attempt_at is not None
     assert (
         sum(
             getattr(result.metrics, route)
@@ -232,7 +234,7 @@ async def test_skipped_article_is_durably_terminal_and_not_reprocessed(
     assert first.metrics.skipped == 1
     assert second.metrics.skipped == 0
     assert second.already_processed == 1
-    assert raw.enrichment_terminal_status == "skipped"
+    assert raw.enrichment_status == "skipped"
 
 
 @pytest.mark.asyncio
