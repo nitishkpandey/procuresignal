@@ -1,7 +1,7 @@
 """Personalization matching engine."""
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, cast
+from typing import Iterable, List, Optional
 
 from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, UserNewsPreference
@@ -123,9 +123,7 @@ class PreferenceMatcher:
 
     @staticmethod
     def _article_signals(article: NewsArticleProcessed) -> set[str]:
-        return expand_signal_terms(
-            cast(list[str], [article.priority_signal, *(article.signal_tags or [])])
-        )
+        return expand_signal_terms([article.priority_signal, *(article.signal_tags or [])])
 
     @staticmethod
     def _excluded_signals(preference: UserNewsPreference) -> set[str]:
@@ -335,9 +333,7 @@ class PreferenceMatcher:
         """
         preferred_signals = PreferenceMatcher._preferred_signals(preference)
         excluded_signals = PreferenceMatcher._excluded_signals(preference)
-        article_tags_lower = expand_signal_terms(
-            cast(list[str], [*article_signal_tags, article_priority_signal])
-        )
+        article_tags_lower = expand_signal_terms([*article_signal_tags, article_priority_signal])
 
         if (article_tags_lower & excluded_signals) or text_matches_signal_terms(
             article_signal_context,

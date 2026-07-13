@@ -88,10 +88,6 @@ mypy_path = "$MYPY_CONFIG_FILE_DIR/shared"
 module = ["apscheduler.*", "celery.*", "feedparser.*", "kombu.*", "langdetect.*"]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = ["api.routers.risk_events"]
-disable_error_code = ["no-untyped-def", "assignment"]
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
