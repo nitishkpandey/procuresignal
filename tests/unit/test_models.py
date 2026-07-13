@@ -89,6 +89,12 @@ async def test_create_processed_article(async_session: AsyncSession) -> None:
     assert processed.id is not None
     assert processed.raw_article_id == raw.id
     assert processed.signal_score == 0.85
+    assert processed.enrichment_method is None
+    assert processed.enrichment_reason is None
+    assert processed.enrichment_policy_version is None
+    assert processed.content_fingerprint is None
+    assert processed.deterministic_confidence is None
+    assert processed.llm_used is False
 
 
 @pytest.mark.asyncio

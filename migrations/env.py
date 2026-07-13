@@ -52,7 +52,7 @@ async def run_migrations_online() -> None:
         "postgresql+asyncpg://procuresignal:procuresignal@localhost:5433/procuresignal",
     )
 
-    if "ssl=" not in url:
+    if url.startswith("postgresql") and "ssl=" not in url:
         separator = "&" if "?" in url else "?"
         url = f"{url}{separator}ssl=disable"
 

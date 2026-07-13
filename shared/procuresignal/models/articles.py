@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Float, Index, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Index, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import BaseModel
@@ -74,6 +74,14 @@ class NewsArticleProcessed(BaseModel):
     language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
     processed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     risk_event_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    enrichment_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    enrichment_reason: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    enrichment_policy_version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    deterministic_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    llm_used: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     __table_args__ = (
         Index("idx_raw_article_id", "raw_article_id"),
