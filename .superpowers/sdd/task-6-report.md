@@ -1,32 +1,60 @@
-# Task 6 Report: Frontend Risk Events Page
+# Phase 2 Task 6: Integration And Full-Stack Verification
 
 ## Delivered
 
-- Added typed risk event contracts and API client functions for fetching events and updating status.
-- Added the localized Risks navigation item in English, German, French, and Spanish.
-- Added the `/risk-events` route and a compact, bordered risk-event list with loading, empty, error/retry, and status-update states.
-- Confidence is rendered as a rounded number followed only by `%`.
-- Added API, header navigation, rendering, and status-update tests.
+- Added a SQLite integration test proving same-batch deterministic persistence and
+  compatible cache reuse, complete audit metadata, one cache hit, zero LLM client
+  construction/calls/tokens, two avoided calls, and an idempotent whole-batch retry
+  without duplicate processed rows.
+- Added the measured Phase 2 completion report at
+  `docs/superpowers/reports/2026-07-13-cost-optimized-enrichment.md`.
+- Preserved `docs/interview-preparation.md` without modification.
 
-## Verification
+## Exact Verification
 
-- `npm run test:run -- api.test.ts risk-events-view.test.tsx header.test.tsx`: 18 tests passed across 4 files.
-- `npm run typecheck`: passed.
-- `npm run lint`: passed with no ESLint warnings or errors.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests/integration/test_api.py -k enrichment_pipeline_persists -v`
+  — 1 passed, 28 deselected.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests/integration/test_api.py tests/unit/test_enrichment_pipeline.py tests/unit/test_enrichment_cache.py -v`
+  — 51 passed.
+- `DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase2-final-task6.db ../../.venv/bin/alembic upgrade head`
+  — passed.
+- `../../.venv/bin/alembic heads` — one head,
+  `f6a7b8_add_enrichment_routing_cache`.
+- `../../.venv/bin/black --check .` — passed, 131 files unchanged after
+  formatting the new integration test.
+- `../../.venv/bin/ruff check .` — passed.
+- `../../.venv/bin/mypy api worker shared` — success, 86 source files.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 237 passed.
+- `npm run lint` — passed without warnings/errors.
+- `npm run typecheck` — passed on the final sequential run.
+- `npm run test:run` — 52 passed across 16 files.
+- `npm run build` — passed.
+- `docker compose config --quiet` — passed.
+- `git diff --check` — passed.
+- Incomplete-marker scan of the completion report — no matches.
 
-## Scope
+## Diagnosed Environment Details
 
-Only the Task 6 frontend files are intended for the implementation commit. Existing untracked duplicate/generated artifacts remain untouched.
+The isolated worktree had no ignored `node_modules`. The first frontend attempt
+therefore could not resolve Next, TypeScript, or Vitest. A temporary ignored
+symlink to the main workspace's lockfile-compatible installed dependencies was
+used and removed after verification. A parallel typecheck then raced with the
+build's `.next` regeneration; the final sequential typecheck passed. Vitest
+reported the Vite CJS API deprecation, and the build reported Node experimental
+`localStorage` warnings; neither was a failure.
 
-## Review Fix: Risk Event Status Mutation
+Compose validation covered configuration only, not image build or service runtime.
+No live PostgreSQL service was available; SQLite migration execution, populated
+migration tests, and PostgreSQL offline SQL generation provide the recorded phase
+evidence, while live data rehearsal remains a deployment prerequisite.
 
-- Disabled each risk event status select while its update request is pending to prevent overlapping PATCH requests.
-- Restored the status captured immediately before the attempted change when the request fails.
-- Added regression coverage for pending-state disabling, failed-update rollback, and re-enabling the select.
+## Commit
 
-## Review Fix Verification
+`69f64e6` — `Document cost-optimized enrichment results`.
 
-- `cd frontend && npm run test:run -- risk-events-view.test.tsx`: 3 tests passed.
-- `cd frontend && npm run typecheck`: passed.
-- `cd frontend && npm run lint`: passed with no ESLint warnings or errors.
-- `git diff --check`: passed.
+`361c2f0` — `Strengthen enrichment audit integration coverage`.
+
+The strengthened specification test passed immediately without a production-code
+change. Final review-fix verification: 237 backend tests passed; full-project
+Black and Ruff passed; MyPy found no issues in 86 source files; the report marker
+scan and `git diff --check` were clean.
