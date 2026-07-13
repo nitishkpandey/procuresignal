@@ -15,7 +15,7 @@ DONE_WITH_CONCERNS
   allowlisting, polling/item bounds, trust bounds, content types, and usage notes.
 - Added versioned production catalog `sources-v1`, its immutable expected JSON snapshot, and
   package exports without changing existing retrieval interfaces.
-- Added 18 focused tests for unsafe/ambiguous definitions, every specified bound, immutability,
+- Added 21 focused tests for unsafe/ambiguous definitions, every specified bound, immutability,
   deterministic filtering, exact missing coverage, production coverage, and snapshot parity.
 
 ## Endpoint And Ownership Evidence
@@ -106,7 +106,8 @@ Commands ran from
 PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_source_registry.py -v
 ```
 
-Final result after the conservative FreightWaves disable decision: exit 0, 18 focused tests pass.
+Current final focused result: exit 0, 21 focused tests pass. Earlier 18/19-test results below are
+retained only as chronological TDD evidence from before the review additions.
 
 ```bash
 /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/retrieval tests/unit/test_source_registry.py
@@ -241,3 +242,5 @@ Result: exit 0, no output.
 `6a93b25` — `Add authoritative procurement source registry`
 
 `cc6895c` — `Strengthen source registry coverage contract`
+
+`ffd8eff` — `Record source verification evidence`
