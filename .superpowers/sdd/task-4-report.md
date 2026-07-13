@@ -132,7 +132,7 @@ c23ae9b docs: record runtime wiring audit
 
 During verification, `git status --short` showed tracked modifications to `.superpowers/sdd/task-1-report.md`, `.superpowers/sdd/task-2-report.md`, and this tracked `.superpowers/sdd/task-4-report.md`, plus the intentional untracked `frontend/node_modules` symlink. The Task 1 and Task 2 report changes and the symlink were preserved and excluded from Task 4 commits.
 
-The Task 4 report cleanup is committed separately in a focused documentation commit containing only `.superpowers/sdd/task-4-report.md`; its hash is recorded after commit verification.
+The Task 4 report cleanup is committed separately as `a8f80fd02f0cbf554ebe93ae3413231a1e7f93f4` in a focused documentation commit containing only `.superpowers/sdd/task-4-report.md`.
 
 ## Concerns
 
