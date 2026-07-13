@@ -69,9 +69,20 @@ async def test_enrichment_pipeline_persists_audit_metadata_and_cache_hits() -> N
             session.add_all([deterministic, cached])
             await session.commit()
 
-            first = await EnrichmentPipeline().process_raw_articles(session, [deterministic])
-            second = await EnrichmentPipeline().process_raw_articles(session, [cached])
-            repeated = await EnrichmentPipeline().process_raw_articles(session, [cached])
+            factory_calls = 0
+
+            def forbidden_llm_factory():
+                nonlocal factory_calls
+                factory_calls += 1
+                raise AssertionError("local and cache routes must not construct an LLM client")
+
+            batch = [deterministic, cached]
+            first = await EnrichmentPipeline(
+                llm_client_factory=forbidden_llm_factory
+            ).process_raw_articles(session, batch)
+            second = await EnrichmentPipeline(
+                llm_client_factory=forbidden_llm_factory
+            ).process_raw_articles(session, batch)
 
             rows = list(
                 (
@@ -82,9 +93,16 @@ async def test_enrichment_pipeline_persists_audit_metadata_and_cache_hits() -> N
             )
             cache_entry = await session.scalar(select(EnrichmentCacheEntry))
 
+            assert first.saved == 2
             assert first.metrics.deterministic == 1
-            assert second.metrics.cached == 1
-            assert repeated.already_processed == 1
+            assert first.metrics.cached == 1
+            assert first.metrics.llm_calls == 0
+            assert first.metrics.llm_tokens == 0
+            assert first.metrics.avoided_llm_calls == 2
+            assert second.saved == 0
+            assert second.already_processed == 2
+            assert second.metrics.avoided_llm_calls == 0
+            assert factory_calls == 0
             assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 2
             assert [row.enrichment_method for row in rows] == ["deterministic", "cached"]
             assert rows[0].enrichment_reason == "deterministic_confident"

@@ -56,9 +56,12 @@ while preserving the previous result keys.
 Fingerprints normalize content deterministically and include policy and taxonomy
 versions. Only validated deterministic or LLM outputs enter the persistent cache.
 Corrupt or incompatible entries are misses. The integration test processes one
-clear article, reuses its cache payload for a second raw article, and retries the
-second article. It proves two processed rows only, a cache hit count of one, the
-expected audit metadata, and no LLM usage or duplicate processed row.
+clear article and its cache-compatible duplicate in a single batch, then retries
+that same batch. A forbidden lazy-client factory proves neither route constructs
+an OpenAI client. The test proves deterministic and cached route counts of one,
+zero LLM calls/tokens, two avoided calls, two saved rows on the first run, both
+inputs already processed on retry, a cache hit count of one, complete audit
+metadata, and no duplicate processed row.
 
 ## Database Migration
 
