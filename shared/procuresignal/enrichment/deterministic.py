@@ -45,7 +45,11 @@ class DeterministicEnricher:
 
     def analyze(self, article: RawArticle, *, summary_max_chars: int) -> DeterministicAnalysis:
         """Return repeatable enrichment using canonical classifiers and extractors."""
-        if isinstance(summary_max_chars, bool) or summary_max_chars < 10:
+        if (
+            isinstance(summary_max_chars, bool)
+            or not isinstance(summary_max_chars, int)
+            or summary_max_chars < 10
+        ):
             raise ValueError("summary_max_chars must be an integer of at least 10")
 
         parts = [article.title, article.description or "", article.content_snippet or ""]
@@ -54,7 +58,7 @@ class DeterministicEnricher:
         signal_tags = canonical_signal_tags(signal.signal_type.value for signal in signals)
         suppliers = extract_suppliers_from_text(text)
         regions = extract_regions_from_text(text)
-        category, category_evidence = _infer_category(article, text)
+        category, category_evidence = _infer_category(article)
         entity_evidence = min(1.0, (len(suppliers) + len(regions)) / 2)
         query_evidence = float(article.query_group in QUERY_GROUPS)
         signal_evidence = float(bool(signal_tags))
@@ -89,19 +93,40 @@ class DeterministicEnricher:
         return DeterministicAnalysis(output=output, relevance=relevance, confidence=confidence)
 
 
-def _infer_category(article: RawArticle, text: str) -> tuple[str, float]:
-    for candidate in (article.query_group, text, article.source_name):
+def _infer_category(article: RawArticle) -> tuple[str, float]:
+    scores: dict[str, int] = {}
+    candidates = (
+        (article.title, 3),
+        (article.description or "", 3),
+        (article.content_snippet or "", 2),
+        (article.query_group, 1),
+        (article.source_name, 1),
+    )
+    for candidate, weight in candidates:
         category = canonical_category(candidate)
         if category in CANONICAL_CATEGORIES and category != "general":
-            return category, 1.0
+            scores[category] = scores.get(category, 0) + weight
+    if scores:
+        return max(scores, key=scores.__getitem__), 1.0
     return "general", 0.0
 
 
 def _summary(article: RawArticle, max_chars: int) -> str:
-    source = article.description or article.content_snippet or article.title
-    normalized = " ".join(source.split())
+    normalized = next(
+        (
+            normalized
+            for source in (article.description, article.content_snippet, article.title)
+            if source and (normalized := " ".join(source.split()))
+        ),
+        "No summary",
+    )
+    padded = len(normalized) < 10
+    if padded:
+        normalized = f"{normalized} [summary unavailable]"
     if len(normalized) <= max_chars:
         return normalized
+    if padded:
+        return normalized[:max_chars]
     prefix = normalized[: max_chars - 1].rstrip()
     if " " in prefix:
         prefix = prefix.rsplit(" ", 1)[0]

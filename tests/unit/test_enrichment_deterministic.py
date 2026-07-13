@@ -120,3 +120,72 @@ def test_entities_are_deduplicated_across_article_fields() -> None:
 def test_summary_max_chars_must_support_output_schema() -> None:
     with pytest.raises(ValueError, match="at least 10"):
         DeterministicEnricher().analyze(article(), summary_max_chars=9)
+
+
+@pytest.mark.parametrize(
+    ("title", "description", "snippet", "max_chars"),
+    [
+        ("", None, None, 10),
+        ("   ", "\t", "\n", 40),
+        ("Tiny", None, None, 10),
+        ("Title fallback", " ", "Short", 40),
+    ],
+)
+def test_summary_is_schema_valid_for_empty_whitespace_and_short_sources(
+    title: str,
+    description: str | None,
+    snippet: str | None,
+    max_chars: int,
+) -> None:
+    summary = DeterministicEnricher().analyze(
+        article(title=title, description=description, content_snippet=snippet),
+        summary_max_chars=max_chars,
+    ).output.summary
+
+    assert 10 <= len(summary) <= max_chars
+
+
+def test_summary_skips_whitespace_but_preserves_source_preference() -> None:
+    summary = DeterministicEnricher().analyze(
+        article(
+            title="Title fallback text",
+            description="   ",
+            content_snippet="Snippet preferred over title",
+        ),
+        summary_max_chars=80,
+    ).output.summary
+
+    assert summary.startswith("Snippet preferred over title")
+
+
+@pytest.mark.parametrize("invalid", [True, False, 10.0, "10"])
+def test_summary_max_chars_requires_an_integer_excluding_bool(invalid: object) -> None:
+    with pytest.raises(ValueError, match="integer"):
+        DeterministicEnricher().analyze(article(), summary_max_chars=invalid)  # type: ignore[arg-type]
+
+
+def test_clear_content_category_outweighs_conflicting_query_group() -> None:
+    output = DeterministicEnricher().analyze(
+        article(
+            title="Automotive vehicle production expands",
+            description="Car manufacturers add a new vehicle assembly line.",
+            query_group="regulatory",
+        ),
+        summary_max_chars=120,
+    ).output
+
+    assert output.category == "automotive"
+
+
+def test_query_group_category_wins_without_stronger_content_evidence() -> None:
+    output = DeterministicEnricher().analyze(
+        article(
+            title="New requirements announced",
+            description="Officials published details for affected businesses.",
+            query_group="regulatory",
+            source_name="Daily Bulletin",
+        ),
+        summary_max_chars=120,
+    ).output
+
+    assert output.category == "regulatory"
