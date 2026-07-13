@@ -1,0 +1,114 @@
+{
+  "registry_version": "sources-v1",
+  "enabled_source_ids": [
+    "dw_business",
+    "ecb_press",
+    "eu_commission_press",
+    "eurostat_updates",
+    "mining_com",
+    "oilprice",
+    "supply_chain_dive"
+  ],
+  "candidates": [
+    {
+      "source_id": "eu_commission_press",
+      "owner": "European Commission",
+      "endpoint": "https://ec.europa.eu/commission/presscorner/api/rss?language=en",
+      "content_type": "application/rss+xml;charset=UTF-8",
+      "language": "en",
+      "usage_note": "Official public RSS; retain Commission attribution and source links.",
+      "fixture": "eu_commission_press.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "eu_council_press",
+      "owner": "General Secretariat of the Council of the EU",
+      "endpoint": "https://www.consilium.europa.eu/en/press/press-releases/?rss=true",
+      "content_type": "application/json (HTTP 403 during 2026-07-13 verification)",
+      "language": "en",
+      "usage_note": "Disabled because an unauthenticated machine-readable response could not be verified.",
+      "fixture": "eu_council_press.xml",
+      "enabled": false
+    },
+    {
+      "source_id": "ecb_press",
+      "owner": "European Central Bank",
+      "endpoint": "https://www.ecb.europa.eu/rss/press.html",
+      "content_type": "application/rss+xml",
+      "language": "en",
+      "usage_note": "Official ECB RSS subscription feed; retain attribution and source links.",
+      "fixture": "ecb_press.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "eu_financial_sanctions",
+      "owner": "European Commission Directorate-General for Financial Stability, Financial Services and Capital Markets Union",
+      "endpoint": "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
+      "content_type": "application/json (HTTP 403 during 2026-07-13 verification)",
+      "language": "en",
+      "usage_note": "Disabled because the current official distribution requires a supported access path or credentials.",
+      "fixture": "eu_financial_sanctions.xml",
+      "enabled": false
+    },
+    {
+      "source_id": "eurostat_updates",
+      "owner": "Eurostat",
+      "endpoint": "https://ec.europa.eu/eurostat/api/dissemination/catalogue/rss/en/statistics-update.rss",
+      "content_type": "application/xml",
+      "language": "en",
+      "usage_note": "Official Catalogue API RSS; reuse under the Eurostat reuse policy with attribution.",
+      "fixture": "eurostat_updates.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "freightwaves",
+      "owner": "FreightWaves, Inc.",
+      "endpoint": "https://www.freightwaves.com/feed",
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "language": "en",
+      "usage_note": "Disabled because publisher terms limit website content to personal use without permission.",
+      "fixture": "freightwaves.xml",
+      "enabled": false
+    },
+    {
+      "source_id": "mining_com",
+      "owner": "MINING.COM",
+      "endpoint": "https://www.mining.com/feed/",
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "language": "en",
+      "usage_note": "Publisher permits RSS syndication with links back for full viewing.",
+      "fixture": "mining_com.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "oilprice",
+      "owner": "Oilprice.com",
+      "endpoint": "https://oilprice.com/rss/main",
+      "content_type": "rss+xml; charset=utf-8",
+      "language": "en",
+      "usage_note": "Publisher-operated public headline RSS; retain attribution and original links.",
+      "fixture": "oilprice.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "supply_chain_dive",
+      "owner": "Informa TechTarget / Supply Chain Dive",
+      "endpoint": "https://www.supplychaindive.com/feeds/news/",
+      "content_type": "application/rss+xml; charset=utf-8",
+      "language": "en",
+      "usage_note": "Publisher-operated public RSS; retain attribution and original article links.",
+      "fixture": "supply_chain_dive.xml",
+      "enabled": true
+    },
+    {
+      "source_id": "dw_business",
+      "owner": "Deutsche Welle",
+      "endpoint": "https://rss.dw.com/rdf/rss-en-bus",
+      "content_type": "text/xml; charset=UTF-8",
+      "language": "en",
+      "usage_note": "DW public RSS for reader subscription; retain attribution and original links.",
+      "fixture": "dw_business.xml",
+      "enabled": true
+    }
+  ]
+}
