@@ -15,6 +15,27 @@ from procuresignal.retrieval.registry import (
 )
 
 SNAPSHOT = Path("tests/fixtures/retrieval/catalog_expected.json")
+EXPECTED_EVIDENCE = {
+    "eu_commission_press": ("European Commission", "eu_commission_press.xml"),
+    "eu_council_press": (
+        "General Secretariat of the Council of the EU",
+        "eu_council_press.xml",
+    ),
+    "ecb_press": ("European Central Bank", "ecb_press.xml"),
+    "eu_financial_sanctions": (
+        "European Commission Directorate-General for Financial Stability, Financial Services and Capital Markets Union",
+        "eu_financial_sanctions.xml",
+    ),
+    "eurostat_updates": ("Eurostat", "eurostat_updates.xml"),
+    "freightwaves": ("FreightWaves, Inc.", "freightwaves.xml"),
+    "mining_com": ("MINING.COM", "mining_com.xml"),
+    "oilprice": ("Oilprice.com", "oilprice.xml"),
+    "supply_chain_dive": (
+        "Informa TechTarget / Supply Chain Dive",
+        "supply_chain_dive.xml",
+    ),
+    "dw_business": ("Deutsche Welle", "dw_business.xml"),
+}
 
 
 def definition(**changes: object) -> SourceDefinition:
@@ -126,23 +147,26 @@ def test_enabled_catalog_matches_reviewed_snapshot() -> None:
     assert set(actual_by_id) == {candidate["source_id"] for candidate in expected["candidates"]}
     for candidate in expected["candidates"]:
         source = actual_by_id[candidate["source_id"]]
-        assert candidate == {
+        projection = {
             "source_id": source.source_id,
-            "owner": candidate["owner"],
             "display_name": source.display_name,
-            "endpoint": source.endpoint_url,
+            "homepage_url": source.homepage_url,
+            "endpoint_url": source.endpoint_url,
             "adapter": source.adapter.value,
             "source_class": source.source_class.value,
             "domains": sorted(domain.value for domain in source.domains),
             "countries": list(source.countries),
             "languages": list(source.languages),
+            "poll_minutes": source.poll_minutes,
+            "item_limit": source.item_limit,
             "expected_content_types": list(source.expected_content_types),
             "allowed_hosts": list(source.allowed_hosts),
             "trust_seed": source.trust_seed,
             "license_note": source.license_note,
-            "planned_fixture": candidate["planned_fixture"],
             "enabled": source.enabled_by_default,
+            "parser_hint": source.parser_hint,
         }
+        assert {field: candidate[field] for field in projection} == projection
 
 
 def test_snapshot_declares_only_future_fixture_intent() -> None:
@@ -150,4 +174,54 @@ def test_snapshot_declares_only_future_fixture_intent() -> None:
 
     for candidate in expected["candidates"]:
         assert "fixture" not in candidate
-        assert candidate["planned_fixture"].endswith((".xml", ".json"))
+        assert (candidate["owner"], candidate["planned_fixture"]) == EXPECTED_EVIDENCE[
+            candidate["source_id"]
+        ]
+
+
+def test_snapshot_records_immutable_endpoint_verification_evidence() -> None:
+    expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+
+    for candidate in expected["candidates"]:
+        verification = candidate["verification"]
+        assert set(verification) == {
+            "checked_at",
+            "http_status",
+            "observed_content_type",
+            "ownership_url",
+            "ownership_evidence",
+            "outcome",
+        }
+        assert verification["checked_at"] == "2026-07-13"
+        assert isinstance(verification["http_status"], int)
+        assert verification["observed_content_type"].strip()
+        assert verification["ownership_url"].startswith("https://")
+        assert verification["ownership_evidence"].strip()
+        assert verification["outcome"] in {"enabled", "disabled"}
+        assert (verification["outcome"] == "enabled") is candidate["enabled"]
+
+    disabled_403 = {
+        candidate["source_id"]: candidate["verification"]
+        for candidate in expected["candidates"]
+        if candidate["source_id"] in {"eu_council_press", "eu_financial_sanctions"}
+    }
+    assert all(item["http_status"] == 403 for item in disabled_403.values())
+    assert all(item["outcome"] == "disabled" for item in disabled_403.values())
+
+
+def test_task5_verified_structured_source_closes_only_structured_gap() -> None:
+    sanctions = next(
+        source for source in SOURCE_REGISTRY.sources if source.source_id == "eu_financial_sanctions"
+    )
+    before = SOURCE_REGISTRY.validate_coverage()
+    after_registry = SourceRegistry(
+        tuple(
+            replace(source, enabled_by_default=True)
+            if source.source_id == sanctions.source_id
+            else source
+            for source in SOURCE_REGISTRY.sources
+        )
+    )
+
+    assert before.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
+    assert after_registry.validate_coverage().missing_structured_authoritative_domains == ()
