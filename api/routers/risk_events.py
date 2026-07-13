@@ -1,6 +1,8 @@
 """Risk event endpoints."""
 
 from datetime import datetime, timedelta
+from typing import Any
+from typing import cast as type_cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.models import RiskEvent, UserNewsPreference
@@ -10,6 +12,7 @@ from procuresignal.signals.taxonomy import normalize_signal_term
 from sqlalchemy import String, case, cast, desc, func, or_, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement, Select
 
 from api.dependencies import get_session
 from api.schemas.risk_event import RiskEventItem, RiskEventResponse, RiskEventStatusUpdate
@@ -99,7 +102,9 @@ async def update_risk_event_status(
     return _to_item(event, event.confidence)
 
 
-def _apply_filters(stmt, risk_type, severity, status_filter):
+def _apply_filters(
+    stmt: Select[Any], risk_type: str | None, severity: str | None, status_filter: str | None
+) -> Select[Any]:
     if risk_type:
         stmt = stmt.where(RiskEvent.risk_type == risk_type)
     if severity:
@@ -109,7 +114,13 @@ def _apply_filters(stmt, risk_type, severity, status_filter):
     return stmt
 
 
-def _apply_json_filters(stmt, supplier, location, category, dialect_name):
+def _apply_json_filters(
+    stmt: Select[Any],
+    supplier: str | None,
+    location: str | None,
+    category: str | None,
+    dialect_name: str,
+) -> Select[Any]:
     for column, expected in (
         (RiskEvent.affected_suppliers, supplier),
         (RiskEvent.affected_locations, location),
@@ -120,7 +131,7 @@ def _apply_json_filters(stmt, supplier, location, category, dialect_name):
     return stmt
 
 
-def _json_contains(column, expected: str, dialect_name: str):
+def _json_contains(column: Any, expected: str, dialect_name: str) -> ColumnElement[bool]:
     normalized = normalize_signal_term(expected)
     if dialect_name == "postgresql":
         element = (
@@ -138,12 +149,14 @@ def _json_contains(column, expected: str, dialect_name: str):
     )
 
 
-def _json_matches_any(column, values: set[str], dialect_name: str):
+def _json_matches_any(column: Any, values: set[str], dialect_name: str) -> ColumnElement[bool]:
     return or_(*(_json_contains(column, value, dialect_name) for value in sorted(values)))
 
 
-def _rank_score_expression(preference: UserNewsPreference | None, dialect_name: str):
-    score = RiskEvent.confidence
+def _rank_score_expression(
+    preference: UserNewsPreference | None, dialect_name: str
+) -> ColumnElement[float]:
+    score: ColumnElement[float] = type_cast(ColumnElement[float], RiskEvent.confidence)
     if preference is None:
         return score.label("rank_score")
 

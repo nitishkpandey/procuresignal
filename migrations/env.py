@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # Add project root to path so we can import procuresignal
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.procuresignal.models import Base
+from shared.procuresignal.models import Base  # noqa: E402
 
 config = context.config
 

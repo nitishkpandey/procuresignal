@@ -1,0 +1,44 @@
+Task 3 literal verification evidence (2026-07-13)
+
+COMMAND: PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check api worker shared tests
+RESULT: exit 0; no findings.
+
+COMMAND: PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/mypy api worker shared
+RESULT: Success: no issues found in 80 source files
+
+COMMAND: PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest -q
+RESULT: 142 passed in 4.62s
+
+COMMAND: PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest -q tests/unit/test_personalization.py tests/unit/test_scheduler.py
+RESULT: 23 passed in 1.13s (focused matcher and database-backed scheduler/session coverage)
+
+COMMAND: cd frontend && npm run lint
+RESULT: exit 0; No ESLint warnings or errors
+
+COMMAND: cd frontend && npm run typecheck
+RESULT: exit 0; tsc --noEmit
+
+RUNTIME REGISTRATION MAP:
+- api/main.py include_router: health, feed, risk_events, preferences, chat, articles, signals, currency.
+- worker/main.py creates the Celery app; worker/tasks.py and worker/signal_tasks.py register decorated tasks.
+- api/scheduler.py registers all six SCHEDULED_JOB_IDS with add_job.
+- docker-compose.yml invokes Alembic, Uvicorn api.main:app, Celery worker/beat, and scripts/bootstrap_pipeline.py.
+- frontend app convention files and NEXT_PUBLIC_API_URL/NEXT_PUBLIC_WS_URL are runtime-wired by Next.js.
+
+CANDIDATE AUDIT:
+- Ruff F401/F811/F821/F841 produced no unused/unresolved candidates.
+- Exact candidates checked were every router module, Celery task function, scheduler enqueue/job function, bootstrap_pipeline.py, and frontend app/lib entry point exposed by the registration-map rg.
+- `git log --oneline --all -- worker/tasks.py api/main.py scripts/bootstrap_pipeline.py` showed their feature/runtime history (including 71befad, 6d3170f, 4eb3dac).
+- `git blame -L 161,168 worker/tasks.py` confirmed retrieve_news_task originated with the Celery task implementation (71befad), while the only current edit is its annotation.
+- All candidates have a framework/config/history consumer; therefore none met the four-part deletion threshold. No production unit was deleted.
+
+SEMANTIC REGRESSION CHECKS:
+- Matcher optional values are still passed through exactly as before, including downstream `None` stringification; the widened `Iterable[object]` annotation now matches the pre-existing `str(value)` behavior.
+- session_scope retains `database_url or os.getenv("DATABASE_URL", WORKER_DATABASE_URL)`: an explicitly empty DATABASE_URL remains empty rather than falling back.
+
+FINAL RE-REVIEW COMMANDS:
+- `pytest -q tests/unit/test_personalization.py tests/integration/test_api.py`: 49 passed in 3.10s.
+- `ruff check api worker shared tests`: exit 0.
+- `mypy api worker shared`: Success: no issues found in 80 source files.
+- `pytest -q`: 143 passed in 3.83s.
+- First-party MyPy overrides: none. Missing-import handling remains for third-party packages, and explicit Any remains only at dynamic JSON, Pydantic validator, Celery task, SQLAlchemy expression, and untyped third-party response boundaries.

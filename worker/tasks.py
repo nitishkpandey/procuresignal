@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable, Coroutine
 
 from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, OpenAILLMClient
@@ -89,7 +89,7 @@ def _to_raw_article(article: NewsArticleRaw) -> RawArticle:
     )
 
 
-def _run_with_retry(task: Any, coro_factory: Callable[[], Awaitable[Any]]) -> Any:
+def _run_with_retry(task: Any, coro_factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
     """Run an async task body, retrying with exponential backoff on failure."""
     try:
         return asyncio.run(coro_factory())
@@ -165,7 +165,7 @@ async def _normalize_articles(
     queue="retrieval",
     time_limit=3600,
 )
-def retrieve_news_task(self) -> dict[str, Any]:
+def retrieve_news_task(self: Any) -> dict[str, Any]:
     """Retrieve news from all providers."""
 
     async def _run() -> dict[str, Any]:
@@ -229,7 +229,7 @@ def retrieve_news_task(self) -> dict[str, Any]:
     queue="processing",
     time_limit=3600,
 )
-def normalize_articles_task(self) -> dict[str, Any]:
+def normalize_articles_task(self: Any) -> dict[str, Any]:
     """Normalize recently ingested raw articles."""
 
     async def _run() -> dict[str, Any]:
@@ -253,7 +253,7 @@ def normalize_articles_task(self) -> dict[str, Any]:
     queue="enrichment",
     time_limit=3600,
 )
-def enrich_articles_task(self) -> dict[str, Any]:
+def enrich_articles_task(self: Any) -> dict[str, Any]:
     """Enrich normalized raw articles with LLM summaries."""
 
     async def _run() -> dict[str, Any]:
@@ -307,7 +307,7 @@ def enrich_articles_task(self) -> dict[str, Any]:
     queue="personalization",
     time_limit=1800,
 )
-def personalize_feeds_task(self) -> dict[str, Any]:
+def personalize_feeds_task(self: Any) -> dict[str, Any]:
     """Generate personalized feeds for all users with preferences."""
 
     async def _run() -> dict[str, Any]:
@@ -356,7 +356,7 @@ def personalize_feeds_task(self) -> dict[str, Any]:
     queue="personalization",
     time_limit=1800,
 )
-def generate_risk_events_task(self) -> dict[str, Any]:
+def generate_risk_events_task(self: Any) -> dict[str, Any]:
     """Generate idempotent procurement risk events from processed articles."""
 
     async def _run() -> dict[str, Any]:
@@ -381,7 +381,7 @@ def generate_risk_events_task(self) -> dict[str, Any]:
     queue="default",
     time_limit=1800,
 )
-def prune_retention_task(self) -> dict[str, Any]:
+def prune_retention_task(self: Any) -> dict[str, Any]:
     """Prune expired raw, processed, feed, and risk event records."""
 
     async def _run() -> dict[str, Any]:
@@ -405,7 +405,7 @@ def prune_retention_task(self) -> dict[str, Any]:
     queue="default",
     time_limit=30,
 )
-def health_check_task(self) -> dict[str, str]:
+def health_check_task(self: Any) -> dict[str, str]:
     """Health check task for worker liveness."""
     return {
         "status": "healthy",

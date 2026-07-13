@@ -66,7 +66,7 @@ class ArticlePersistence:
                 result = await session.execute(stmt)
 
                 # Check if row was inserted
-                if result.rowcount > 0:
+                if getattr(result, "rowcount", 0) > 0:
                     inserted += 1
                 else:
                     duplicates += 1

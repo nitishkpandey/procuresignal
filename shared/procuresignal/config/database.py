@@ -2,9 +2,14 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, cast
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 WORKER_DATABASE_URL = "postgresql+asyncpg://procuresignal:procuresignal@postgres:5432/procuresignal"
@@ -21,8 +26,8 @@ class DatabaseConfig:
                 Example: postgresql+asyncpg://user:pass@localhost/dbname
         """
         self.database_url = database_url
-        self.engine = None
-        self.session_maker = None
+        self.engine: AsyncEngine | None = None
+        self.session_maker: async_sessionmaker[AsyncSession] | None = None
 
     async def initialize(self) -> None:
         """Initialize async engine and session factory."""
@@ -62,7 +67,7 @@ async def session_scope(database_url: str | None = None) -> AsyncIterator[AsyncS
     For workers and scripts that run without the API's long-lived pool. Falls back
     to DATABASE_URL, then the in-cluster worker default.
     """
-    url = database_url or os.getenv("DATABASE_URL", WORKER_DATABASE_URL)
+    url = database_url or cast(str, os.getenv("DATABASE_URL", WORKER_DATABASE_URL))
     engine = create_async_engine(url, future=True)
     try:
         async with async_sessionmaker(engine, expire_on_commit=False)() as session:

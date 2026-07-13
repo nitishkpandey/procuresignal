@@ -225,13 +225,13 @@ SIGNAL_ALIAS_GROUPS = (
 _SIGNAL_ALIAS_LOOKUP = {alias: group for group in SIGNAL_ALIAS_GROUPS for alias in group}
 
 
-def normalize_signal_term(value: str) -> str:
+def normalize_signal_term(value: object) -> str:
     """Normalize a signal term while preserving phrase boundaries."""
 
     return re.sub(r"\s+", " ", str(value).strip().lower())
 
 
-def expand_signal_terms(values: Iterable[str] | None) -> set[str]:
+def expand_signal_terms(values: Iterable[object] | None) -> set[str]:
     """Return canonical signal terms plus user-facing aliases."""
 
     expanded: set[str] = set()

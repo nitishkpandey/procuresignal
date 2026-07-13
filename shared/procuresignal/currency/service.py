@@ -202,8 +202,9 @@ def _extract_history_rates(payload: object) -> list[dict[str, float]]:
         return []
 
     rates = payload.get("rates") or {}
+    rows: list[object]
     if isinstance(rates, dict):
-        rows = rates.values()
+        rows = list(rates.values())
     elif isinstance(rates, list):
         rows = rates
     else:

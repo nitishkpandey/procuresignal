@@ -6,6 +6,13 @@ from datetime import datetime
 
 from procuresignal.models import NewsArticleProcessed
 from procuresignal.personalization import PreferenceMatcher
+from procuresignal.signals.taxonomy import expand_signal_terms
+
+
+def test_expand_signal_terms_preserves_none_stringification() -> None:
+    # Regression-only compatibility: this preserves history, not desired normalization semantics.
+
+    assert "none" in expand_signal_terms([None])
 
 
 @dataclass

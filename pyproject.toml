@@ -84,6 +84,10 @@ explicit_package_bases = true
 namespace_packages = true
 mypy_path = "$MYPY_CONFIG_FILE_DIR/shared"
 
+[[tool.mypy.overrides]]
+module = ["apscheduler.*", "celery.*", "feedparser.*", "kombu.*", "langdetect.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

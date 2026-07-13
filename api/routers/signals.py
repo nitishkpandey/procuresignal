@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from procuresignal.config import database
@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
 
-def _serialize_signal(obj: SignalModel) -> dict:
+def _serialize_signal(obj: SignalModel) -> dict[str, Any]:
     return {
         "id": str(obj.id),
         "signal_type": obj.signal_type,
@@ -33,10 +33,11 @@ async def list_signals(
     severity: Optional[str] = Query(None),
     skip: int = Query(0),
     limit: int = Query(50),
-):
+) -> dict[str, Any]:
     if not database.db_config:
         return {"items": [], "skip": skip, "limit": limit}
 
+    assert database.db_config.session_maker is not None
     async with database.db_config.session_maker() as session:
         stmt = select(SignalModel)
         if signal_type:
@@ -55,10 +56,11 @@ async def list_signals(
 
 
 @router.get("/{signal_id}")
-async def get_signal(signal_id: str):
+async def get_signal(signal_id: str) -> dict[str, Any]:
     if not database.db_config:
         raise HTTPException(status_code=404, detail="DB not configured")
 
+    assert database.db_config.session_maker is not None
     async with database.db_config.session_maker() as session:
         stmt = select(SignalModel).where(SignalModel.id == signal_id)
         result = await session.execute(stmt)
@@ -69,10 +71,11 @@ async def get_signal(signal_id: str):
 
 
 @router.get("/entity/{entity_id}/signals")
-async def get_entity_signals(entity_id: str):
+async def get_entity_signals(entity_id: str) -> dict[str, Any]:
     if not database.db_config:
         return {"entity_id": entity_id, "signals": []}
 
+    assert database.db_config.session_maker is not None
     async with database.db_config.session_maker() as session:
         stmt = select(SignalModel).where(SignalModel.entity_id == entity_id)
         result = await session.execute(stmt)
@@ -81,10 +84,11 @@ async def get_entity_signals(entity_id: str):
 
 
 @router.post("/{signal_id}/acknowledge")
-async def acknowledge_signal(signal_id: str):
+async def acknowledge_signal(signal_id: str) -> dict[str, Any]:
     if not database.db_config:
         raise HTTPException(status_code=500, detail="DB not configured")
 
+    assert database.db_config.session_maker is not None
     async with database.db_config.session_maker() as session:
         meta = SignalMetadata(signal_id=signal_id, key="acknowledged", value="true")
         session.add(meta)
@@ -93,10 +97,11 @@ async def acknowledge_signal(signal_id: str):
 
 
 @router.get("/stats/summary")
-async def get_signal_stats():
+async def get_signal_stats() -> dict[str, Any]:
     if not database.db_config:
         return {"total": 0, "by_type": {}, "by_severity": {}}
 
+    assert database.db_config.session_maker is not None
     async with database.db_config.session_maker() as session:
         total = await session.scalar(select(func.count()).select_from(SignalModel))
 
