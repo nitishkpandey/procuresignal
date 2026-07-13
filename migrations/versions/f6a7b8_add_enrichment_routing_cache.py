@@ -15,21 +15,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Historical code allowed duplicate processed rows. Keep the earliest row so
-    # the new idempotency constraint can be applied safely to existing databases.
-    op.execute(
-        sa.text(
-            "DELETE FROM news_articles_processed newer "
-            "USING news_articles_processed older "
-            "WHERE newer.raw_article_id = older.raw_article_id "
-            "AND newer.id > older.id"
-        )
-    )
-    op.create_unique_constraint(
-        "uq_news_articles_processed_raw_article_id",
-        "news_articles_processed",
-        ["raw_article_id"],
-    )
     op.add_column("news_articles_processed", sa.Column("enrichment_method", sa.String(20)))
     op.add_column("news_articles_processed", sa.Column("enrichment_reason", sa.String(100)))
     op.add_column("news_articles_processed", sa.Column("enrichment_policy_version", sa.String(100)))
@@ -39,6 +24,8 @@ def upgrade() -> None:
         "news_articles_processed",
         sa.Column("llm_used", sa.Boolean(), server_default=sa.false(), nullable=False),
     )
+    _consolidate_processed_duplicates()
+    _create_processed_identity_constraint()
     op.create_table(
         "enrichment_cache",
         sa.Column("content_fingerprint", sa.String(255), nullable=False),
@@ -66,11 +53,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "uq_news_articles_processed_raw_article_id",
-        "news_articles_processed",
-        type_="unique",
-    )
+    _drop_processed_identity_constraint()
     op.drop_index("idx_enrichment_cache_fingerprint", table_name="enrichment_cache")
     op.drop_table("enrichment_cache")
     op.drop_column("news_articles_processed", "llm_used")
@@ -79,3 +62,94 @@ def downgrade() -> None:
     op.drop_column("news_articles_processed", "enrichment_policy_version")
     op.drop_column("news_articles_processed", "enrichment_reason")
     op.drop_column("news_articles_processed", "enrichment_method")
+
+
+def _consolidate_processed_duplicates() -> None:
+    """Repoint dependents before removing duplicate processed rows.
+
+    None of the four dependent tables has a uniqueness constraint involving
+    ``processed_article_id`` at the prior revision. Repointing therefore cannot
+    create a database uniqueness collision, and preserving every dependent row
+    retains match reasons, feed state, priority dispatch state, and risk events.
+    """
+    richness = " + ".join(
+        f"CASE WHEN {column} IS NOT NULL THEN 1 ELSE 0 END"
+        for column in (
+            "signal_tags",
+            "priority_signal",
+            "detected_regions",
+            "detected_suppliers",
+            "detected_categories",
+            "llm_model",
+            "risk_event_checked_at",
+            "enrichment_method",
+            "enrichment_reason",
+            "enrichment_policy_version",
+            "content_fingerprint",
+            "deterministic_confidence",
+        )
+    )
+    op.execute(
+        sa.text(
+            "CREATE TEMPORARY TABLE enrichment_processed_duplicate_map AS "
+            "SELECT id AS old_id, FIRST_VALUE(id) OVER ("
+            "PARTITION BY raw_article_id ORDER BY "
+            "CASE WHEN processing_status = 'completed' THEN 1 ELSE 0 END DESC, "
+            f"({richness}) DESC, processed_at DESC, id DESC"
+            ") AS survivor_id "
+            "FROM news_articles_processed "
+            "WHERE raw_article_id IN ("
+            "SELECT raw_article_id FROM news_articles_processed "
+            "GROUP BY raw_article_id HAVING COUNT(*) > 1)"
+        )
+    )
+    for table in (
+        "news_article_matches",
+        "news_priority_events",
+        "user_news_feed",
+        "risk_events",
+    ):
+        op.execute(
+            sa.text(
+                f"UPDATE {table} SET processed_article_id = ("
+                "SELECT survivor_id FROM enrichment_processed_duplicate_map "
+                f"WHERE old_id = {table}.processed_article_id) "
+                "WHERE processed_article_id IN ("
+                "SELECT old_id FROM enrichment_processed_duplicate_map "
+                "WHERE old_id <> survivor_id)"
+            )
+        )
+    op.execute(
+        sa.text(
+            "DELETE FROM news_articles_processed WHERE id IN ("
+            "SELECT old_id FROM enrichment_processed_duplicate_map "
+            "WHERE old_id <> survivor_id)"
+        )
+    )
+    op.execute(sa.text("DROP TABLE enrichment_processed_duplicate_map"))
+
+
+def _create_processed_identity_constraint() -> None:
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("news_articles_processed") as batch_op:
+            batch_op.create_unique_constraint(
+                "uq_news_articles_processed_raw_article_id", ["raw_article_id"]
+            )
+        return
+    op.create_unique_constraint(
+        "uq_news_articles_processed_raw_article_id",
+        "news_articles_processed",
+        ["raw_article_id"],
+    )
+
+
+def _drop_processed_identity_constraint() -> None:
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("news_articles_processed") as batch_op:
+            batch_op.drop_constraint("uq_news_articles_processed_raw_article_id", type_="unique")
+        return
+    op.drop_constraint(
+        "uq_news_articles_processed_raw_article_id",
+        "news_articles_processed",
+        type_="unique",
+    )

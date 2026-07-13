@@ -64,3 +64,21 @@ PostgreSQL offline Alembic downgrade f6a7b8...:e5f6a7...: generated successfully
 ```
 
 The Alembic validation was PostgreSQL-dialect offline SQL generation because no disposable live PostgreSQL database was available in the task environment. It validates upgrade/downgrade DDL generation, not execution against production data.
+
+## Migration Data-Safety Follow-up
+
+The migration now adds nullable audit columns first, ranks duplicate processed rows deliberately, and selects the survivor by this stable order: completed status, greatest non-null enrichment/audit evidence, newest `processed_at`, then greatest ID. A temporary old-ID to survivor-ID map repoints `news_article_matches`, `news_priority_events`, `user_news_feed`, and `risk_events` before duplicate processed rows are deleted.
+
+Schema inspection confirms that at revision `e5f6a7_add_risk_event_scan_tracking`, none of those dependent tables has a unique constraint involving `processed_article_id`. Consequently remapping cannot cause a unique-key collision. Every dependent row is retained, which preserves matching evidence, priority dispatch state, feed read/hidden state, and independently keyed risk events. The only relevant dependent uniqueness is `risk_events.event_key`, which is unchanged by remapping.
+
+Fresh populated migration evidence:
+
+```text
+tests/integration/test_enrichment_migration.py: 1 passed
+full backend suite: 229 passed
+repository Ruff: passed
+MyPy api worker shared: Success, 86 source files
+PostgreSQL offline upgrade and downgrade SQL: generated successfully
+```
+
+The populated SQLite test constructs the prior-revision processed/dependent schema, inserts three processed duplicates plus references from all four dependent tables, includes multiple dependent rows that converge on the survivor, and proves: the completed/richer/newer row survives; every reference is repointed; no dependent row is lost or left dangling; one processed row remains per raw ID; the new uniqueness constraint rejects another duplicate; and downgrade removes the new cache/audit/constraint structures. SQLite execution plus PostgreSQL offline SQL generation cover both migration branches; a production-data backup and dry run remain required before deployment.
