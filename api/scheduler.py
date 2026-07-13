@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from os import getenv
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from procuresignal.config.database import session_scope
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
+
+if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+
+class Scheduler(Protocol):
+    """Scheduler surface required by job registration and its test fake."""
+
+    def add_job(self, func: Callable[..., object], trigger: str, **kwargs: object) -> object:
+        ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +85,7 @@ def _job_options(job_id: str) -> dict[str, Any]:
     }
 
 
-def configure_scheduler(scheduler: Any) -> None:
+def configure_scheduler(scheduler: Scheduler) -> None:
     """Register idempotent scheduled jobs on an APScheduler instance."""
 
     scheduler.add_job(
@@ -120,7 +132,7 @@ def configure_scheduler(scheduler: Any) -> None:
     )
 
 
-def create_scheduler() -> Any:
+def create_scheduler() -> AsyncIOScheduler:
     """Create the concrete APScheduler instance."""
 
     try:

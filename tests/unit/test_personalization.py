@@ -10,7 +10,7 @@ from procuresignal.signals.taxonomy import expand_signal_terms
 
 
 def test_expand_signal_terms_preserves_none_stringification() -> None:
-    """Optional matcher values retain the historical stringification behavior."""
+    # Regression-only compatibility: this preserves history, not desired normalization semantics.
 
     assert "none" in expand_signal_terms([None])
 

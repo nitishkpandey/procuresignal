@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -18,7 +17,7 @@ from procuresignal.chat.context import build_system_prompt
 from procuresignal.config import database
 from procuresignal.models import ChatConversation, ChatMessage
 from sqlalchemy import asc, delete, desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api.dependencies import get_session
 from api.schemas.chat import (
@@ -133,7 +132,9 @@ def _build_chat_client() -> ChatLLMClient:
     return ChatLLMClient()
 
 
-async def _ensure_conversation(session_maker: Any, user_id: str, conversation_id: str) -> None:
+async def _ensure_conversation(
+    session_maker: async_sessionmaker[AsyncSession], user_id: str, conversation_id: str
+) -> None:
     async with session_maker() as session:
         conversation = await _get_conversation(session, conversation_id)
         if conversation is None:
@@ -150,7 +151,7 @@ async def _ensure_conversation(session_maker: Any, user_id: str, conversation_id
 
 
 async def _persist_user_message(
-    session_maker: Any, user_id: str, conversation_id: str, text: str
+    session_maker: async_sessionmaker[AsyncSession], user_id: str, conversation_id: str, text: str
 ) -> tuple[str, list[dict]]:
     """Persist the user message, set title if first, return (system_prompt, history)."""
 
@@ -182,7 +183,11 @@ async def _persist_user_message(
 
 
 async def _persist_assistant_message(
-    session_maker: Any, user_id: str, conversation_id: str, text: str, tokens_used: int | None
+    session_maker: async_sessionmaker[AsyncSession],
+    user_id: str,
+    conversation_id: str,
+    text: str,
+    tokens_used: int | None,
 ) -> None:
     async with session_maker() as session:
         session.add(

@@ -54,7 +54,7 @@ Every final Phase 1 verification command exited 0.
 | Frontend tests | 16 files and 52 tests passed in 2.62 seconds. |
 | Frontend build | Next.js 14.2.35 compiled successfully and generated 8/8 static pages. |
 | Alembic | One head, `e5f6a7_add_risk_event_scan_tracking (head)`, with a complete linear history from `<base>`. |
-| Docker Compose | `docker compose config --quiet` exited 0 with no output. |
+| Docker Compose configuration | `docker compose config --quiet` exited 0 with no output; images and the running stack were not validated. |
 
 The frontend test run emitted only the non-failing Vite CJS deprecation warning, and the build emitted only non-failing Node `localStorage` experimental warnings. Alembic's required post-path-bootstrap model import is documented with a narrow `# noqa: E402`; migration order and behavior are unchanged.
 

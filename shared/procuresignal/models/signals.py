@@ -1,9 +1,10 @@
 """Signal models and related tables."""
 
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import JSON, Float, ForeignKey, String, Text, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,11 +15,11 @@ class Signal(Base):
     __tablename__ = "signals"
 
     id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
     signal_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    entity_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
-    article_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    entity_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    article_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(20))
     impact_areas: Mapped[list] = mapped_column(
@@ -35,10 +36,10 @@ class SignalMetadata(Base):
     __tablename__ = "signal_metadata"
 
     id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
     signal_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), nullable=False
     )
     key: Mapped[str] = mapped_column(String(255))
     value: Mapped[str] = mapped_column(Text)
@@ -49,12 +50,12 @@ class SignalSupplyChainImpact(Base):
     __tablename__ = "signal_supply_chain_impact"
 
     id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
     signal_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), nullable=False
     )
-    affected_entity_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    affected_entity_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     relationship_type: Mapped[str] = mapped_column(String(100))
     impact_score: Mapped[float] = mapped_column(Float)
     description: Mapped[str] = mapped_column(Text)

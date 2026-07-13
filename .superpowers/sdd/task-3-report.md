@@ -25,7 +25,7 @@ Because static absence alone is insufficient for framework-driven code, all dyna
 - Added concrete Pydantic validator, API serializer/response, and scheduler option types.
 - Widened signal normalization inputs to their honest runtime type while preserving historical stringification, including `None`.
 - Materialized currency history values into a consistently typed list.
-- Added missing-import handling only for third-party libraries without typing metadata; first-party code remains fully checked.
+- Added missing-import handling only for third-party libraries without typing metadata; first-party code remains fully checked. Remaining `Any` annotations are limited to genuinely dynamic JSON, Pydantic validator, Celery task, SQLAlchemy expression, and untyped third-party response boundaries.
 
 ## Commands and results
 

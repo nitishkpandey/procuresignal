@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
-from procuresignal.signals.classifier import SignalClassifier
+from procuresignal.signals.classifier import Signal, SignalClassifier
 from procuresignal.signals.entity_resolver import EntityResolver
-from procuresignal.signals.risk_scorer import RiskScorer
+from procuresignal.signals.risk_scorer import ImpactScore, RiskScorer
 
 from worker.main import app
 
@@ -50,7 +51,7 @@ def process_article_for_signals(
         raise
 
 
-def _store_signal(article_id: str, signal: Any, impact: Any) -> Any:
+def _store_signal(article_id: str, signal: Signal, impact: ImpactScore) -> UUID | None:
     """Persist the signal to the Signal table when DATABASE_URL is set.
 
     A no-op when DATABASE_URL is unset, so the worker can run without a DB
@@ -73,7 +74,7 @@ def _store_signal(article_id: str, signal: Any, impact: Any) -> Any:
     # Lazy import of ORM models
     from procuresignal.models import Signal as SignalModel
 
-    async def _do_store() -> Any:
+    async def _do_store() -> UUID:
         async with session_scope(database_url) as session:
             model = SignalModel(
                 signal_type=getattr(signal.signal_type, "value", str(signal.signal_type)),

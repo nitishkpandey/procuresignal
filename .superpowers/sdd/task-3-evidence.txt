@@ -41,4 +41,4 @@ FINAL RE-REVIEW COMMANDS:
 - `ruff check api worker shared tests`: exit 0.
 - `mypy api worker shared`: Success: no issues found in 80 source files.
 - `pytest -q`: 143 passed in 3.83s.
-- First-party MyPy overrides: none. Only missing-import handling for third-party packages remains.
+- First-party MyPy overrides: none. Missing-import handling remains for third-party packages, and explicit Any remains only at dynamic JSON, Pydantic validator, Celery task, SQLAlchemy expression, and untyped third-party response boundaries.

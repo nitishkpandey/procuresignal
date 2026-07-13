@@ -1,8 +1,7 @@
 """User preference endpoints."""
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from procuresignal.models import UserNewsPreference
 from procuresignal.personalization import PreferenceManager
 from procuresignal.personalization.categories import canonical_category_list
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +18,7 @@ from api.schemas.preference import (
 router = APIRouter(prefix="/api", tags=["preferences"])
 
 
-def _to_response(pref: Any) -> PreferenceResponse:
+def _to_response(pref: UserNewsPreference) -> PreferenceResponse:
     return PreferenceResponse(
         user_id=pref.user_id,
         interested_categories=canonical_category_list(
