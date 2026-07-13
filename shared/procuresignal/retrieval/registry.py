@@ -66,6 +66,7 @@ class CoverageReport:
     authoritative_domains: tuple[ProcurementDomain, ...]
     missing_domains: tuple[ProcurementDomain, ...]
     missing_authoritative_domains: tuple[ProcurementDomain, ...]
+    missing_structured_authoritative_domains: tuple[ProcurementDomain, ...]
 
 
 _SOURCE_ID = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
@@ -168,6 +169,13 @@ class SourceRegistry:
             if source.source_class is SourceClass.OFFICIAL
             for domain in source.domains
         }
+        structured_authoritative = {
+            domain
+            for source in enabled
+            if source.source_class is SourceClass.OFFICIAL
+            and source.adapter is AdapterType.STRUCTURED_SANCTIONS
+            for domain in source.domains
+        }
         return CoverageReport(
             covered_domains=tuple(domain for domain in ProcurementDomain if domain in covered),
             authoritative_domains=tuple(
@@ -176,5 +184,10 @@ class SourceRegistry:
             missing_domains=tuple(domain for domain in ProcurementDomain if domain not in covered),
             missing_authoritative_domains=tuple(
                 domain for domain in _AUTHORITY_REQUIRED if domain not in authoritative
+            ),
+            missing_structured_authoritative_domains=(
+                ()
+                if ProcurementDomain.SANCTIONS in structured_authoritative
+                else (ProcurementDomain.SANCTIONS,)
             ),
         )

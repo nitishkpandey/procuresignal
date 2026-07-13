@@ -103,6 +103,7 @@ def test_coverage_report_lists_exact_missing_requirements() -> None:
         ProcurementDomain.SANCTIONS,
         ProcurementDomain.REGULATION,
     )
+    assert report.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
     assert report.authoritative_domains == ()
 
 
@@ -110,6 +111,7 @@ def test_production_registry_meets_phase_3_coverage() -> None:
     report = SOURCE_REGISTRY.validate_coverage()
     assert report.missing_domains == ()
     assert report.missing_authoritative_domains == ()
+    assert report.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
     assert {"sanctions", "regulation"} <= {domain.value for domain in report.authoritative_domains}
 
 
@@ -120,5 +122,32 @@ def test_enabled_catalog_matches_reviewed_snapshot() -> None:
     assert expected["enabled_source_ids"] == [
         source.source_id for source in SOURCE_REGISTRY.enabled()
     ]
-    assert all(candidate["fixture"] for candidate in expected["candidates"])
-    assert all(candidate["usage_note"].strip() for candidate in expected["candidates"])
+    actual_by_id = {source.source_id: source for source in SOURCE_REGISTRY.sources}
+    assert set(actual_by_id) == {candidate["source_id"] for candidate in expected["candidates"]}
+    for candidate in expected["candidates"]:
+        source = actual_by_id[candidate["source_id"]]
+        assert candidate == {
+            "source_id": source.source_id,
+            "owner": candidate["owner"],
+            "display_name": source.display_name,
+            "endpoint": source.endpoint_url,
+            "adapter": source.adapter.value,
+            "source_class": source.source_class.value,
+            "domains": sorted(domain.value for domain in source.domains),
+            "countries": list(source.countries),
+            "languages": list(source.languages),
+            "expected_content_types": list(source.expected_content_types),
+            "allowed_hosts": list(source.allowed_hosts),
+            "trust_seed": source.trust_seed,
+            "license_note": source.license_note,
+            "planned_fixture": candidate["planned_fixture"],
+            "enabled": source.enabled_by_default,
+        }
+
+
+def test_snapshot_declares_only_future_fixture_intent() -> None:
+    expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+
+    for candidate in expected["candidates"]:
+        assert "fixture" not in candidate
+        assert candidate["planned_fixture"].endswith((".xml", ".json"))

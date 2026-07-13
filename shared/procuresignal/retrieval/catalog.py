@@ -12,6 +12,16 @@ from .registry import (
 
 REGISTRY_VERSION = "sources-v1"
 
+EC_HOSTS = ("ec.europa.eu",)
+CONSILIUM_HOSTS = ("www.consilium.europa.eu",)
+ECB_HOSTS = ("www.ecb.europa.eu",)
+EU_FSF_HOSTS = ("webgate.ec.europa.eu",)
+FREIGHTWAVES_HOSTS = ("www.freightwaves.com",)
+MINING_HOSTS = ("www.mining.com",)
+OILPRICE_HOSTS = ("oilprice.com",)
+SUPPLY_CHAIN_DIVE_HOSTS = ("www.supplychaindive.com",)
+DW_RSS_HOSTS = ("rss.dw.com",)
+
 
 def _source(
     *,
@@ -19,6 +29,7 @@ def _source(
     display_name: str,
     homepage_url: str,
     endpoint_url: str,
+    allowed_hosts: tuple[str, ...],
     source_class: SourceClass,
     domains: frozenset[Domain],
     countries: tuple[str, ...] = ("eu",),
@@ -49,7 +60,7 @@ def _source(
         poll_minutes=poll_minutes,
         item_limit=item_limit,
         expected_content_types=expected_content_types,
-        allowed_hosts=(endpoint_url.split("/", 3)[2],),
+        allowed_hosts=allowed_hosts,
         trust_seed=trust_seed,
         license_note=license_note,
         enabled_by_default=enabled_by_default,
@@ -63,6 +74,7 @@ _SOURCES = (
         display_name="European Commission Press Corner",
         homepage_url="https://ec.europa.eu/commission/presscorner/home/en",
         endpoint_url="https://ec.europa.eu/commission/presscorner/api/rss?language=en",
+        allowed_hosts=EC_HOSTS,
         source_class=SourceClass.OFFICIAL,
         domains=frozenset(
             {
@@ -82,6 +94,7 @@ _SOURCES = (
         display_name="Council of the EU Press Releases",
         homepage_url="https://www.consilium.europa.eu/en/press/press-releases/",
         endpoint_url="https://www.consilium.europa.eu/en/press/press-releases/?rss=true",
+        allowed_hosts=CONSILIUM_HOSTS,
         source_class=SourceClass.OFFICIAL,
         domains=frozenset({Domain.SANCTIONS, Domain.REGULATION, Domain.EUROPE_BUSINESS}),
         trust_seed=0.95,
@@ -93,6 +106,7 @@ _SOURCES = (
         display_name="European Central Bank Press",
         homepage_url="https://www.ecb.europa.eu/press/html/index.en.html",
         endpoint_url="https://www.ecb.europa.eu/rss/press.html",
+        allowed_hosts=ECB_HOSTS,
         source_class=SourceClass.OFFICIAL,
         domains=frozenset({Domain.FX, Domain.REGULATION, Domain.EUROPE_BUSINESS}),
         trust_seed=0.95,
@@ -103,6 +117,7 @@ _SOURCES = (
         display_name="EU Consolidated Financial Sanctions List",
         homepage_url="https://webgate.ec.europa.eu/fsd/fsf/",
         endpoint_url="https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
+        allowed_hosts=EU_FSF_HOSTS,
         source_class=SourceClass.OFFICIAL,
         domains=frozenset({Domain.SANCTIONS, Domain.SUPPLIER_RISK}),
         poll_minutes=1440,
@@ -119,6 +134,7 @@ _SOURCES = (
         display_name="Eurostat Data Updates",
         homepage_url="https://ec.europa.eu/eurostat/",
         endpoint_url="https://ec.europa.eu/eurostat/api/dissemination/catalogue/rss/en/statistics-update.rss",
+        allowed_hosts=EC_HOSTS,
         source_class=SourceClass.OFFICIAL,
         domains=frozenset(
             {
@@ -137,6 +153,7 @@ _SOURCES = (
         display_name="FreightWaves",
         homepage_url="https://www.freightwaves.com/",
         endpoint_url="https://www.freightwaves.com/feed",
+        allowed_hosts=FREIGHTWAVES_HOSTS,
         source_class=SourceClass.INDUSTRY,
         domains=frozenset({Domain.LOGISTICS, Domain.SUPPLIER_RISK}),
         countries=("us",),
@@ -149,6 +166,7 @@ _SOURCES = (
         display_name="MINING.COM",
         homepage_url="https://www.mining.com/",
         endpoint_url="https://www.mining.com/feed/",
+        allowed_hosts=MINING_HOSTS,
         source_class=SourceClass.INDUSTRY,
         domains=frozenset({Domain.COMMODITIES, Domain.SUPPLIER_RISK}),
         countries=("ca",),
@@ -160,6 +178,7 @@ _SOURCES = (
         display_name="Oilprice.com",
         homepage_url="https://oilprice.com/",
         endpoint_url="https://oilprice.com/rss/main",
+        allowed_hosts=OILPRICE_HOSTS,
         source_class=SourceClass.INDUSTRY,
         domains=frozenset({Domain.COMMODITIES, Domain.LOGISTICS, Domain.SUPPLIER_RISK}),
         countries=("gb",),
@@ -171,6 +190,7 @@ _SOURCES = (
         display_name="Supply Chain Dive",
         homepage_url="https://www.supplychaindive.com/",
         endpoint_url="https://www.supplychaindive.com/feeds/news/",
+        allowed_hosts=SUPPLY_CHAIN_DIVE_HOSTS,
         source_class=SourceClass.INDUSTRY,
         domains=frozenset({Domain.LOGISTICS, Domain.SUPPLIER_RISK, Domain.EUROPE_BUSINESS}),
         countries=("us",),
@@ -182,6 +202,7 @@ _SOURCES = (
         display_name="Deutsche Welle Business",
         homepage_url="https://www.dw.com/en/business/s-1431",
         endpoint_url="https://rss.dw.com/rdf/rss-en-bus",
+        allowed_hosts=DW_RSS_HOSTS,
         source_class=SourceClass.ESTABLISHED_MEDIA,
         domains=frozenset(
             {

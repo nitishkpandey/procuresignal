@@ -69,6 +69,10 @@ def test_production_registry_meets_phase_3_coverage() -> None:
     report = SOURCE_REGISTRY.validate_coverage()
     assert report.missing_domains == ()
     assert report.missing_authoritative_domains == ()
+    # Task 1 records the verified-access gap; Task 5 must close it.
+    assert report.missing_structured_authoritative_domains == (
+        ProcurementDomain.SANCTIONS,
+    )
     assert {"sanctions", "regulation"} <= {
         domain.value for domain in report.authoritative_domains
     }
@@ -145,7 +149,8 @@ must not be represented by a guessed URL.
 
 Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_source_registry.py -v`
 
-Expected: all registry tests pass and the snapshot exactly matches enabled IDs/version.
+Expected: all registry tests pass, the snapshot exactly matches the full reviewed catalog, and
+the report explicitly retains the structured-sanctions authority gap for Task 5.
 
 Run: `.venv/bin/ruff check shared/procuresignal/retrieval tests/unit/test_source_registry.py && .venv/bin/mypy shared/procuresignal/retrieval`
 
@@ -573,6 +578,7 @@ against mocked HTTP, persists results to SQLite, reruns the same run/input, and 
 ```python
 assert coverage.missing_domains == ()
 assert coverage.missing_authoritative_domains == ()
+assert coverage.missing_structured_authoritative_domains == ()
 assert result.llm_calls == 0
 assert result.sources_succeeded >= 1
 assert result.sources_failed >= 1  # recorded partial-failure case
