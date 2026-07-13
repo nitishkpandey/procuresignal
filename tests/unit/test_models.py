@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from shared.procuresignal.models import (
@@ -89,6 +90,33 @@ async def test_create_processed_article(async_session: AsyncSession) -> None:
     assert processed.id is not None
     assert processed.raw_article_id == raw.id
     assert processed.signal_score == 0.85
+    assert processed.enrichment_method is None
+    assert processed.enrichment_reason is None
+    assert processed.enrichment_policy_version is None
+    assert processed.content_fingerprint is None
+    assert processed.deterministic_confidence is None
+    assert processed.llm_used is False
+
+
+@pytest.mark.asyncio
+async def test_processed_article_raw_id_is_unique(async_session: AsyncSession) -> None:
+    first = NewsArticleProcessed(
+        raw_article_id=99,
+        normalized_title="First",
+        summary="First valid summary.",
+        top_level_category="general",
+        processed_at=datetime.utcnow(),
+    )
+    duplicate = NewsArticleProcessed(
+        raw_article_id=99,
+        normalized_title="Second",
+        summary="Second valid summary.",
+        top_level_category="general",
+        processed_at=datetime.utcnow(),
+    )
+    async_session.add_all([first, duplicate])
+    with pytest.raises(IntegrityError):
+        await async_session.commit()
 
 
 @pytest.mark.asyncio

@@ -171,6 +171,10 @@ class SignalClassifier:
             "union strike",
             "walkout",
             "industrial action",
+            "streik",
+            "arbeitskampf",
+            "grève",
+            "mouvement social",
         ]
 
         text_lower = text.lower()
@@ -204,6 +208,12 @@ class SignalClassifier:
             "executive order",
             "policy change",
             "requirement",
+            "regulierung",
+            "verordnung",
+            "gesetz",
+            "réglementation",
+            "règlement",
+            "obligation réglementaire",
         ]
 
         text_lower = text.lower()

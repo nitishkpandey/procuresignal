@@ -1,136 +1,118 @@
-# Task 2 Report: Remove Generated And Duplicate Artifacts Safely
+# Task 2 Report: Deterministic Analysis And Pure Routing
 
-## Result
+## Status
 
-**DONE** — the nine parallel coverage databases, the named stale Next build directory, and all 12 source/test duplicates approved by Task 1 were deleted from the original checkout. `docs/interview-preparation.md` remains present and unmodified. The worktree now has narrow recurrence safeguards committed as `66cd8538ec0dfe6775605a91d6401fa3d11e9f0b` (`chore: ignore recurring local artifacts`).
+Implemented deterministic article analysis, the pure routing decision table,
+public exports, and focused unit coverage using test-first development.
 
-## Changes
+## TDD evidence
 
-- Added `.coverage *` immediately after `.coverage` in the Testing section of the worktree `.gitignore`.
-- Added `.next-stale-*/` immediately after `.next/` in `frontend/.gitignore`.
-- Retained the pre-existing `.worktrees/` ignore entry.
-- Deleted from the original checkout only `.coverage 2` through `.coverage 10`, `frontend/.next-stale-webpack-runtime-20260710`, and the 12 exact duplicate paths from the Task 1 report.
-- Did not use the brief's unrestricted `find ... -delete`; this avoided unrelated duplicate-suffixed dependency/generated files.
-- Preserved the original checkout's `docs/interview-preparation.md`.
+1. Initial prescribed command:
 
-## Exact Commands And Results
+   `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
 
-### Pre-change inventory
+   Result: exit 127 because this worktree has no `.venv`; zsh reported
+   `.venv/bin/pytest: no such file or directory`.
 
-From the worktree, inspected status and ignore-file context, then tested each expected original-checkout path with an explicit `for` loop:
+2. Red run using the repository's direct virtual environment:
 
-```bash
-git status --short
-rg -n -C 4 'Testing|\\.coverage|\\.next/' .gitignore frontend/.gitignore
-for p in <the 9 coverage paths, stale directory, 12 duplicate paths, and interview document>; do
-  test -e "/Users/nitishkumarpandey/Desktop/procuresignal/$p" && echo "PRESENT $p" || echo "MISSING $p"
-done
-```
+   `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
 
-Result: exit 0. All 22 cleanup targets and the separately checked `docs/interview-preparation.md` printed `PRESENT`. Worktree status before Task 2 showed the pre-existing modified `.superpowers/sdd/task-1-report.md` and intentional untracked `frontend/node_modules` symlink.
+   Result: exit 2 during collection with the expected
+   `ModuleNotFoundError` for `procuresignal.enrichment.deterministic` and
+   `procuresignal.enrichment.router`; 0 tests collected, 2 errors.
 
-### Scoped deletion
+3. Green focused run after implementation:
 
-From `/Users/nitishkumarpandey/Desktop/procuresignal`:
+   `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
 
-```bash
-rm -f '.coverage 2' '.coverage 3' '.coverage 4' '.coverage 5' '.coverage 6' '.coverage 7' '.coverage 8' '.coverage 9' '.coverage 10' \
-  'frontend/__tests__/api.test 2.ts' \
-  'frontend/__tests__/currency-view.test 2.tsx' \
-  'frontend/__tests__/preference-form.test 2.tsx' \
-  'shared/procuresignal/currency/__init__ 2.py' \
-  'shared/procuresignal/currency/service 2.py' \
-  'shared/procuresignal/jobs/__init__ 2.py' \
-  'shared/procuresignal/jobs/retention 2.py' \
-  'tests/integration/test_api 2.py' \
-  'tests/unit/test_currency 2.py' \
-  'tests/unit/test_enrichment 2.py' \
-  'tests/unit/test_retention 2.py' \
-  'tests/unit/test_scheduler 2.py'
-rm -rf frontend/.next-stale-webpack-runtime-20260710
-```
+   Result: exit 0; 18 passed in 0.87s.
 
-Result: exit 0, no output. Paths were named explicitly; no unrestricted `find -delete` was used.
+## Quality gates
 
-### Ignore-rule verification
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -q`
+  Result: exit 0; 18 passed in 0.78s.
+- `/Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py`
+  Result: exit 0; no issues.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/mypy shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py`
+  Result: exit 0; `Success: no issues found in 2 source files`.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit -q`
+  Result: exit 0; 152 passed in 2.51s.
+- `/Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/enrichment/__init__.py shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py`
+  Result: exit 0; no issues after Ruff mechanically sorted imports.
 
-From the worktree after adding the two rules:
+## Design notes
 
-```bash
-git check-ignore -v '.coverage 2' frontend/.next-stale-webpack-runtime-20260710/BUILD_ID
-git check-ignore -v docs/interview-preparation.md || true
-```
-
-Result: exit 0. Output:
-
-```text
-.gitignore:35:.coverage *    .coverage 2
-frontend/.gitignore:3:.next-stale-*/    frontend/.next-stale-webpack-runtime-20260710/BUILD_ID
-```
-
-The interview-document command printed nothing, proving it does not match an ignore rule.
-
-### Initial cleanup and diff verification
-
-```bash
-for p in <the 9 coverage paths, stale directory, and 12 duplicate paths>; do
-  test ! -e "/Users/nitishkumarpandey/Desktop/procuresignal/$p" || { echo "UNEXPECTED_PRESENT $p"; exit 1; }
-done
-test -f /Users/nitishkumarpandey/Desktop/procuresignal/docs/interview-preparation.md
-git status --short
-git diff --check
-git diff -- .gitignore frontend/.gitignore
-```
-
-Result: exit 0. All 22 explicitly checked artifact paths (nine coverage files, one stale directory, and 12 duplicates) were absent; the preservation test passed. `git diff --check` printed nothing. The diff contained only the two requested one-line additions. Status showed those two modified ignore files plus the pre-existing modified Task 1 report and intentional untracked symlink.
-
-### Commit
-
-```bash
-git add .gitignore frontend/.gitignore
-git diff --cached --check
-git diff --cached --name-status
-git commit -m 'chore: ignore recurring local artifacts'
-```
-
-The first sandboxed attempt failed before staging because Git could not create the shared worktree `index.lock`; the same exact command was rerun with approved Git metadata access. Result: exit 0. Cached name status was only:
-
-```text
-M    .gitignore
-M    frontend/.gitignore
-```
-
-Commit output reported two files changed and two insertions. Commit: `66cd8538ec0dfe6775605a91d6401fa3d11e9f0b`.
-
-### Fresh final verification
-
-```bash
-git show --format='%H%n%s' --name-status --stat HEAD
-git diff HEAD^ HEAD --check
-git check-ignore -v '.coverage 2' frontend/.next-stale-webpack-runtime-20260710/BUILD_ID
-git check-ignore -v docs/interview-preparation.md || true
-for p in <the 9 coverage paths, stale directory, and 12 duplicate paths>; do
-  test ! -e "/Users/nitishkumarpandey/Desktop/procuresignal/$p" || { echo "UNEXPECTED_PRESENT $p"; exit 1; }
-done
-test -f /Users/nitishkumarpandey/Desktop/procuresignal/docs/interview-preparation.md
-git status --short
-git -C /Users/nitishkumarpandey/Desktop/procuresignal status --short
-```
-
-Result: exit 0. `git show` identified commit `66cd8538ec0dfe6775605a91d6401fa3d11e9f0b` and only the two ignore files. The committed diff check was clean. Both intended sample artifacts matched their new rules, and the interview document did not. All 22 explicit cleanup paths were absent. The original checkout status contained only `?? docs/interview-preparation.md`. Worktree status contained only the pre-existing modified Task 1 report and intentional untracked `frontend/node_modules` symlink.
-
-## Test Summary
-
-No product tests were run because Task 2 changes only ignore metadata and deletes untracked obsolete/generated artifacts already classified in Task 1. The task-specific checks all passed: committed diff check, two positive `check-ignore` matches, negative interview-document ignore check, explicit absence of all 22 cleanup paths, and interview-document preservation.
-
-## Self-review
-
-- Commit scope is exactly two tracked files with one requested insertion each.
-- No canonical source or test file was removed.
-- Deletion used the Task 1 allowlist and named generated artifacts, not a broad filename sweep.
-- The interview document remains the sole untracked item in the original checkout.
-- Existing unrelated worktree state was preserved and excluded from the commit.
+- Signal tags and confidence come from `SignalClassifier` and the canonical
+  signal taxonomy.
+- Supplier and region evidence uses the existing entity extractors.
+- Category evidence uses the existing canonical category helper, and query
+  relevance uses the existing `QUERY_GROUPS` registry.
+- Relevance and confidence weights are documented as exported module constants;
+  each score's weights sum to 1 and scores are bounded to `[0, 1]`.
+- Routing performs no I/O and does not reserve or mutate budget.
 
 ## Concerns
 
-None for Task 2. The pre-existing modified Task 1 report and intentional `frontend/node_modules` symlink remain in the worktree by design and are not part of commit `66cd853`.
+The worktree does not contain its own `.venv`, so verification used the direct
+environment at `/Users/nitishkumarpandey/Desktop/procuresignal/.venv` with the
+worktree's `shared` directory supplied through `PYTHONPATH`.
+
+## Review fixes
+
+Addressed all Task 2 review findings:
+
+- summaries now ignore whitespace-only sources, retain
+  description → snippet → title preference, and use a neutral deterministic
+  fallback/padding marker so every output is 10–`summary_max_chars` characters;
+- `summary_max_chars` now requires an `int` excluding `bool`, with an explicit
+  minimum of 10;
+- category resolution now scores each field through the existing
+  `canonical_category` helper, weighting content above query/source metadata
+  without adding category keywords.
+
+### Review-fix TDD evidence
+
+- Red command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py -v`
+  Result: exit 1; 8 failed and 12 passed, reproducing invalid short/blank
+  summaries, float/string validation failures, and query-group override.
+- First green iteration of the same command:
+  Result: exit 1; 1 failed and 19 passed, exposing word truncation reducing a
+  padded 10-character summary to `Tiny…`.
+- Final focused command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
+  Result: exit 0; 29 passed in 0.78s.
+
+### Review-fix quality gates
+
+- `/Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py`
+  Result: exit 0; no issues.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/mypy shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py`
+  Result: exit 0; `Success: no issues found in 2 source files`.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit -q`
+  Result: exit 0; 163 passed in 2.49s.
+
+No new concerns were identified beyond the existing shared virtual-environment
+path noted above.
+
+## Final word-boundary review fix
+
+Word-boundary truncation now falls back to a deterministic hard prefix plus
+ellipsis when the preferred whole-word result would be shorter than the
+10-character `EnrichmentOutput` minimum.
+
+- Red command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py -k word_boundary -v`
+  Result: exit 1; 1 failed and 20 deselected. The produced `This is…` was only
+  8 characters and failed `EnrichmentOutput` validation.
+- Focused green command:
+  `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/pytest tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py -v`
+  Result: exit 0; 30 passed in 0.85s, including exact output `This is s…` at
+  `summary_max_chars=10`.
+- `/Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/ruff check shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py tests/unit/test_enrichment_deterministic.py tests/unit/test_enrichment_router.py`
+  Result: exit 0; no issues.
+- `PYTHONPATH=shared /Users/nitishkumarpandey/Desktop/procuresignal/.venv/bin/mypy shared/procuresignal/enrichment/deterministic.py shared/procuresignal/enrichment/router.py`
+  Result: exit 0; `Success: no issues found in 2 source files`.
+
+No additional concerns were identified.

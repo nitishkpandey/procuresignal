@@ -24,7 +24,8 @@ def upgrade():
             server_default="en",
         ),
     )
-    op.alter_column("user_news_preferences", "platform_language", server_default=None)
+    if op.get_bind().dialect.name != "sqlite":
+        op.alter_column("user_news_preferences", "platform_language", server_default=None)
 
 
 def downgrade():

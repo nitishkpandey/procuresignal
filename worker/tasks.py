@@ -5,14 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine
 
 from procuresignal.config.database import session_scope
-from procuresignal.enrichment import EnrichmentPipeline, OpenAILLMClient
+from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
-from procuresignal.models import NewsArticleRaw, UserNewsPreference
+from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
 from procuresignal.retrieval import (
@@ -23,7 +24,7 @@ from procuresignal.retrieval import (
     RSSProvider,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
-from sqlalchemy import desc, select
+from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.main import app
@@ -51,6 +52,8 @@ RSS_QUERY_GROUPS = ["supplier_risk", "regulatory", "logistics", "commodities"]
 # Cap enrichment per run so a backlog cannot monopolize the shared LLM budget.
 # The beat schedule drains the rest over subsequent runs.
 _ENRICH_MAX_PER_RUN = 20
+# Longer than the Celery task time limit so a live worker cannot lose its lease.
+_ENRICH_LEASE_MINUTES = 65
 
 
 @dataclass(slots=True)
@@ -104,50 +107,205 @@ async def _load_recent_raw_articles(
     limit: int,
 ) -> list[NewsArticleRaw]:
     cutoff = datetime.utcnow() - timedelta(hours=hours_back)
+    now = datetime.utcnow()
     result = await session.execute(
         select(NewsArticleRaw)
-        .where(NewsArticleRaw.ingested_at >= cutoff)
+        .where(
+            NewsArticleRaw.ingested_at >= cutoff,
+            _claimable(now),
+        )
         .order_by(desc(NewsArticleRaw.ingested_at))
         .limit(limit)
     )
     return list(result.scalars().all())
 
 
+async def _load_enrichment_candidates(
+    session: AsyncSession, *, hours_back: int, limit: int, exclude_ids: set[int] | None = None
+) -> list[NewsArticleRaw]:
+    """Load due unfinished candidates regardless of ingestion age."""
+    del hours_back  # Enrichment eligibility is bounded by retention, not a recent-time window.
+    now = datetime.utcnow()
+    processed = exists().where(NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+    statement = (
+        select(NewsArticleRaw)
+        .where(~processed, _claimable(now))
+        .order_by(desc(NewsArticleRaw.ingested_at))
+        .limit(limit)
+    )
+    if exclude_ids:
+        statement = statement.where(NewsArticleRaw.id.not_in(exclude_ids))
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
+def _claimable(now: datetime) -> Any:
+    return (
+        (
+            NewsArticleRaw.enrichment_status.is_(None)
+            | NewsArticleRaw.enrichment_status.in_(
+                ("normalization_retry", "enrichment_retry", "deferred", "processing")
+            )
+        )
+        & or_(
+            NewsArticleRaw.enrichment_next_attempt_at.is_(None),
+            NewsArticleRaw.enrichment_next_attempt_at <= now,
+        )
+        & or_(
+            NewsArticleRaw.enrichment_lease_owner.is_(None),
+            NewsArticleRaw.enrichment_lease_expires_at <= now,
+        )
+    )
+
+
+async def _claim_enrichment_candidates(
+    session: AsyncSession,
+    *,
+    limit: int,
+    owner: str,
+    exclude_ids: set[int] | None = None,
+) -> list[NewsArticleRaw]:
+    """Atomically lease due rows and commit before normalization or API work."""
+    now = datetime.utcnow()
+    processed = exists().where(NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+    statement = (
+        select(NewsArticleRaw.id)
+        .where(~processed, _claimable(now))
+        .order_by(desc(NewsArticleRaw.ingested_at))
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    )
+    if exclude_ids:
+        statement = statement.where(NewsArticleRaw.id.not_in(exclude_ids))
+    candidate_ids = list((await session.scalars(statement)).all())
+    claimed_ids: list[int] = []
+    expires = now + timedelta(minutes=_ENRICH_LEASE_MINUTES)
+    for candidate_id in candidate_ids:
+        result = await session.execute(
+            update(NewsArticleRaw)
+            .where(NewsArticleRaw.id == candidate_id, _claimable(now))
+            .values(
+                enrichment_status="processing",
+                enrichment_lease_owner=owner,
+                enrichment_lease_expires_at=expires,
+            )
+        )
+        if getattr(result, "rowcount", 0) == 1:
+            claimed_ids.append(candidate_id)
+    await session.commit()
+    if not claimed_ids:
+        return []
+    result = await session.execute(
+        select(NewsArticleRaw)
+        .where(
+            NewsArticleRaw.id.in_(claimed_ids),
+            NewsArticleRaw.enrichment_lease_owner == owner,
+        )
+        .order_by(desc(NewsArticleRaw.ingested_at))
+    )
+    return list(result.scalars().all())
+
+
+async def _release_enrichment_claims_after_failure(session: AsyncSession, *, owner: str) -> None:
+    """Make this worker's claims retryable after an unexpected batch failure."""
+    await session.execute(
+        update(NewsArticleRaw)
+        .where(NewsArticleRaw.enrichment_lease_owner == owner)
+        .values(
+            enrichment_status="enrichment_retry",
+            enrichment_attempt_count=NewsArticleRaw.enrichment_attempt_count + 1,
+            enrichment_next_attempt_at=datetime.utcnow() + timedelta(minutes=1),
+            enrichment_lease_owner=None,
+            enrichment_lease_expires_at=None,
+        )
+    )
+    await session.commit()
+
+
 async def _normalize_articles(
-    session: AsyncSession, *, hours_back: int, limit: int
+    session: AsyncSession,
+    *,
+    hours_back: int,
+    limit: int,
+    enrichment_candidates: bool = False,
+    claim_owner: str | None = None,
 ) -> dict[str, Any]:
-    raw_articles = await _load_recent_raw_articles(session, hours_back=hours_back, limit=limit)
+    raw_articles = (
+        []
+        if enrichment_candidates
+        else await _load_recent_raw_articles(session, hours_back=hours_back, limit=limit)
+    )
     normalized_articles: list[_NormalizedArticleRecord] = []
     quality_failures = 0
     errors = 0
+    scanned_ids: set[int] = set()
 
-    for article in raw_articles:
-        try:
-            normalized = await ArticleNormalizer.normalize(_to_raw_article(article))
-            if normalized is None:
-                quality_failures += 1
-                continue
+    async def normalize_batch(batch: list[NewsArticleRaw]) -> None:
+        nonlocal quality_failures, errors
+        for article in batch:
+            scanned_ids.add(article.id)
+            try:
+                normalized = await ArticleNormalizer.normalize(_to_raw_article(article))
+                if normalized is None:
+                    quality_failures += 1
+                    article.enrichment_status = "quality_rejected"
+                    article.enrichment_next_attempt_at = None
+                    article.enrichment_lease_owner = None
+                    article.enrichment_lease_expires_at = None
+                    continue
 
-            normalized_articles.append(
-                _NormalizedArticleRecord(
-                    id=article.id,
-                    provider=normalized.provider,
-                    provider_article_id=normalized.provider_article_id,
-                    query_group=normalized.query_group,
-                    title=normalized.title,
-                    description=normalized.description,
-                    content_snippet=normalized.content_snippet,
-                    article_url=normalized.article_url,
-                    canonical_url=normalized.canonical_url,
-                    source_name=normalized.source_name,
-                    source_url=normalized.source_url,
-                    published_at=normalized.published_at,
-                    language=normalized.language,
-                    raw_payload_json=normalized.raw_payload_json,
+                normalized_articles.append(
+                    _NormalizedArticleRecord(
+                        id=article.id,
+                        provider=normalized.provider,
+                        provider_article_id=normalized.provider_article_id,
+                        query_group=normalized.query_group,
+                        title=normalized.title,
+                        description=normalized.description,
+                        content_snippet=normalized.content_snippet,
+                        article_url=normalized.article_url,
+                        canonical_url=normalized.canonical_url,
+                        source_name=normalized.source_name,
+                        source_url=normalized.source_url,
+                        published_at=normalized.published_at,
+                        language=normalized.language,
+                        raw_payload_json=normalized.raw_payload_json,
+                    )
                 )
-            )
-        except Exception:
-            errors += 1
+            except Exception:
+                errors += 1
+                article.enrichment_attempt_count += 1
+                delay_minutes = min(360, 15 * (2 ** (article.enrichment_attempt_count - 1)))
+                article.enrichment_status = "normalization_retry"
+                article.enrichment_next_attempt_at = datetime.utcnow() + timedelta(
+                    minutes=delay_minutes
+                )
+                article.enrichment_lease_owner = None
+                article.enrichment_lease_expires_at = None
+
+    if enrichment_candidates:
+        while len(normalized_articles) < limit:
+            if claim_owner:
+                batch = await _claim_enrichment_candidates(
+                    session,
+                    limit=limit - len(normalized_articles),
+                    owner=claim_owner,
+                    exclude_ids=scanned_ids,
+                )
+            else:
+                batch = await _load_enrichment_candidates(
+                    session,
+                    hours_back=hours_back,
+                    limit=limit - len(normalized_articles),
+                    exclude_ids=scanned_ids,
+                )
+            if not batch:
+                break
+            raw_articles.extend(batch)
+            await normalize_batch(batch)
+            await session.flush()
+    else:
+        await normalize_batch(raw_articles)
 
     return {
         "raw_articles": raw_articles,
@@ -235,6 +393,7 @@ def normalize_articles_task(self: Any) -> dict[str, Any]:
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
             stats = await _normalize_articles(session, hours_back=24, limit=1000)
+            await session.commit()
             return {
                 "status": "success",
                 "normalized_count": stats["normalized_count"],
@@ -258,42 +417,71 @@ def enrich_articles_task(self: Any) -> dict[str, Any]:
 
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
-            stats = await _normalize_articles(session, hours_back=12, limit=_ENRICH_MAX_PER_RUN)
-            normalized_articles = stats["normalized_articles"]
-
-            if not normalized_articles:
-                return {
-                    "status": "success",
-                    "enriched_count": 0,
-                    "skipped_count": len(stats["raw_articles"]),
-                    "error_count": 0,
-                    "reason": "no normalized articles available",
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-
+            claim_owner = f"enrichment-{uuid.uuid4()}"
             try:
-                llm_client = OpenAILLMClient()
-            except ValueError:
-                return {
-                    "status": "success",
-                    "enriched_count": 0,
-                    "skipped_count": len(normalized_articles),
-                    "error_count": 0,
-                    "reason": "OPENAI_API_KEY not set",
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
+                stats = await _normalize_articles(
+                    session,
+                    hours_back=12,
+                    limit=_ENRICH_MAX_PER_RUN,
+                    enrichment_candidates=True,
+                    claim_owner=claim_owner,
+                )
+                await session.commit()
+                normalized_articles = stats["normalized_articles"]
 
-            pipeline = EnrichmentPipeline(llm_client)
-            enriched_count, skipped_count, error_count = await pipeline.process_raw_articles(
-                session,
-                normalized_articles,
-            )
+                if not normalized_articles:
+                    empty_routes = {
+                        "cached": 0,
+                        "deterministic": 0,
+                        "llm": 0,
+                        "skipped": 0,
+                        "deferred": 0,
+                        "failed": 0,
+                        "cache_misses": 0,
+                    }
+                    return {
+                        "status": "success",
+                        "enriched_count": 0,
+                        "skipped_count": len(stats["raw_articles"]),
+                        "error_count": stats["errors"],
+                        "reason": "no normalized articles available",
+                        "routes": empty_routes,
+                        "llm_calls": 0,
+                        "llm_tokens": 0,
+                        "avoided_llm_calls": 0,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+
+                policy = EnrichmentPolicy.from_env()
+                pipeline = EnrichmentPipeline(policy=policy, llm_client_factory=OpenAILLMClient)
+                run_result = await pipeline.process_raw_articles(
+                    session,
+                    normalized_articles,
+                    claim_owner=claim_owner,
+                )
+            except Exception:
+                await session.rollback()
+                await _release_enrichment_claims_after_failure(session, owner=claim_owner)
+                raise
+            metrics = run_result.metrics
             return {
                 "status": "success",
-                "enriched_count": enriched_count,
-                "skipped_count": skipped_count,
-                "error_count": error_count,
+                "enriched_count": run_result.saved,
+                "skipped_count": metrics.skipped + run_result.already_processed,
+                "error_count": metrics.failed,
                 "normalized_candidates": len(normalized_articles),
+                "routes": {
+                    "cached": metrics.cached,
+                    "deterministic": metrics.deterministic,
+                    "llm": metrics.llm,
+                    "skipped": metrics.skipped,
+                    "deferred": metrics.deferred,
+                    "failed": metrics.failed,
+                    "cache_misses": metrics.cache_misses,
+                },
+                "llm_calls": metrics.llm_calls,
+                "llm_tokens": metrics.llm_tokens,
+                "avoided_llm_calls": metrics.avoided_llm_calls,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

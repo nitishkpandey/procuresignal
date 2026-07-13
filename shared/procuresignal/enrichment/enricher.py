@@ -12,7 +12,7 @@ from procuresignal.enrichment.entities import (
     merge_entities,
 )
 from procuresignal.enrichment.openai_client import OpenAILLMClient
-from procuresignal.enrichment.output_parser import OutputParser
+from procuresignal.enrichment.output_parser import EnrichmentOutput, OutputParser
 from procuresignal.enrichment.prompts import EnrichmentPrompts
 from procuresignal.models import NewsArticleProcessed
 from procuresignal.retrieval import RawArticle
@@ -45,8 +45,14 @@ class ArticleEnricher:
         Returns:
             Processed article or None if enrichment fails
         """
+        output = await self.generate_output(article)
+        if output is None:
+            return None
+        return self.to_processed(output, article, raw_article_id)
+
+    async def generate_output(self, article: RawArticle) -> Optional[EnrichmentOutput]:
+        """Generate and validate article output without persisting a model."""
         try:
-            # Prepare prompt
             prompt = EnrichmentPrompts.get_summarization_prompt(
                 title=article.title,
                 description=article.description or "",
@@ -60,54 +66,48 @@ class ArticleEnricher:
             )
 
             # Parse output
-            parsed = OutputParser.parse(response)
-
-            # Fallback if parsing fails
-            if parsed is None:
-                parsed = OutputParser.get_fallback(article.title)
-
-            article_text = " ".join(
-                part
-                for part in [
-                    article.title,
-                    article.description or "",
-                    article.content_snippet or "",
-                ]
-                if part
-            )
-            detected_suppliers = merge_entities(
-                parsed.detected_suppliers,
-                extract_suppliers_from_text(article_text),
-            )
-            detected_regions = merge_entities(
-                parsed.detected_regions,
-                extract_regions_from_text(article_text),
-            )
-            detected_categories = merge_entities(parsed.detected_categories, [parsed.category])
-
-            # Create processed article
-            processed = NewsArticleProcessed(
-                raw_article_id=raw_article_id,
-                normalized_title=article.title,
-                summary=parsed.summary,
-                top_level_category=parsed.category,
-                signal_tags=parsed.signal_tags,
-                priority_signal=parsed.priority_signal,
-                detected_regions=detected_regions,
-                detected_suppliers=detected_suppliers,
-                detected_categories=detected_categories,
-                signal_score=0.0,  # not scored during enrichment
-                processing_status="completed",
-                llm_model=f"openai/{self.client.model}",
-                language=article.language,
-                processed_at=datetime.utcnow(),
-            )
-
-            return processed
-
+            return OutputParser.parse(response)
         except Exception:
-            logger.exception("Error enriching article %s", raw_article_id)
+            logger.exception("Error generating enrichment for %s", article.title)
             return None
+
+    def to_processed(
+        self,
+        output: EnrichmentOutput,
+        article: RawArticle,
+        raw_article_id: int,
+    ) -> NewsArticleProcessed:
+        """Convert validated output to the legacy processed model contract."""
+        parsed = output
+        article_text = " ".join(
+            part
+            for part in [article.title, article.description or "", article.content_snippet or ""]
+            if part
+        )
+        detected_suppliers = merge_entities(
+            parsed.detected_suppliers, extract_suppliers_from_text(article_text)
+        )
+        detected_regions = merge_entities(
+            parsed.detected_regions, extract_regions_from_text(article_text)
+        )
+        detected_categories = merge_entities(parsed.detected_categories, [parsed.category])
+
+        return NewsArticleProcessed(
+            raw_article_id=raw_article_id,
+            normalized_title=article.title,
+            summary=parsed.summary,
+            top_level_category=parsed.category,
+            signal_tags=parsed.signal_tags,
+            priority_signal=parsed.priority_signal,
+            detected_regions=detected_regions,
+            detected_suppliers=detected_suppliers,
+            detected_categories=detected_categories,
+            signal_score=0.0,  # not scored during enrichment
+            processing_status="completed",
+            llm_model=f"openai/{self.client.model}",
+            language=article.language,
+            processed_at=datetime.utcnow(),
+        )
 
     async def enrich_batch(
         self,

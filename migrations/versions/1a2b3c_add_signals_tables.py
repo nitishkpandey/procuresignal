@@ -30,8 +30,14 @@ def upgrade():
         sa.Column("article_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("confidence", sa.Float(), nullable=True),
         sa.Column("severity", sa.String(length=20), nullable=True),
-        sa.Column("impact_areas", postgresql.ARRAY(sa.Text()), nullable=True),
-        sa.Column("raw_signal", postgresql.JSONB(), nullable=True),
+        sa.Column(
+            "impact_areas",
+            postgresql.ARRAY(sa.Text()).with_variant(sa.JSON(), "sqlite"),
+            nullable=True,
+        ),
+        sa.Column(
+            "raw_signal", postgresql.JSONB().with_variant(sa.JSON(), "sqlite"), nullable=True
+        ),
         sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.TIMESTAMP(), server_default=sa.text("now()"), nullable=False),
     )

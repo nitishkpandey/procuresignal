@@ -1,0 +1,35 @@
+[
+  {
+    "id": "ambiguous-supplier",
+    "output": {
+      "summary": "Bosch issued a brief outlook relevant to procurement teams.",
+      "category": "general",
+      "signal_tags": [],
+      "detected_suppliers": [],
+      "detected_regions": [],
+      "detected_categories": []
+    }
+  },
+  {
+    "id": "ambiguous-region",
+    "output": {
+      "summary": "Siemens published an update concerning its activity in France.",
+      "category": "miscellaneous-error",
+      "signal_tags": ["unrecognized-model-tag"],
+      "detected_suppliers": [],
+      "detected_regions": [],
+      "detected_categories": []
+    }
+  },
+  {
+    "id": "ambiguous-missing-description",
+    "output": {
+      "summary": "Toyota released a short market outlook concerning Japan.",
+      "category": "general",
+      "signal_tags": [],
+      "detected_suppliers": [],
+      "detected_regions": [],
+      "detected_categories": []
+    }
+  }
+]

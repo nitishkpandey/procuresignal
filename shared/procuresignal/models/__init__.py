@@ -3,6 +3,7 @@
 from .articles import NewsArticleProcessed, NewsArticleRaw
 from .base import Base, BaseModel
 from .chat import ChatConversation, ChatMessage
+from .enrichment import EnrichmentCacheEntry
 from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
 from .risk_events import RiskEvent
@@ -24,4 +25,5 @@ __all__ = [
     "SignalMetadata",
     "SignalSupplyChainImpact",
     "RiskEvent",
+    "EnrichmentCacheEntry",
 ]

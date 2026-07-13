@@ -49,6 +49,8 @@ REGION_ALIASES: dict[str, str] = {
     "chinese": "China",
     "germany": "Germany",
     "german": "Germany",
+    "deutschland": "Germany",
+    "allemagne": "Germany",
     "france": "France",
     "french": "France",
     "italy": "Italy",
