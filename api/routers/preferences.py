@@ -1,5 +1,7 @@
 """User preference endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.personalization import PreferenceManager
 from procuresignal.personalization.categories import canonical_category_list
@@ -17,7 +19,7 @@ from api.schemas.preference import (
 router = APIRouter(prefix="/api", tags=["preferences"])
 
 
-def _to_response(pref) -> PreferenceResponse:
+def _to_response(pref: Any) -> PreferenceResponse:
     return PreferenceResponse(
         user_id=pref.user_id,
         interested_categories=canonical_category_list(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Iterable
 
 from procuresignal.enrichment.entities import canonical_region_name, extract_regions_from_text
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
@@ -225,7 +226,7 @@ def _evidence(text: str, terms: set[str]) -> str:
     return text[start:end].strip()
 
 
-def _dedupe(values) -> list[str]:
+def _dedupe(values: Iterable[object]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for value in values:

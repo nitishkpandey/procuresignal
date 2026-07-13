@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -94,8 +95,8 @@ async def clear_conversation_history(
     await session.commit()
     return ClearHistoryResponse(
         user_id=user_id,
-        deleted_conversations=conversation_result.rowcount or 0,
-        deleted_messages=message_result.rowcount or 0,
+        deleted_conversations=getattr(conversation_result, "rowcount", 0) or 0,
+        deleted_messages=getattr(message_result, "rowcount", 0) or 0,
     )
 
 
@@ -132,7 +133,7 @@ def _build_chat_client() -> ChatLLMClient:
     return ChatLLMClient()
 
 
-async def _ensure_conversation(session_maker, user_id: str, conversation_id: str) -> None:
+async def _ensure_conversation(session_maker: Any, user_id: str, conversation_id: str) -> None:
     async with session_maker() as session:
         conversation = await _get_conversation(session, conversation_id)
         if conversation is None:
@@ -149,7 +150,7 @@ async def _ensure_conversation(session_maker, user_id: str, conversation_id: str
 
 
 async def _persist_user_message(
-    session_maker, user_id: str, conversation_id: str, text: str
+    session_maker: Any, user_id: str, conversation_id: str, text: str
 ) -> tuple[str, list[dict]]:
     """Persist the user message, set title if first, return (system_prompt, history)."""
 
@@ -181,7 +182,7 @@ async def _persist_user_message(
 
 
 async def _persist_assistant_message(
-    session_maker, user_id: str, conversation_id: str, text: str, tokens_used: int | None
+    session_maker: Any, user_id: str, conversation_id: str, text: str, tokens_used: int | None
 ) -> None:
     async with session_maker() as session:
         session.add(

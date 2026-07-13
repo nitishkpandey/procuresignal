@@ -2,7 +2,7 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, cast
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -67,7 +67,7 @@ async def session_scope(database_url: str | None = None) -> AsyncIterator[AsyncS
     For workers and scripts that run without the API's long-lived pool. Falls back
     to DATABASE_URL, then the in-cluster worker default.
     """
-    url = database_url or os.getenv("DATABASE_URL") or WORKER_DATABASE_URL
+    url = database_url or cast(str, os.getenv("DATABASE_URL", WORKER_DATABASE_URL))
     engine = create_async_engine(url, future=True)
     try:
         async with async_sessionmaker(engine, expire_on_commit=False)() as session:

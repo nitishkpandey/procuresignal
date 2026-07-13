@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from os import getenv
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,7 @@ from api.scheduler import create_scheduler, scheduler_enabled
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database_url = getenv("DATABASE_URL")
     if database_url:
         await init_db(database_url)

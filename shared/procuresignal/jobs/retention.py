@@ -62,8 +62,8 @@ async def prune_expired_records(
     await session.commit()
 
     return RetentionResult(
-        raw_deleted=raw_result.rowcount or 0,
-        processed_deleted=processed_result.rowcount or 0,
-        feed_deleted=feed_result.rowcount or 0,
-        risk_events_deleted=risk_event_result.rowcount or 0,
+        raw_deleted=getattr(raw_result, "rowcount", 0) or 0,
+        processed_deleted=getattr(processed_result, "rowcount", 0) or 0,
+        feed_deleted=getattr(feed_result, "rowcount", 0) or 0,
+        risk_events_deleted=getattr(risk_event_result, "rowcount", 0) or 0,
     )

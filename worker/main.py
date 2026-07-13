@@ -1,6 +1,7 @@
 """Celery application factory."""
 
 import logging
+from typing import Any
 
 from celery import Celery
 
@@ -12,7 +13,7 @@ app.autodiscover_tasks(["worker"])
 
 
 @app.task(bind=True, name="worker.main.debug_task")
-def debug_task(self) -> None:
+def debug_task(self: Any) -> None:
     """Debug task for inspecting worker requests."""
     logger.debug("Worker debug task request: %r", self.request)
 

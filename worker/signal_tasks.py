@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from procuresignal.signals.classifier import SignalClassifier
 from procuresignal.signals.entity_resolver import EntityResolver
@@ -12,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def process_article_for_signals(article_id: str, article_text: str, headline: str):
+def process_article_for_signals(
+    article_id: str, article_text: str, headline: str
+) -> dict[str, Any]:
     """Process an article to detect procurement signals.
 
     Runs a lightweight rule-based classifier, attempts entity resolution,
@@ -47,7 +50,7 @@ def process_article_for_signals(article_id: str, article_text: str, headline: st
         raise
 
 
-def _store_signal(article_id: str, signal, impact):
+def _store_signal(article_id: str, signal: Any, impact: Any) -> Any:
     """Persist the signal to the Signal table when DATABASE_URL is set.
 
     A no-op when DATABASE_URL is unset, so the worker can run without a DB
@@ -70,7 +73,7 @@ def _store_signal(article_id: str, signal, impact):
     # Lazy import of ORM models
     from procuresignal.models import Signal as SignalModel
 
-    async def _do_store():
+    async def _do_store() -> Any:
         async with session_scope(database_url) as session:
             model = SignalModel(
                 signal_type=getattr(signal.signal_type, "value", str(signal.signal_type)),

@@ -73,7 +73,7 @@ def _job_options(job_id: str) -> dict[str, Any]:
     }
 
 
-def configure_scheduler(scheduler) -> None:
+def configure_scheduler(scheduler: Any) -> None:
     """Register idempotent scheduled jobs on an APScheduler instance."""
 
     scheduler.add_job(
@@ -120,7 +120,7 @@ def configure_scheduler(scheduler) -> None:
     )
 
 
-def create_scheduler():
+def create_scheduler() -> Any:
     """Create the concrete APScheduler instance."""
 
     try:

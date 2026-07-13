@@ -57,3 +57,12 @@ PYTHONPATH=shared .../.venv/bin/pytest -q
 - The MyPy overrides are module- and error-code-scoped, rather than global relaxation. They document third-party/framework typing boundaries; they should be reduced later if typed Celery/SQLAlchemy adapters are introduced.
 - No dead-code deletion was justified by the evidence threshold, so the safe result is an audited retention decision rather than speculative removal.
 - `docs/interview-preparation.md` was not modified.
+
+## Reviewer-finding remediation
+
+- Removed all broad first-party MyPy overrides covering worker tasks, preferences, chat, retention, retrieval persistence, and risk detection. Replaced them with explicit parameter/return types and exact dynamic-result access via `getattr`.
+- Restored matcher behavior exactly: optional values, including `None`, continue through the existing normalization path; `cast` only communicates the pre-existing runtime contract to MyPy.
+- Restored exact `DATABASE_URL` semantics: an explicitly empty environment value is not replaced by the worker default.
+- Added literal verification and runtime/history/blame evidence in `.superpowers/sdd/task-3-evidence.txt`.
+- Frontend ESLint and TypeScript checks both pass.
+- One scoped override remains for `api.routers.risk_events`, whose SQLAlchemy expression construction dynamically changes column expression types. This is the remaining concern and is isolated from the modules called out by review.
