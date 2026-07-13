@@ -30,6 +30,7 @@ def test_policy_defaults_are_balanced() -> None:
     policy = EnrichmentPolicy.from_env({})
     assert policy.min_relevance == 0.35
     assert policy.min_deterministic_confidence == 0.72
+    assert policy.min_fallback_confidence == 0.50
     assert policy.max_llm_calls == 5
     assert policy.max_llm_tokens == 6000
     assert policy.summary_max_chars == 420
@@ -42,6 +43,7 @@ def test_policy_reads_all_environment_overrides() -> None:
         {
             "ENRICH_MIN_RELEVANCE": "0.4",
             "ENRICH_MIN_DETERMINISTIC_CONFIDENCE": "0.8",
+            "ENRICH_MIN_FALLBACK_CONFIDENCE": "0.6",
             "ENRICH_MAX_LLM_CALLS": "7",
             "ENRICH_MAX_LLM_TOKENS": "8000",
             "ENRICH_SUMMARY_MAX_CHARS": "500",
@@ -49,14 +51,26 @@ def test_policy_reads_all_environment_overrides() -> None:
             "ENRICH_TAXONOMY_VERSION": "signals-v2",
         }
     )
-    assert policy == EnrichmentPolicy(0.4, 0.8, 7, 8000, 500, "cost-v2", "signals-v2")
+    assert policy == EnrichmentPolicy(0.4, 0.8, 7, 8000, 500, "cost-v2", "signals-v2", 0.6)
 
 
-@pytest.mark.parametrize("name", ["ENRICH_MIN_RELEVANCE", "ENRICH_MIN_DETERMINISTIC_CONFIDENCE"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ENRICH_MIN_RELEVANCE",
+        "ENRICH_MIN_DETERMINISTIC_CONFIDENCE",
+        "ENRICH_MIN_FALLBACK_CONFIDENCE",
+    ],
+)
 @pytest.mark.parametrize("value", ["-0.01", "1.01"])
 def test_policy_rejects_floats_outside_unit_interval(name: str, value: str) -> None:
     with pytest.raises(ValueError):
         EnrichmentPolicy.from_env({name: value})
+
+
+def test_policy_rejects_fallback_above_deterministic_threshold() -> None:
+    with pytest.raises(ValueError, match="cannot exceed"):
+        EnrichmentPolicy(min_deterministic_confidence=0.4, min_fallback_confidence=0.5)
 
 
 @pytest.mark.parametrize(
@@ -118,9 +132,15 @@ def test_budget_rejects_negative_actual_usage() -> None:
 
 
 def test_fingerprint_is_content_and_version_stable(raw_article: RawArticle) -> None:
-    first = content_fingerprint(raw_article, policy_version="cost-v1", taxonomy_version="signals-v1")
-    second = content_fingerprint(raw_article, policy_version="cost-v1", taxonomy_version="signals-v1")
-    changed = content_fingerprint(raw_article, policy_version="cost-v2", taxonomy_version="signals-v1")
+    first = content_fingerprint(
+        raw_article, policy_version="cost-v1", taxonomy_version="signals-v1"
+    )
+    second = content_fingerprint(
+        raw_article, policy_version="cost-v1", taxonomy_version="signals-v1"
+    )
+    changed = content_fingerprint(
+        raw_article, policy_version="cost-v2", taxonomy_version="signals-v1"
+    )
     assert first == second
     assert first != changed
     assert len(first) == 64

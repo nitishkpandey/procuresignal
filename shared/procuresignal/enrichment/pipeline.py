@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Iterator, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.enrichment.cache import EnrichmentCache
@@ -98,8 +99,15 @@ class EnrichmentPipeline:
             processed_raw_ids.add(row[0])
 
         # Filter to unprocessed articles
-        articles_to_process = [a for a in raw_articles if a.id not in processed_raw_ids]
-        already_processed = len(raw_articles) - len(articles_to_process)
+        seen_ids = set(processed_raw_ids)
+        articles_to_process = []
+        already_processed = 0
+        for candidate in raw_articles:
+            if candidate.id in seen_ids:
+                already_processed += 1
+                continue
+            seen_ids.add(candidate.id)
+            articles_to_process.append(candidate)
         try:
             for raw in articles_to_process:
                 article = RawArticle(
@@ -128,8 +136,24 @@ class EnrichmentPipeline:
                     policy_version=self.policy.policy_version,
                     taxonomy_version=self.policy.taxonomy_version,
                 )
-                if cached is None:
-                    metrics.cache_misses += 1
+                if cached is not None:
+                    processed = self._processed(
+                        raw.id,
+                        article,
+                        cached.output,
+                        "cached",
+                        "compatible_cache_hit",
+                        fingerprint,
+                        None,
+                        False,
+                    )
+                    if await self._add_processed(session, processed):
+                        saved += 1
+                        metrics.cached += 1
+                    else:
+                        already_processed += 1
+                    continue
+                metrics.cache_misses += 1
                 analysis = self.deterministic_enricher.analyze(
                     article, summary_max_chars=self.policy.summary_max_chars
                 )
@@ -140,7 +164,7 @@ class EnrichmentPipeline:
                     and self.enricher is not None
                 )
                 decision = self.router.decide(
-                    cache_hit=cached is not None,
+                    cache_hit=False,
                     relevance=analysis.relevance,
                     confidence=analysis.confidence,
                     policy=self.policy,
@@ -149,9 +173,7 @@ class EnrichmentPipeline:
                 output: EnrichmentOutput | None = None
                 method = decision.route.value
                 llm_used = False
-                if decision.route is EnrichmentRoute.CACHED:
-                    output = cached.output if cached else None
-                elif decision.route is EnrichmentRoute.DETERMINISTIC:
+                if decision.route is EnrichmentRoute.DETERMINISTIC:
                     output = analysis.output
                 elif decision.route is EnrichmentRoute.LLM:
                     if not budget.reserve(estimate):
@@ -174,7 +196,7 @@ class EnrichmentPipeline:
                         metrics.llm_tokens += used
                         if output is not None:
                             llm_used = True
-                        elif analysis.confidence >= self.policy.min_deterministic_confidence:
+                        elif analysis.confidence >= self.policy.min_fallback_confidence:
                             output = analysis.output
                             method = EnrichmentRoute.DETERMINISTIC.value
                             decision = type(decision)(
@@ -198,9 +220,6 @@ class EnrichmentPipeline:
                     analysis.confidence,
                     llm_used,
                 )
-                session.add(processed)
-                saved += 1
-                setattr(metrics, method, getattr(metrics, method) + 1)
                 if method in {"deterministic", "llm"}:
                     await self.cache.put(
                         session,
@@ -210,6 +229,11 @@ class EnrichmentPipeline:
                         output=output,
                         original_method=method,
                     )
+                if not await self._add_processed(session, processed):
+                    already_processed += 1
+                    continue
+                saved += 1
+                setattr(metrics, method, getattr(metrics, method) + 1)
             metrics.avoided_llm_calls = metrics.cached + metrics.deterministic + metrics.skipped
             await session.commit()
         except Exception:
@@ -227,7 +251,7 @@ class EnrichmentPipeline:
         method: str,
         reason: str,
         fingerprint: str,
-        confidence: float,
+        confidence: float | None,
         llm_used: bool,
     ) -> NewsArticleProcessed:
         return NewsArticleProcessed(
@@ -252,6 +276,17 @@ class EnrichmentPipeline:
             deterministic_confidence=confidence,
             llm_used=llm_used,
         )
+
+    @staticmethod
+    async def _add_processed(session: AsyncSession, processed: NewsArticleProcessed) -> bool:
+        """Insert under a savepoint so concurrent duplicates do not poison the batch."""
+        try:
+            async with session.begin_nested():
+                session.add(processed)
+                await session.flush()
+        except IntegrityError:
+            return False
+        return True
 
     @staticmethod
     def _estimated_tokens(article: RawArticle) -> int:

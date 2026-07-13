@@ -19,12 +19,19 @@ class EnrichmentPolicy:
     summary_max_chars: int = 420
     policy_version: str = "cost-v1"
     taxonomy_version: str = "signals-v1"
+    min_fallback_confidence: float = 0.50
 
     def __post_init__(self) -> None:
-        for name in ("min_relevance", "min_deterministic_confidence"):
+        for name in ("min_relevance", "min_deterministic_confidence", "min_fallback_confidence"):
             value = getattr(self, name)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 <= value <= 1:
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not 0 <= value <= 1
+            ):
                 raise ValueError(f"{name} must be between 0 and 1")
+        if self.min_fallback_confidence > self.min_deterministic_confidence:
+            raise ValueError("min_fallback_confidence cannot exceed min_deterministic_confidence")
         for name in ("max_llm_calls", "max_llm_tokens", "summary_max_chars"):
             value = getattr(self, name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -46,6 +53,7 @@ class EnrichmentPolicy:
             summary_max_chars=_read_int(values, "ENRICH_SUMMARY_MAX_CHARS", 420),
             policy_version=values.get("ENRICH_POLICY_VERSION", "cost-v1"),
             taxonomy_version=values.get("ENRICH_TAXONOMY_VERSION", "signals-v1"),
+            min_fallback_confidence=_read_float(values, "ENRICH_MIN_FALLBACK_CONFIDENCE", 0.50),
         )
 
 
@@ -103,7 +111,11 @@ class EnrichmentBudget:
 
     def reserve(self, estimated_tokens: int) -> bool:
         """Reserve one call and its estimated tokens if both caps allow it."""
-        if not isinstance(estimated_tokens, int) or isinstance(estimated_tokens, bool) or estimated_tokens <= 0:
+        if (
+            not isinstance(estimated_tokens, int)
+            or isinstance(estimated_tokens, bool)
+            or estimated_tokens <= 0
+        ):
             raise ValueError("estimated_tokens must be a positive integer")
         with self._lock:
             if self._calls_reserved >= self.max_calls:
@@ -116,7 +128,11 @@ class EnrichmentBudget:
 
     def record_usage(self, actual_tokens: int) -> None:
         """Record non-negative actual usage without releasing a reservation."""
-        if not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool) or actual_tokens < 0:
+        if (
+            not isinstance(actual_tokens, int)
+            or isinstance(actual_tokens, bool)
+            or actual_tokens < 0
+        ):
             raise ValueError("actual_tokens must be a non-negative integer")
         with self._lock:
             object.__setattr__(self, "_tokens_used", self._tokens_used + actual_tokens)

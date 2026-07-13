@@ -9,7 +9,7 @@ from procuresignal.enrichment import (
     EnrichmentPipeline,
     EnrichmentPolicy,
 )
-from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw
+from procuresignal.models import Base, EnrichmentCacheEntry, NewsArticleProcessed, NewsArticleRaw
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -78,6 +78,25 @@ class _Client:
         return {"total_tokens": self.total_tokens_used, "total_calls": self.calls}
 
 
+class _FailingClient(_Client):
+    async def call(self, *_args, **_kwargs) -> str:
+        self.calls += 1
+        raise RuntimeError("OpenAI unavailable")
+
+
+class _ExplodingAnalysis:
+    def analyze(self, *_args, **_kwargs):
+        raise AssertionError("cache hit must not run deterministic analysis")
+
+
+class _FailingCache:
+    async def get(self, *_args, **_kwargs):
+        return None
+
+    async def put(self, *_args, **_kwargs):
+        raise RuntimeError("database write failed")
+
+
 @pytest.mark.asyncio
 async def test_deterministic_and_cache_routes_make_zero_llm_calls(session: AsyncSession) -> None:
     first, second = _raw("one"), _raw("two")
@@ -92,12 +111,23 @@ async def test_deterministic_and_cache_routes_make_zero_llm_calls(session: Async
     )
 
     initial = await pipeline.process_raw_articles(session, [first])
-    cached = await pipeline.process_raw_articles(session, [second])
+    cached = await EnrichmentPipeline(
+        client,
+        deterministic_enricher=_ExplodingAnalysis(),
+        policy=EnrichmentPolicy(min_deterministic_confidence=0.7),
+    ).process_raw_articles(session, [second])
 
     assert client.calls == 0
     assert initial.metrics.deterministic == 1
     assert cached.metrics.cached == 1
     assert cached.saved == 1
+    saved = await session.scalar(
+        select(NewsArticleProcessed).where(NewsArticleProcessed.raw_article_id == second.id)
+    )
+    assert saved is not None
+    assert saved.enrichment_method == "cached"
+    assert saved.enrichment_reason == "compatible_cache_hit"
+    assert saved.deterministic_confidence is None
 
 
 @pytest.mark.asyncio
@@ -141,3 +171,157 @@ async def test_budget_exhaustion_defers_without_persisting(session: AsyncSession
         )
         == 1
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confidence,expected", [(0.6, "deterministic"), (0.49, "failed")])
+async def test_llm_failure_uses_explicit_fallback_threshold(
+    session: AsyncSession, confidence: float, expected: str
+) -> None:
+    raw = _raw(str(confidence))
+    session.add(raw)
+    await session.commit()
+    policy = EnrichmentPolicy(min_deterministic_confidence=0.72, min_fallback_confidence=0.5)
+
+    result = await EnrichmentPipeline(
+        _FailingClient(), policy=policy, deterministic_enricher=_Analysis(0.9, confidence)
+    ).process_raw_articles(session, [raw])
+
+    assert getattr(result.metrics, expected) == 1
+    assert result.metrics.llm_calls == 1
+    assert result.saved == (1 if expected == "deterministic" else 0)
+
+
+@pytest.mark.asyncio
+async def test_same_input_raw_id_is_processed_once(session: AsyncSession) -> None:
+    raw = _raw()
+    session.add(raw)
+    await session.commit()
+
+    result = await EnrichmentPipeline(
+        deterministic_enricher=_Analysis(0.9, 0.9)
+    ).process_raw_articles(session, [raw, raw])
+
+    assert result.saved == 1 and result.already_processed == 1
+    assert result.metrics.deterministic == 1
+
+
+@pytest.mark.asyncio
+async def test_optional_client_supports_local_routes_and_defers_llm(session: AsyncSession) -> None:
+    local, ambiguous = _raw("local"), _raw("ambiguous")
+    ambiguous.title = "An uncertain but procurement-relevant development"
+    session.add_all([local, ambiguous])
+    await session.commit()
+
+    local_result = await EnrichmentPipeline(
+        deterministic_enricher=_Analysis(0.9, 0.9)
+    ).process_raw_articles(session, [local])
+    deferred = await EnrichmentPipeline(
+        deterministic_enricher=_Analysis(0.9, 0.4)
+    ).process_raw_articles(session, [ambiguous])
+
+    assert local_result.metrics.deterministic == 1
+    assert deferred.metrics.deferred == 1 and deferred.saved == 0
+
+
+@pytest.mark.asyncio
+async def test_corrupt_cache_is_miss_and_continues_deterministically(session: AsyncSession) -> None:
+    raw = _raw()
+    session.add(raw)
+    await session.commit()
+    from procuresignal.enrichment.fingerprint import content_fingerprint
+    from procuresignal.retrieval import RawArticle
+
+    article = RawArticle(
+        provider=raw.provider,
+        provider_article_id=raw.provider_article_id,
+        query_group=raw.query_group,
+        title=raw.title,
+        description=raw.description,
+        content_snippet=raw.content_snippet,
+        article_url=raw.article_url,
+        canonical_url=raw.canonical_url,
+        source_name=raw.source_name,
+        source_url=raw.source_url,
+        published_at=raw.published_at,
+        language=raw.language,
+        raw_payload_json=raw.raw_payload_json,
+    )
+    fingerprint = content_fingerprint(
+        article, policy_version="cost-v1", taxonomy_version="signals-v1"
+    )
+    session.add(
+        EnrichmentCacheEntry(
+            content_fingerprint=fingerprint,
+            policy_version="cost-v1",
+            taxonomy_version="signals-v1",
+            payload={"summary": "short"},
+            original_method="llm",
+        )
+    )
+    await session.commit()
+
+    result = await EnrichmentPipeline(
+        deterministic_enricher=_Analysis(0.9, 0.9)
+    ).process_raw_articles(session, [raw])
+
+    assert result.metrics.cache_misses == 1
+    assert result.metrics.deterministic == 1
+
+
+@pytest.mark.asyncio
+async def test_database_error_rolls_back_entire_batch(session: AsyncSession) -> None:
+    raw = _raw()
+    session.add(raw)
+    await session.commit()
+    pipeline = EnrichmentPipeline(deterministic_enricher=_Analysis(0.9, 0.9), cache=_FailingCache())
+
+    with pytest.raises(RuntimeError, match="database write failed"):
+        await pipeline.process_raw_articles(session, [raw])
+
+    assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 0
+    assert session.is_active
+
+
+@pytest.mark.asyncio
+async def test_unique_violation_savepoint_keeps_session_usable(session: AsyncSession) -> None:
+    def processed(title: str) -> NewsArticleProcessed:
+        return NewsArticleProcessed(
+            raw_article_id=777,
+            normalized_title=title,
+            summary="A sufficiently detailed processed article summary.",
+            top_level_category="general",
+            processed_at=datetime.utcnow(),
+        )
+
+    assert await EnrichmentPipeline._add_processed(session, processed("first")) is True
+    await session.commit()
+    assert await EnrichmentPipeline._add_processed(session, processed("duplicate")) is False
+
+    assert session.is_active
+    assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 1
+
+
+@pytest.mark.asyncio
+async def test_two_sessions_enforce_processed_raw_identity(tmp_path) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'concurrency.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    def processed(title: str) -> NewsArticleProcessed:
+        return NewsArticleProcessed(
+            raw_article_id=888,
+            normalized_title=title,
+            summary="A sufficiently detailed processed article summary.",
+            top_level_category="general",
+            processed_at=datetime.utcnow(),
+        )
+
+    async with maker() as first, maker() as second:
+        assert await EnrichmentPipeline._add_processed(first, processed("first")) is True
+        await first.commit()
+        assert await EnrichmentPipeline._add_processed(second, processed("duplicate")) is False
+        assert second.is_active
+        assert await second.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 1
+    await engine.dispose()

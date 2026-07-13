@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Index, String, Text, false
+from sqlalchemy import JSON, Boolean, DateTime, Float, Index, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import BaseModel
@@ -84,6 +84,7 @@ class NewsArticleProcessed(BaseModel):
     )
 
     __table_args__ = (
+        UniqueConstraint("raw_article_id", name="uq_news_articles_processed_raw_article_id"),
         Index("idx_raw_article_id", "raw_article_id"),
         Index("idx_top_level_category", "top_level_category"),
         Index("idx_signal_score", "signal_score"),

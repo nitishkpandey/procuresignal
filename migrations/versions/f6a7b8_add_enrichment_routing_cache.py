@@ -15,15 +15,26 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Historical code allowed duplicate processed rows. Keep the earliest row so
+    # the new idempotency constraint can be applied safely to existing databases.
+    op.execute(
+        sa.text(
+            "DELETE FROM news_articles_processed newer "
+            "USING news_articles_processed older "
+            "WHERE newer.raw_article_id = older.raw_article_id "
+            "AND newer.id > older.id"
+        )
+    )
+    op.create_unique_constraint(
+        "uq_news_articles_processed_raw_article_id",
+        "news_articles_processed",
+        ["raw_article_id"],
+    )
     op.add_column("news_articles_processed", sa.Column("enrichment_method", sa.String(20)))
     op.add_column("news_articles_processed", sa.Column("enrichment_reason", sa.String(100)))
-    op.add_column(
-        "news_articles_processed", sa.Column("enrichment_policy_version", sa.String(100))
-    )
+    op.add_column("news_articles_processed", sa.Column("enrichment_policy_version", sa.String(100)))
     op.add_column("news_articles_processed", sa.Column("content_fingerprint", sa.String(255)))
-    op.add_column(
-        "news_articles_processed", sa.Column("deterministic_confidence", sa.Float())
-    )
+    op.add_column("news_articles_processed", sa.Column("deterministic_confidence", sa.Float()))
     op.add_column(
         "news_articles_processed",
         sa.Column("llm_used", sa.Boolean(), server_default=sa.false(), nullable=False),
@@ -51,12 +62,15 @@ def upgrade() -> None:
             name="uq_enrichment_cache_identity",
         ),
     )
-    op.create_index(
-        "idx_enrichment_cache_fingerprint", "enrichment_cache", ["content_fingerprint"]
-    )
+    op.create_index("idx_enrichment_cache_fingerprint", "enrichment_cache", ["content_fingerprint"])
 
 
 def downgrade() -> None:
+    op.drop_constraint(
+        "uq_news_articles_processed_raw_article_id",
+        "news_articles_processed",
+        type_="unique",
+    )
     op.drop_index("idx_enrichment_cache_fingerprint", table_name="enrichment_cache")
     op.drop_table("enrichment_cache")
     op.drop_column("news_articles_processed", "llm_used")

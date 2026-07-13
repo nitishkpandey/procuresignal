@@ -47,7 +47,9 @@ class EnrichmentRouter:
         if relevance < policy.min_relevance:
             return RouteDecision(EnrichmentRoute.SKIPPED, "below_relevance_threshold", confidence)
         if confidence >= policy.min_deterministic_confidence:
-            return RouteDecision(EnrichmentRoute.DETERMINISTIC, "deterministic_confident", confidence)
+            return RouteDecision(
+                EnrichmentRoute.DETERMINISTIC, "deterministic_confident", confidence
+            )
         if budget_available:
             return RouteDecision(EnrichmentRoute.LLM, "ambiguous_relevant", confidence)
         return RouteDecision(EnrichmentRoute.DEFERRED, "llm_budget_exhausted", confidence)

@@ -45,4 +45,22 @@ Focused Black formatting passes for the Task 4 modified Python files. A director
 
 ## Concerns
 
-The cache repository's two-session concurrent writer behavior remains database-specific. Task 3 already uses a nested transaction plus unique-key recovery, and the complete suite is green, but a true PostgreSQL concurrency test belongs in the database integration environment rather than SQLite's locking model.
+SQLite and PostgreSQL have different locking behavior, so the two-session test proves durable uniqueness and usable savepoint recovery but is not a substitute for a live PostgreSQL race test.
+
+## Review Follow-up
+
+Commit follow-up adds the explicit `min_fallback_confidence` policy (default 0.50), cache-hit short-circuiting before deterministic work, processed raw-ID uniqueness at ORM/migration/runtime boundaries, historical duplicate cleanup in the migration, and savepoint recovery for concurrent unique violations. It also adds exception fallback above/below threshold, analyzer-spy cache, corrupt-cache continuation, optional-client, batch rollback, same-input duplication, audit metadata, model uniqueness, and two-session durability tests.
+
+Fresh evidence after the follow-up:
+
+```text
+focused policy/cache/pipeline/model suite: 60 passed
+full backend suite: 228 passed
+repository Ruff: passed
+MyPy api worker shared: Success, 86 source files
+Black modified scope: passed after formatting
+PostgreSQL offline Alembic upgrade e5f6a7...:f6a7b8...: generated successfully
+PostgreSQL offline Alembic downgrade f6a7b8...:e5f6a7...: generated successfully
+```
+
+The Alembic validation was PostgreSQL-dialect offline SQL generation because no disposable live PostgreSQL database was available in the task environment. It validates upgrade/downgrade DDL generation, not execution against production data.
