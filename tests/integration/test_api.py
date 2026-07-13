@@ -7,13 +7,16 @@ import pytest
 from fastapi.testclient import TestClient
 from procuresignal.config import database as database_module
 from procuresignal.currency.service import CurrencyMonitorResponse
+from procuresignal.enrichment import EnrichmentPipeline
 from procuresignal.models import (
     Base,
+    EnrichmentCacheEntry,
     NewsArticleProcessed,
     NewsArticleRaw,
     RiskEvent,
     UserNewsPreference,
 )
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -22,6 +25,79 @@ from api.main import app
 from api.routers import articles as articles_router
 from api.routers import currency as currency_router
 from api.routers import feed as feed_router
+
+
+@pytest.mark.asyncio
+async def test_enrichment_pipeline_persists_audit_metadata_and_cache_hits() -> None:
+    """Persist deterministic/cache audit data without duplicate processing."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_maker() as session:
+            now = datetime.utcnow()
+            deterministic = NewsArticleRaw(
+                provider="rss",
+                provider_article_id="audit-deterministic",
+                query_group="tariff_changes",
+                ingest_hash="audit-deterministic",
+                title="Tariff disrupts Bosch logistics in Germany",
+                description="A tariff disrupts Bosch supplier shipments across Germany.",
+                content_snippet="Procurement teams expect customs delays and higher freight costs.",
+                article_url="https://example.test/audit-deterministic",
+                source_name="EU Trade News",
+                published_at=now,
+                ingested_at=now,
+                language="en",
+            )
+            cached = NewsArticleRaw(
+                provider="rss",
+                provider_article_id="audit-cache-hit",
+                query_group="tariff_changes",
+                ingest_hash="audit-cache-hit",
+                title=deterministic.title,
+                description=deterministic.description,
+                content_snippet=deterministic.content_snippet,
+                article_url="https://example.test/audit-cache-hit",
+                source_name="EU Trade News",
+                published_at=now,
+                ingested_at=now,
+                language="en",
+            )
+            session.add_all([deterministic, cached])
+            await session.commit()
+
+            first = await EnrichmentPipeline().process_raw_articles(session, [deterministic])
+            second = await EnrichmentPipeline().process_raw_articles(session, [cached])
+            repeated = await EnrichmentPipeline().process_raw_articles(session, [cached])
+
+            rows = list(
+                (
+                    await session.scalars(
+                        select(NewsArticleProcessed).order_by(NewsArticleProcessed.raw_article_id)
+                    )
+                ).all()
+            )
+            cache_entry = await session.scalar(select(EnrichmentCacheEntry))
+
+            assert first.metrics.deterministic == 1
+            assert second.metrics.cached == 1
+            assert repeated.already_processed == 1
+            assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 2
+            assert [row.enrichment_method for row in rows] == ["deterministic", "cached"]
+            assert rows[0].enrichment_reason == "deterministic_confident"
+            assert rows[1].enrichment_reason == "compatible_cache_hit"
+            assert all(row.enrichment_policy_version == "cost-v1" for row in rows)
+            assert all(row.content_fingerprint for row in rows)
+            assert rows[0].deterministic_confidence is not None
+            assert rows[1].deterministic_confidence is None
+            assert all(row.llm_used is False for row in rows)
+            assert cache_entry is not None
+            assert cache_entry.hit_count == 1
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture()
