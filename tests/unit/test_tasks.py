@@ -1,5 +1,11 @@
 """Tests for Celery tasks."""
 
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+
+from procuresignal.enrichment import EnrichmentMetrics, EnrichmentRunResult
+
+import worker.tasks as tasks
 from worker.main import app
 from worker.tasks import (
     enrich_articles_task,
@@ -57,3 +63,95 @@ def test_generate_risk_events_task_is_exported() -> None:
 
     assert "generate_risk_events_task" in __all__
     assert "prune_retention_task" in __all__
+
+
+def test_enrichment_task_exposes_route_and_savings_metrics(monkeypatch) -> None:
+    """The task result keeps legacy counts and adds route-level cost metrics."""
+    normalized = [SimpleNamespace(id=1)]
+    metrics = EnrichmentMetrics(
+        cached=2,
+        deterministic=3,
+        llm=1,
+        skipped=4,
+        deferred=1,
+        failed=2,
+        cache_misses=8,
+        llm_calls=1,
+        llm_tokens=321,
+        avoided_llm_calls=9,
+    )
+
+    @asynccontextmanager
+    async def fake_session_scope():
+        yield object()
+
+    async def fake_normalize(*args, **kwargs):
+        return {"raw_articles": normalized, "normalized_articles": normalized}
+
+    class FakePipeline:
+        def __init__(self, *, policy, llm_client_factory):
+            self.policy = policy
+            self.llm_client_factory = llm_client_factory
+
+        async def process_raw_articles(self, session, articles):
+            assert articles == normalized
+            return EnrichmentRunResult(saved=6, metrics=metrics, already_processed=2)
+
+    monkeypatch.setattr(tasks, "session_scope", fake_session_scope)
+    monkeypatch.setattr(tasks, "_normalize_articles", fake_normalize)
+    monkeypatch.setattr(tasks, "EnrichmentPipeline", FakePipeline)
+
+    result = enrich_articles_task.run()
+
+    assert result["status"] == "success"
+    assert result["enriched_count"] == 6
+    assert result["skipped_count"] == 6
+    assert result["error_count"] == 2
+    assert result["routes"] == {
+        "cached": 2,
+        "deterministic": 3,
+        "llm": 1,
+        "skipped": 4,
+        "deferred": 1,
+        "failed": 2,
+        "cache_misses": 8,
+    }
+    assert result["llm_calls"] == 1
+    assert result["llm_tokens"] == 321
+    assert result["avoided_llm_calls"] == 9
+    assert "timestamp" in result
+
+
+def test_enrichment_task_does_not_construct_openai_before_pipeline_routes(monkeypatch) -> None:
+    """Missing OpenAI configuration must not block local/cache-only processing."""
+    normalized = [SimpleNamespace(id=1)]
+    metrics = EnrichmentMetrics(deterministic=1, avoided_llm_calls=1)
+
+    @asynccontextmanager
+    async def fake_session_scope():
+        yield object()
+
+    async def fake_normalize(*args, **kwargs):
+        return {"raw_articles": normalized, "normalized_articles": normalized}
+
+    class FakePipeline:
+        def __init__(self, *, policy, llm_client_factory):
+            assert callable(llm_client_factory)
+            self.llm_client_factory = llm_client_factory
+
+        async def process_raw_articles(self, session, articles):
+            # A deterministic-only run never asks the factory for a client.
+            return EnrichmentRunResult(saved=1, metrics=metrics)
+
+    def forbidden_client():
+        raise AssertionError("OpenAI client was eagerly constructed")
+
+    monkeypatch.setattr(tasks, "session_scope", fake_session_scope)
+    monkeypatch.setattr(tasks, "_normalize_articles", fake_normalize)
+    monkeypatch.setattr(tasks, "EnrichmentPipeline", FakePipeline)
+    monkeypatch.setattr(tasks, "OpenAILLMClient", forbidden_client)
+
+    result = enrich_articles_task.run()
+
+    assert result["enriched_count"] == 1
+    assert result["routes"]["deterministic"] == 1

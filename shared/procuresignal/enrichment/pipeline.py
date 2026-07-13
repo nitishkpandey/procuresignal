@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterator, Optional
+from typing import Callable, Iterator, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -61,6 +61,7 @@ class EnrichmentPipeline:
         router: EnrichmentRouter | None = None,
         deterministic_enricher: DeterministicEnricher | None = None,
         cache: EnrichmentCache | None = None,
+        llm_client_factory: Callable[[], OpenAILLMClient] | None = None,
     ):
         """Initialize pipeline.
 
@@ -72,6 +73,7 @@ class EnrichmentPipeline:
         self.deterministic_enricher = deterministic_enricher or DeterministicEnricher()
         self.cache = cache or EnrichmentCache()
         self.llm_client = llm_client
+        self.llm_client_factory = llm_client_factory
         self.enricher = ArticleEnricher(llm_client) if llm_client is not None else None
 
     async def process_raw_articles(
@@ -161,7 +163,7 @@ class EnrichmentPipeline:
                 budget_available = (
                     budget.calls_reserved < budget.max_calls
                     and budget.tokens_reserved + estimate <= budget.max_tokens
-                    and self.enricher is not None
+                    and (self.enricher is not None or self.llm_client_factory is not None)
                 )
                 decision = self.router.decide(
                     cache_hit=False,
@@ -176,7 +178,16 @@ class EnrichmentPipeline:
                 if decision.route is EnrichmentRoute.DETERMINISTIC:
                     output = analysis.output
                 elif decision.route is EnrichmentRoute.LLM:
-                    if not budget.reserve(estimate):
+                    if not self._ensure_llm_client():
+                        decision = self.router.decide(
+                            cache_hit=False,
+                            relevance=analysis.relevance,
+                            confidence=analysis.confidence,
+                            policy=self.policy,
+                            budget_available=False,
+                        )
+                        method = decision.route.value
+                    elif not budget.reserve(estimate):
                         decision = self.router.decide(
                             cache_hit=False,
                             relevance=analysis.relevance,
@@ -297,6 +308,19 @@ class EnrichmentPipeline:
 
     def _client_tokens(self) -> int:
         return int(getattr(self.llm_client, "total_tokens_used", 0))
+
+    def _ensure_llm_client(self) -> bool:
+        """Construct the OpenAI client only after routing selects the LLM path."""
+        if self.enricher is not None:
+            return True
+        if self.llm_client_factory is None:
+            return False
+        try:
+            self.llm_client = self.llm_client_factory()
+        except ValueError:
+            return False
+        self.enricher = ArticleEnricher(self.llm_client)
+        return True
 
     def get_stats(self) -> dict:
         """Get enrichment statistics."""

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine
 
 from procuresignal.config.database import session_scope
-from procuresignal.enrichment import EnrichmentPipeline, OpenAILLMClient
+from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
 from procuresignal.models import NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
@@ -262,38 +262,53 @@ def enrich_articles_task(self: Any) -> dict[str, Any]:
             normalized_articles = stats["normalized_articles"]
 
             if not normalized_articles:
+                empty_routes = {
+                    "cached": 0,
+                    "deterministic": 0,
+                    "llm": 0,
+                    "skipped": 0,
+                    "deferred": 0,
+                    "failed": 0,
+                    "cache_misses": 0,
+                }
                 return {
                     "status": "success",
                     "enriched_count": 0,
                     "skipped_count": len(stats["raw_articles"]),
                     "error_count": 0,
                     "reason": "no normalized articles available",
+                    "routes": empty_routes,
+                    "llm_calls": 0,
+                    "llm_tokens": 0,
+                    "avoided_llm_calls": 0,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
-            try:
-                llm_client = OpenAILLMClient()
-            except ValueError:
-                return {
-                    "status": "success",
-                    "enriched_count": 0,
-                    "skipped_count": len(normalized_articles),
-                    "error_count": 0,
-                    "reason": "OPENAI_API_KEY not set",
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-
-            pipeline = EnrichmentPipeline(llm_client)
-            enriched_count, skipped_count, error_count = await pipeline.process_raw_articles(
+            policy = EnrichmentPolicy.from_env()
+            pipeline = EnrichmentPipeline(policy=policy, llm_client_factory=OpenAILLMClient)
+            run_result = await pipeline.process_raw_articles(
                 session,
                 normalized_articles,
             )
+            metrics = run_result.metrics
             return {
                 "status": "success",
-                "enriched_count": enriched_count,
-                "skipped_count": skipped_count,
-                "error_count": error_count,
+                "enriched_count": run_result.saved,
+                "skipped_count": metrics.skipped + run_result.already_processed,
+                "error_count": metrics.failed,
                 "normalized_candidates": len(normalized_articles),
+                "routes": {
+                    "cached": metrics.cached,
+                    "deterministic": metrics.deterministic,
+                    "llm": metrics.llm,
+                    "skipped": metrics.skipped,
+                    "deferred": metrics.deferred,
+                    "failed": metrics.failed,
+                    "cache_misses": metrics.cache_misses,
+                },
+                "llm_calls": metrics.llm_calls,
+                "llm_tokens": metrics.llm_tokens,
+                "avoided_llm_calls": metrics.avoided_llm_calls,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
