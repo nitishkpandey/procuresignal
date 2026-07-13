@@ -49,6 +49,8 @@ class NewsArticleRaw(BaseModel):
         Integer, default=0, server_default="0", nullable=False
     )
     enrichment_next_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    enrichment_lease_owner: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    enrichment_lease_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_provider_article_id", "provider", "provider_article_id"),
@@ -56,6 +58,7 @@ class NewsArticleRaw(BaseModel):
         Index("idx_published_at", "published_at"),
         Index("idx_source_name", "source_name"),
         Index("idx_raw_enrichment_lifecycle", "enrichment_status", "enrichment_next_attempt_at"),
+        Index("idx_raw_enrichment_lease", "enrichment_lease_expires_at", "enrichment_lease_owner"),
     )
 
 

@@ -78,6 +78,8 @@ class EnrichmentPipeline:
         self,
         session: AsyncSession,
         raw_articles: list[NewsArticleRaw],
+        *,
+        claim_owner: str | None = None,
     ) -> EnrichmentRunResult:
         """Process raw articles through enrichment pipeline.
 
@@ -109,6 +111,10 @@ class EnrichmentPipeline:
                     (
                         NewsArticleRaw.enrichment_status.in_(("skipped", "quality_rejected"))
                         | (NewsArticleRaw.enrichment_next_attempt_at > datetime.utcnow())
+                        | (
+                            (NewsArticleRaw.enrichment_lease_expires_at > datetime.utcnow())
+                            & (NewsArticleRaw.enrichment_lease_owner != claim_owner)
+                        )
                     ),
                 )
             )
@@ -168,6 +174,9 @@ class EnrichmentPipeline:
                         metrics.cached += 1
                     else:
                         already_processed += 1
+                    await self._transition_raw(
+                        session, raw.id, claim_owner=claim_owner, status="completed"
+                    )
                     continue
                 metrics.cache_misses += 1
                 analysis = self.deterministic_enricher.analyze(
@@ -236,24 +245,24 @@ class EnrichmentPipeline:
                     route = method if method == "failed" else decision.route.value
                     setattr(metrics, route, getattr(metrics, route) + 1)
                     if route == EnrichmentRoute.SKIPPED.value:
-                        await session.execute(
-                            update(NewsArticleRaw)
-                            .where(NewsArticleRaw.id == raw.id)
-                            .values(
-                                enrichment_status="skipped",
-                                enrichment_next_attempt_at=None,
-                            )
+                        await self._transition_raw(
+                            session, raw.id, claim_owner=claim_owner, status="skipped"
                         )
                     elif route == EnrichmentRoute.DEFERRED.value:
-                        await session.execute(
-                            update(NewsArticleRaw)
-                            .where(NewsArticleRaw.id == raw.id)
-                            .values(
-                                enrichment_status="deferred",
-                                enrichment_attempt_count=NewsArticleRaw.enrichment_attempt_count
-                                + 1,
-                                enrichment_next_attempt_at=datetime.utcnow() + timedelta(hours=2),
-                            )
+                        await self._transition_raw(
+                            session,
+                            raw.id,
+                            claim_owner=claim_owner,
+                            status="deferred",
+                            retry_delay=timedelta(hours=2),
+                        )
+                    elif route == "failed":
+                        await self._transition_raw(
+                            session,
+                            raw.id,
+                            claim_owner=claim_owner,
+                            status="enrichment_retry",
+                            retry_delay=timedelta(hours=2),
                         )
                     continue
                 processed = self._processed(
@@ -277,7 +286,13 @@ class EnrichmentPipeline:
                     )
                 if not await self._add_processed(session, processed):
                     already_processed += 1
+                    await self._transition_raw(
+                        session, raw.id, claim_owner=claim_owner, status="completed"
+                    )
                     continue
+                await self._transition_raw(
+                    session, raw.id, claim_owner=claim_owner, status="completed"
+                )
                 saved += 1
                 setattr(metrics, method, getattr(metrics, method) + 1)
             metrics.avoided_llm_calls = metrics.cached + metrics.deterministic + metrics.skipped
@@ -322,6 +337,30 @@ class EnrichmentPipeline:
             deterministic_confidence=confidence,
             llm_used=llm_used,
         )
+
+    @staticmethod
+    async def _transition_raw(
+        session: AsyncSession,
+        raw_id: int,
+        *,
+        claim_owner: str | None,
+        status: str,
+        retry_delay: timedelta | None = None,
+    ) -> None:
+        statement = update(NewsArticleRaw).where(NewsArticleRaw.id == raw_id)
+        if claim_owner is not None:
+            statement = statement.where(NewsArticleRaw.enrichment_lease_owner == claim_owner)
+        values: dict[str, object] = {
+            "enrichment_status": status,
+            "enrichment_next_attempt_at": (
+                datetime.utcnow() + retry_delay if retry_delay is not None else None
+            ),
+            "enrichment_lease_owner": None,
+            "enrichment_lease_expires_at": None,
+        }
+        if retry_delay is not None:
+            values["enrichment_attempt_count"] = NewsArticleRaw.enrichment_attempt_count + 1
+        await session.execute(statement.values(**values))
 
     @staticmethod
     def _merge_deterministic_evidence(

@@ -22,15 +22,29 @@ def upgrade() -> None:
     op.add_column(
         "news_articles_raw", sa.Column("enrichment_next_attempt_at", sa.DateTime(), nullable=True)
     )
+    op.add_column(
+        "news_articles_raw", sa.Column("enrichment_lease_owner", sa.String(100), nullable=True)
+    )
+    op.add_column(
+        "news_articles_raw", sa.Column("enrichment_lease_expires_at", sa.DateTime(), nullable=True)
+    )
     op.create_index(
         "idx_raw_enrichment_lifecycle",
         "news_articles_raw",
         ["enrichment_status", "enrichment_next_attempt_at"],
     )
+    op.create_index(
+        "idx_raw_enrichment_lease",
+        "news_articles_raw",
+        ["enrichment_lease_expires_at", "enrichment_lease_owner"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("idx_raw_enrichment_lease", table_name="news_articles_raw")
     op.drop_index("idx_raw_enrichment_lifecycle", table_name="news_articles_raw")
+    op.drop_column("news_articles_raw", "enrichment_lease_expires_at")
+    op.drop_column("news_articles_raw", "enrichment_lease_owner")
     op.drop_column("news_articles_raw", "enrichment_next_attempt_at")
     op.drop_column("news_articles_raw", "enrichment_attempt_count")
     op.drop_column("news_articles_raw", "enrichment_status")

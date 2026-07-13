@@ -80,5 +80,13 @@ scan and `git diff --check` were clean.
 - Removed dead `EnrichmentPipeline.BATCH_SIZE`.
 - Added Alembic head `f7b8c9_terminal_enrichment`; fresh SQLite upgrade and
   PostgreSQL offline SQL generation pass.
-- Final-fix backend evidence: 243 tests passed, Ruff clean, MyPy clean across 86
+- Added committed owner/expiry claims before normalization or LLM work. A two-session
+  SQLite concurrency regression proves only one worker normalizes/calls the fake
+  LLM and only one processed row is created. PostgreSQL uses `SKIP LOCKED` plus a
+  conditional ownership update; no lock spans the API call. Stale claims recover,
+  all route transitions clear leases, and unexpected failures durably release to
+  retry.
+- Added fresh-session task regressions proving reject-only and error-only lifecycle
+  updates survive writer close; empty enrichment reports normalization errors.
+- Final-fix backend evidence: 247 tests passed, Ruff clean, MyPy clean across 86
   source files, and Black clean after formatting.

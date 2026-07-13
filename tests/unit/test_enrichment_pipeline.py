@@ -209,6 +209,7 @@ async def test_budget_exhaustion_defers_without_persisting(session: AsyncSession
     assert raw.enrichment_status == "deferred"
     assert raw.enrichment_attempt_count == 1
     assert raw.enrichment_next_attempt_at is not None
+    assert raw.enrichment_lease_owner is None
     assert (
         sum(
             getattr(result.metrics, route)
@@ -235,6 +236,7 @@ async def test_skipped_article_is_durably_terminal_and_not_reprocessed(
     assert second.metrics.skipped == 0
     assert second.already_processed == 1
     assert raw.enrichment_status == "skipped"
+    assert raw.enrichment_lease_owner is None
 
 
 @pytest.mark.asyncio
@@ -279,6 +281,11 @@ async def test_llm_failure_uses_explicit_fallback_threshold(
     assert getattr(result.metrics, expected) == 1
     assert result.metrics.llm_calls == 1
     assert result.saved == (1 if expected == "deterministic" else 0)
+    await session.refresh(raw)
+    assert raw.enrichment_status == (
+        "completed" if expected == "deterministic" else "enrichment_retry"
+    )
+    assert raw.enrichment_lease_owner is None
 
 
 @pytest.mark.asyncio

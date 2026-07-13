@@ -72,6 +72,21 @@ retention or explicit expiry; a two-hour next-attempt delay prevents hot loops.
 Successful LLM results are merged with explicit deterministic supplier, region,
 and category evidence before caching or persistence.
 
+Workers claim candidates with an indexed owner/expiry lease before normalization
+or LLM work and commit that claim before any external call. PostgreSQL selection
+uses row locking with `SKIP LOCKED`; a conditional update provides the same
+single-owner guarantee in SQLite tests. The 65-minute lease exceeds the Celery
+task time limit, no database lock is held during an API call, and expired leases
+are recoverable. Every completed, skipped, deferred, normalization-retry, and
+enrichment-retry transition clears the lease. Unexpected batch failures roll back
+partial work, durably release that worker's claims to a one-minute retry, and then
+preserve the existing Celery retry behavior.
+
+Both normalization task entry points explicitly commit lifecycle-only batches
+before their sessions close. Fresh-session regressions prove deterministic rejects
+and transient normalization failures persist, and empty enrichment runs report
+their normalization error count accurately.
+
 Fingerprints normalize content deterministically and include policy and taxonomy
 versions. Only validated deterministic or LLM outputs enter the persistent cache.
 Corrupt or incompatible entries are misses. The integration test processes one
@@ -90,7 +105,8 @@ uniqueness. Historical duplicates are ranked by completed status, populated audi
 evidence, processing time, and ID. References from article matches, priority
 events, user feeds, and risk events are repointed before duplicate deletion.
 Revision `f7b8c9_terminal_enrichment` adds the indexed raw-article lifecycle
-status, attempt count, and next-attempt timestamp used by scheduled selection.
+status, attempt count, next-attempt timestamp, and processing lease used by
+scheduled selection.
 
 Fresh SQLite upgrade from an empty database completed through the new revision,
 and `alembic heads` reported exactly one head:
@@ -114,7 +130,7 @@ environment.
   new integration test.
 - `../../.venv/bin/ruff check .` — passed.
 - `../../.venv/bin/mypy api worker shared` — no issues in 86 source files.
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 243 passed.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 247 passed.
 - `npm run lint` — no ESLint warnings or errors.
 - `npm run typecheck` — passed.
 - `npm run test:run` — 52 tests passed across 16 files.
