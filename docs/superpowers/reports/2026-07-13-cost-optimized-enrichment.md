@@ -15,7 +15,9 @@ deterministic confidence when computed, and whether an LLM was used.
 
 ## Measured Evaluation Evidence
 
-The fixed offline fixture contains 20 representative English, German, and French
+The fixed offline fixture is executed through `EnrichmentPipeline` with SQLite,
+the real deterministic analyzer/router/cache, and recorded offline LLM outputs;
+it makes no network call. It contains 20 representative English, German, and French
 records: clear and ambiguous procurement reporting, irrelevant content, exact and
 near duplicates, entity-rich articles, and missing-description cases.
 
@@ -36,8 +38,9 @@ near duplicates, entity-rich articles, and missing-description cases.
 
 All extraction dimensions therefore have a zero percentage-point loss against
 the fixture's recorded baseline, within the five-point maximum regression gate.
-The evaluation reserves 500 estimated tokens for each of its three LLM routes
-(1,500 total), below the default limits of five calls and 6,000 tokens.
+The three recorded LLM routes report 300 tokens total. Pipeline reservations use
+the production character-based estimate and remain below the default limits of
+five calls and 6,000 tokens.
 
 ## Policy, Budget, And Cache Behavior
 
@@ -52,6 +55,13 @@ ambiguous work is deferred when capacity or an LLM client is unavailable, so it
 remains eligible for a later run. Worker results expose cached, deterministic,
 LLM, skipped, deferred, failed, cache-miss, call, token, and avoided-call metrics
 while preserving the previous result keys.
+
+Below-relevance decisions are terminal: the raw row is marked `skipped` in the
+same transaction, and scheduled candidate selection excludes terminal and
+already-processed rows before applying its batch cap. This prevents a newest-first
+backlog of irrelevant rows from starving older eligible work. Deferred rows are
+not marked and remain eligible. Successful LLM results are merged with explicit
+deterministic supplier, region, and category evidence before caching or persistence.
 
 Fingerprints normalize content deterministically and include policy and taxonomy
 versions. Only validated deterministic or LLM outputs enter the persistent cache.
@@ -70,10 +80,12 @@ audit columns, the versioned enrichment cache, and one-processed-row-per-raw-row
 uniqueness. Historical duplicates are ranked by completed status, populated audit
 evidence, processing time, and ID. References from article matches, priority
 events, user feeds, and risk events are repointed before duplicate deletion.
+Revision `f7b8c9_terminal_enrichment` adds the indexed raw-article terminal status
+used by scheduled candidate selection.
 
 Fresh SQLite upgrade from an empty database completed through the new revision,
 and `alembic heads` reported exactly one head:
-`f6a7b8_add_enrichment_routing_cache`. The dedicated populated migration test also
+`f7b8c9_terminal_enrichment`. The dedicated populated migration test also
 proves dependent references survive upgrade and the migration can be downgraded.
 PostgreSQL-dialect upgrade and downgrade SQL generation was verified earlier in
 the phase; no disposable live PostgreSQL service was available for data-bearing
@@ -93,7 +105,7 @@ environment.
   new integration test.
 - `../../.venv/bin/ruff check .` — passed.
 - `../../.venv/bin/mypy api worker shared` — no issues in 86 source files.
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 237 passed.
+- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 240 passed.
 - `npm run lint` — no ESLint warnings or errors.
 - `npm run typecheck` — passed.
 - `npm run test:run` — 52 tests passed across 16 files.

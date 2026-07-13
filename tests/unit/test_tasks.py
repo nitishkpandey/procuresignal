@@ -1,9 +1,12 @@
 """Tests for Celery tasks."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from procuresignal.enrichment import EnrichmentMetrics, EnrichmentRunResult
+from procuresignal.models import Base, NewsArticleRaw
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import worker.tasks as tasks
 from worker.main import app
@@ -155,3 +158,40 @@ def test_enrichment_task_does_not_construct_openai_before_pipeline_routes(monkey
 
     assert result["enriched_count"] == 1
     assert result["routes"]["deterministic"] == 1
+
+
+def test_enrichment_candidate_cap_does_not_starve_older_eligible_rows(tmp_path) -> None:
+    """Terminal/processed newest rows must not consume the scheduled batch cap."""
+
+    async def run():
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'selection.db'}")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        now = datetime.utcnow()
+        async with maker() as session:
+            rows = []
+            for index in range(25):
+                row = NewsArticleRaw(
+                    provider="test",
+                    provider_article_id=str(index),
+                    query_group="general",
+                    ingest_hash=str(index),
+                    title=f"Article {index}",
+                    article_url=f"https://example.test/{index}",
+                    source_name="Example",
+                    published_at=now,
+                    ingested_at=now - timedelta(minutes=index),
+                    language="en",
+                    enrichment_terminal_status="skipped" if index < 20 else None,
+                )
+                rows.append(row)
+            session.add_all(rows)
+            await session.commit()
+            selected = await tasks._load_enrichment_candidates(session, hours_back=12, limit=5)
+            assert [row.provider_article_id for row in selected] == ["20", "21", "22", "23", "24"]
+        await engine.dispose()
+
+    import asyncio
+
+    asyncio.run(run())

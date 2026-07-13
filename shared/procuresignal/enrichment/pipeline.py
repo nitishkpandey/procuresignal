@@ -4,13 +4,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Iterator, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.enrichment.cache import EnrichmentCache
 from procuresignal.enrichment.deterministic import DeterministicEnricher
 from procuresignal.enrichment.enricher import ArticleEnricher
+from procuresignal.enrichment.entities import merge_entities
 from procuresignal.enrichment.fingerprint import content_fingerprint
 from procuresignal.enrichment.openai_client import OpenAILLMClient
 from procuresignal.enrichment.output_parser import EnrichmentOutput
@@ -49,9 +50,6 @@ class EnrichmentRunResult:
 
 class EnrichmentPipeline:
     """Orchestrate the full enrichment process."""
-
-    # Batch size for LLM calls
-    BATCH_SIZE = 10
 
     def __init__(
         self,
@@ -95,17 +93,30 @@ class EnrichmentPipeline:
         budget = EnrichmentBudget(self.policy.max_llm_calls, self.policy.max_llm_tokens)
 
         # Check for already-processed articles
+        candidate_ids = {candidate.id for candidate in raw_articles}
         processed_raw_ids = set()
-        existing = await session.execute(select(NewsArticleProcessed.raw_article_id))
+        existing = await session.execute(
+            select(NewsArticleProcessed.raw_article_id).where(
+                NewsArticleProcessed.raw_article_id.in_(candidate_ids)
+            )
+        )
         for row in existing:
             processed_raw_ids.add(row[0])
+        terminal_raw_ids = set(
+            await session.scalars(
+                select(NewsArticleRaw.id).where(
+                    NewsArticleRaw.id.in_(candidate_ids),
+                    NewsArticleRaw.enrichment_terminal_status.is_not(None),
+                )
+            )
+        )
 
         # Filter to unprocessed articles
         seen_ids = set(processed_raw_ids)
         articles_to_process = []
         already_processed = 0
         for candidate in raw_articles:
-            if candidate.id in seen_ids:
+            if candidate.id in seen_ids or candidate.id in terminal_raw_ids:
                 already_processed += 1
                 continue
             seen_ids.add(candidate.id)
@@ -207,6 +218,7 @@ class EnrichmentPipeline:
                         metrics.llm_tokens += used
                         if output is not None:
                             llm_used = True
+                            output = self._merge_deterministic_evidence(output, analysis.output)
                         elif analysis.confidence >= self.policy.min_fallback_confidence:
                             output = analysis.output
                             method = EnrichmentRoute.DETERMINISTIC.value
@@ -220,6 +232,12 @@ class EnrichmentPipeline:
                 if output is None:
                     route = method if method == "failed" else decision.route.value
                     setattr(metrics, route, getattr(metrics, route) + 1)
+                    if route == EnrichmentRoute.SKIPPED.value:
+                        await session.execute(
+                            update(NewsArticleRaw)
+                            .where(NewsArticleRaw.id == raw.id)
+                            .values(enrichment_terminal_status="skipped")
+                        )
                     continue
                 processed = self._processed(
                     raw.id,
@@ -286,6 +304,27 @@ class EnrichmentPipeline:
             content_fingerprint=fingerprint,
             deterministic_confidence=confidence,
             llm_used=llm_used,
+        )
+
+    @staticmethod
+    def _merge_deterministic_evidence(
+        llm_output: EnrichmentOutput, deterministic_output: EnrichmentOutput
+    ) -> EnrichmentOutput:
+        """Retain explicit local evidence that a successful LLM response omitted."""
+        return llm_output.model_copy(
+            update={
+                "detected_suppliers": merge_entities(
+                    llm_output.detected_suppliers, deterministic_output.detected_suppliers
+                ),
+                "detected_regions": merge_entities(
+                    llm_output.detected_regions, deterministic_output.detected_regions
+                ),
+                "detected_categories": merge_entities(
+                    llm_output.detected_categories,
+                    [llm_output.category],
+                    deterministic_output.detected_categories,
+                ),
+            }
         )
 
     @staticmethod

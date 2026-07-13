@@ -58,3 +58,21 @@ The strengthened specification test passed immediately without a production-code
 change. Final review-fix verification: 237 backend tests passed; full-project
 Black and Ruff passed; MyPy found no issues in 86 source files; the report marker
 scan and `git diff --check` were clean.
+
+## Final Review Fixes
+
+- Added durable raw-row `skipped` terminal state and pre-cap candidate filtering;
+  deferred rows stay eligible. A 25-row regression proves 20 newest terminal rows
+  cannot starve the five older eligible rows, and rerun coverage proves terminal
+  rows are not routed twice.
+- Restored deterministic supplier, region, and category evidence merging into
+  successful LLM output before cache/persistence, with an omission regression.
+- Replaced the router-only evaluation with a real `EnrichmentPipeline` run using
+  SQLite, production deterministic/cache routing, and recorded offline LLM output.
+  The gate remains 12/15 avoided accepted calls (80%) and at least 95% recall per
+  extraction dimension; current fixture achieves 100%.
+- Removed dead `EnrichmentPipeline.BATCH_SIZE`.
+- Added Alembic head `f7b8c9_terminal_enrichment`; fresh SQLite upgrade and
+  PostgreSQL offline SQL generation pass.
+- Final-fix backend evidence: 240 tests passed, Ruff clean, MyPy clean across 86
+  source files, and Black clean after formatting.

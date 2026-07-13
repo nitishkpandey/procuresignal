@@ -205,6 +205,8 @@ async def test_budget_exhaustion_defers_without_persisting(session: AsyncSession
 
     assert result.saved == 0 and result.metrics.deferred == 1
     assert await session.scalar(select(func.count()).select_from(NewsArticleProcessed)) == 0
+    await session.refresh(raw)
+    assert raw.enrichment_terminal_status is None
     assert (
         sum(
             getattr(result.metrics, route)
@@ -212,6 +214,50 @@ async def test_budget_exhaustion_defers_without_persisting(session: AsyncSession
         )
         == 1
     )
+
+
+@pytest.mark.asyncio
+async def test_skipped_article_is_durably_terminal_and_not_reprocessed(
+    session: AsyncSession,
+) -> None:
+    raw = _raw("irrelevant")
+    session.add(raw)
+    await session.commit()
+    pipeline = EnrichmentPipeline(deterministic_enricher=_Analysis(0.1, 0.9))
+
+    first = await pipeline.process_raw_articles(session, [raw])
+    second = await pipeline.process_raw_articles(session, [raw])
+
+    await session.refresh(raw)
+    assert first.metrics.skipped == 1
+    assert second.metrics.skipped == 0
+    assert second.already_processed == 1
+    assert raw.enrichment_terminal_status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_llm_output_merges_explicit_deterministic_entities(session: AsyncSession) -> None:
+    raw = _raw("llm-merge")
+    session.add(raw)
+    await session.commit()
+    llm = EnrichmentOutput(
+        summary="Validated LLM summary for the procurement disruption.",
+        category="general",
+        signal_tags=[],
+    ).model_dump_json()
+
+    result = await EnrichmentPipeline(
+        _Client(llm), deterministic_enricher=_Analysis(0.9, 0.4)
+    ).process_raw_articles(session, [raw])
+    saved = await session.scalar(
+        select(NewsArticleProcessed).where(NewsArticleProcessed.raw_article_id == raw.id)
+    )
+
+    assert result.metrics.llm == 1
+    assert saved is not None
+    assert saved.detected_suppliers == ["Bosch"]
+    assert saved.detected_regions == ["Germany"]
+    assert saved.detected_categories == ["general", "automotive"]
 
 
 @pytest.mark.asyncio

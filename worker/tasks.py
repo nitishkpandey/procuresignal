@@ -12,7 +12,7 @@ from typing import Any, Callable, Coroutine
 from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
-from procuresignal.models import NewsArticleRaw, UserNewsPreference
+from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
 from procuresignal.retrieval import (
@@ -23,7 +23,7 @@ from procuresignal.retrieval import (
     RSSProvider,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
-from sqlalchemy import desc, select
+from sqlalchemy import desc, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.main import app
@@ -113,10 +113,30 @@ async def _load_recent_raw_articles(
     return list(result.scalars().all())
 
 
-async def _normalize_articles(
+async def _load_enrichment_candidates(
     session: AsyncSession, *, hours_back: int, limit: int
+) -> list[NewsArticleRaw]:
+    """Load only unfinished candidates; deferred rows intentionally remain eligible."""
+    cutoff = datetime.utcnow() - timedelta(hours=hours_back)
+    processed = exists().where(NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+    result = await session.execute(
+        select(NewsArticleRaw)
+        .where(
+            NewsArticleRaw.ingested_at >= cutoff,
+            NewsArticleRaw.enrichment_terminal_status.is_(None),
+            ~processed,
+        )
+        .order_by(desc(NewsArticleRaw.ingested_at))
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def _normalize_articles(
+    session: AsyncSession, *, hours_back: int, limit: int, enrichment_candidates: bool = False
 ) -> dict[str, Any]:
-    raw_articles = await _load_recent_raw_articles(session, hours_back=hours_back, limit=limit)
+    loader = _load_enrichment_candidates if enrichment_candidates else _load_recent_raw_articles
+    raw_articles = await loader(session, hours_back=hours_back, limit=limit)
     normalized_articles: list[_NormalizedArticleRecord] = []
     quality_failures = 0
     errors = 0
@@ -258,7 +278,12 @@ def enrich_articles_task(self: Any) -> dict[str, Any]:
 
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
-            stats = await _normalize_articles(session, hours_back=12, limit=_ENRICH_MAX_PER_RUN)
+            stats = await _normalize_articles(
+                session,
+                hours_back=12,
+                limit=_ENRICH_MAX_PER_RUN,
+                enrichment_candidates=True,
+            )
             normalized_articles = stats["normalized_articles"]
 
             if not normalized_articles:

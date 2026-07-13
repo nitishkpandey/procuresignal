@@ -33,12 +33,14 @@ class NewsArticleRaw(BaseModel):
 
     raw_payload_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    enrichment_terminal_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     __table_args__ = (
         Index("idx_provider_article_id", "provider", "provider_article_id"),
         Index("idx_ingest_hash", "ingest_hash"),
         Index("idx_published_at", "published_at"),
         Index("idx_source_name", "source_name"),
+        Index("idx_raw_enrichment_terminal_status", "enrichment_terminal_status"),
     )
 
 

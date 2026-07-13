@@ -1,98 +1,117 @@
-"""Fixed offline quality and call-avoidance gate for deterministic enrichment."""
+"""Fixed offline pipeline-level quality and call-avoidance gate."""
 
 import json
 from datetime import datetime
 from pathlib import Path
 
-from procuresignal.enrichment import (
-    DeterministicEnricher,
-    EnrichmentBudget,
-    EnrichmentPolicy,
-    EnrichmentRoute,
-    EnrichmentRouter,
-)
-from procuresignal.retrieval import RawArticle
+import pytest
+from procuresignal.enrichment import EnrichmentOutput, EnrichmentPipeline, EnrichmentPolicy
+from procuresignal.models import Base, NewsArticleProcessed, NewsArticleRaw
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "enrichment_evaluation.json"
 DIMENSIONS = ("suppliers", "regions", "categories", "signals")
 
 
 def _set_recall(actual: set[str], expected: set[str]) -> float:
-    """Return exact set recall, treating an empty baseline as fully covered."""
     return 1.0 if not expected else len(actual & expected) / len(expected)
 
 
-def _coverage(records, outputs, dimension: str) -> float:
-    recalls = []
-    output_field = {
-        "suppliers": "detected_suppliers",
-        "regions": "detected_regions",
-        "categories": "detected_categories",
-        "signals": "signal_tags",
-    }[dimension]
-    for record, output in zip(records, outputs, strict=True):
-        expected = set(record["baseline"][dimension])
-        recalls.append(_set_recall(set(getattr(output, output_field)), expected))
-    return sum(recalls) / len(recalls)
+class _RecordedLLM:
+    """Offline recorded-output client keyed by article title in the prompt."""
+
+    model = "offline-evaluation"
+
+    def __init__(self, records: list[dict]) -> None:
+        self.calls = 0
+        self.total_tokens_used = 0
+        self.outputs = {
+            record["article"]["title"]: EnrichmentOutput(
+                summary=f"Recorded evaluation summary for {record['id']}.",
+                category=(record["baseline"]["categories"] or ["general"])[0],
+                signal_tags=record["baseline"]["signals"],
+                detected_suppliers=record["baseline"]["suppliers"],
+                detected_regions=record["baseline"]["regions"],
+                detected_categories=record["baseline"]["categories"],
+            ).model_dump_json()
+            for record in records
+        }
+
+    async def call(self, *, user_message: str, **_kwargs) -> str:
+        self.calls += 1
+        self.total_tokens_used += 100
+        return next(output for title, output in self.outputs.items() if title in user_message)
+
+    def get_usage_stats(self) -> dict:
+        return {"total_tokens": self.total_tokens_used, "total_calls": self.calls}
 
 
-def test_fixed_fixture_meets_cost_and_extraction_quality_gates() -> None:
+@pytest.mark.asyncio
+async def test_fixed_fixture_meets_pipeline_cost_and_extraction_quality_gates() -> None:
     records = json.loads(FIXTURE_PATH.read_text())
     assert len(records) >= 20
-    policy = EnrichmentPolicy.from_env({})
-    budget = EnrichmentBudget(max_calls=5, max_tokens=6000)
-    analyzer = DeterministicEnricher()
-    router = EnrichmentRouter()
-    accepted = []
-    outputs = []
-    avoided_calls = 0
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 7, 1)
 
-    for index, record in enumerate(records):
-        item = record["article"]
-        article = RawArticle(
-            provider=item["provider"],
-            provider_article_id=str(index),
-            query_group=item["query_group"],
-            title=item["title"],
-            description=item.get("description"),
-            content_snippet=item.get("content_snippet"),
-            article_url=f"https://example.test/{index}",
-            canonical_url=None,
-            source_name=item["source_name"],
-            source_url=None,
-            published_at=datetime(2026, 7, 1),
-            language=item["language"],
-        )
-        analysis = analyzer.analyze(article, summary_max_chars=policy.summary_max_chars)
-        expected_relevant = record["expected_relevance"] == "accepted"
-        assert (analysis.relevance >= policy.min_relevance) is expected_relevant, record["id"]
-        if not expected_relevant:
-            continue
-        estimate = 500
-        budget_available = (
-            budget.calls_reserved < budget.max_calls
-            and budget.tokens_reserved + estimate <= budget.max_tokens
-        )
-        decision = router.decide(
-            cache_hit=record.get("cache_hit", False),
-            relevance=analysis.relevance,
-            confidence=analysis.confidence,
-            policy=policy,
-            budget_available=budget_available,
-        )
-        if decision.route is EnrichmentRoute.LLM:
-            assert budget.reserve(estimate)
-        else:
-            avoided_calls += 1
-        accepted.append(record)
-        outputs.append(analysis.output)
+    async with maker() as session:
+        raw_rows = []
+        for index, record in enumerate(records):
+            item = record["article"]
+            raw_rows.append(
+                NewsArticleRaw(
+                    provider=item["provider"],
+                    provider_article_id=str(index),
+                    query_group=item["query_group"],
+                    ingest_hash=f"evaluation-{index}",
+                    title=item["title"],
+                    description=item.get("description"),
+                    content_snippet=item.get("content_snippet"),
+                    article_url=f"https://example.test/{index}",
+                    source_name=item["source_name"],
+                    published_at=now,
+                    ingested_at=now,
+                    language=item["language"],
+                )
+            )
+        session.add_all(raw_rows)
+        await session.commit()
 
-    avoidance_rate = avoided_calls / len(accepted)
-    assert 0.70 <= avoidance_rate <= 0.85
-    for dimension in DIMENSIONS:
-        deterministic_coverage = _coverage(accepted, outputs, dimension)
-        baseline_coverage = 1.0
-        assert deterministic_coverage >= baseline_coverage - 0.05, (
-            dimension,
-            deterministic_coverage,
-        )
+        client = _RecordedLLM(records)
+        result = await EnrichmentPipeline(
+            client, policy=EnrichmentPolicy.from_env({})
+        ).process_raw_articles(session, raw_rows)
+        processed = {
+            row.raw_article_id: row
+            for row in (await session.scalars(select(NewsArticleProcessed))).all()
+        }
+
+        accepted = [
+            (record, raw)
+            for record, raw in zip(records, raw_rows, strict=True)
+            if record["expected_relevance"] == "accepted"
+        ]
+        # Accepted-candidate avoidance excludes relevance skips by definition.
+        avoided_accepted = result.metrics.cached + result.metrics.deterministic
+        avoidance_rate = avoided_accepted / len(accepted)
+        assert 0.70 <= avoidance_rate <= 0.85
+        assert result.metrics.llm_calls == client.calls
+        assert result.metrics.skipped == len(records) - len(accepted)
+
+        fields = {
+            "suppliers": "detected_suppliers",
+            "regions": "detected_regions",
+            "categories": "detected_categories",
+            "signals": "signal_tags",
+        }
+        for dimension in DIMENSIONS:
+            recalls = []
+            for record, raw in accepted:
+                output = processed[raw.id]
+                expected = set(record["baseline"][dimension])
+                recalls.append(_set_recall(set(getattr(output, fields[dimension]) or []), expected))
+            assert sum(recalls) / len(recalls) >= 0.95, dimension
+    await engine.dispose()
