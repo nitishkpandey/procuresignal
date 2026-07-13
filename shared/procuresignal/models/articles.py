@@ -38,6 +38,13 @@ class NewsArticleRaw(BaseModel):
     canonical_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     source_name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source_class: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_domains: Mapped[Optional[list]] = mapped_column(JSON, default=list, nullable=True)
+    source_countries: Mapped[Optional[list]] = mapped_column(JSON, default=list, nullable=True)
+    registry_version: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    retrieved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source_published_at_raw: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     published_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
@@ -57,6 +64,7 @@ class NewsArticleRaw(BaseModel):
         Index("idx_ingest_hash", "ingest_hash"),
         Index("idx_published_at", "published_at"),
         Index("idx_source_name", "source_name"),
+        Index("idx_raw_source_id", "source_id"),
         Index("idx_raw_enrichment_lifecycle", "enrichment_status", "enrichment_next_attempt_at"),
         Index("idx_raw_enrichment_lease", "enrichment_lease_expires_at", "enrichment_lease_owner"),
     )

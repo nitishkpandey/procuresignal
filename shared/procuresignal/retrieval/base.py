@@ -35,6 +35,13 @@ class RawArticle:
     language: str = "en"
 
     raw_payload_json: Optional[dict] = None
+    source_id: Optional[str] = None
+    source_class: Optional[str] = None
+    source_domains: tuple[str, ...] = ()
+    source_countries: tuple[str, ...] = ()
+    registry_version: Optional[str] = None
+    retrieved_at: Optional[datetime] = None
+    source_published_at_raw: Optional[str] = None
 
 
 class NewsProvider(ABC):

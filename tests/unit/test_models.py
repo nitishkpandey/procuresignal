@@ -11,9 +11,46 @@ from shared.procuresignal.models import (
     NewsArticleProcessed,
     NewsArticleRaw,
     NewsPipelineRun,
+    NewsRetrievalRun,
+    NewsRetrievalSourceOutcome,
     RiskEvent,
     UserNewsPreference,
 )
+from shared.procuresignal.retrieval.base import RawArticle
+
+
+def test_raw_article_provenance_defaults_preserve_existing_callers() -> None:
+    article = RawArticle(
+        provider="rss", provider_article_id="ecb-1", query_group="fx",
+        title="ECB publishes monetary policy update", description="Official communication",
+        content_snippet="Official communication",
+        article_url="https://www.ecb.europa.eu/press/pr/date/2026/html/example.en.html",
+        canonical_url="https://www.ecb.europa.eu/press/pr/date/2026/html/example.en.html",
+        source_name="European Central Bank", source_url="https://www.ecb.europa.eu/",
+        published_at=datetime(2026, 7, 13, 10, 0), language="en",
+    )
+    assert article.source_id is None
+    assert article.source_domains == ()
+    assert article.retrieved_at is None
+
+
+@pytest.mark.asyncio
+async def test_retrieval_outcome_is_unique_per_run_and_source(async_session) -> None:
+    run = NewsRetrievalRun(
+        run_key="scheduled:2026-07-13T12:00Z", status="running",
+        registry_version="sources-v1", lease_owner="worker-a",
+        lease_expires_at=datetime(2026, 7, 13, 13, 5),
+        started_at=datetime(2026, 7, 13, 12, 0),
+    )
+    values = dict(source_id="ecb_press", status="success", attempted_count=1,
+                  fetched_count=1, accepted_count=1, inserted_count=1,
+                  duplicate_count=0, rejected_count=0, failed_count=0)
+    async_session.add_all([
+        NewsRetrievalSourceOutcome(run=run, **values),
+        NewsRetrievalSourceOutcome(run=run, **values),
+    ])
+    with pytest.raises(IntegrityError):
+        await async_session.commit()
 
 
 @pytest.fixture
