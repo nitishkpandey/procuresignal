@@ -33,7 +33,7 @@ CANDIDATE AUDIT:
 - All candidates have a framework/config/history consumer; therefore none met the four-part deletion threshold. No production unit was deleted.
 
 SEMANTIC REGRESSION CHECKS:
-- matcher optional values are still passed through exactly as before (including None stringification downstream); cast changes static interpretation only.
+- Matcher optional values are still passed through exactly as before, including downstream `None` stringification; the widened `Iterable[object]` annotation now matches the pre-existing `str(value)` behavior.
 - session_scope retains `database_url or os.getenv("DATABASE_URL", WORKER_DATABASE_URL)`: an explicitly empty DATABASE_URL remains empty rather than falling back.
 
 FINAL RE-REVIEW COMMANDS:
