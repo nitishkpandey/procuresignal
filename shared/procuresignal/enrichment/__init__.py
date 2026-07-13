@@ -5,7 +5,7 @@ from .enricher import ArticleEnricher
 from .fingerprint import content_fingerprint
 from .openai_client import OpenAILLMClient
 from .output_parser import EnrichmentOutput, OutputParser
-from .pipeline import EnrichmentPipeline
+from .pipeline import EnrichmentMetrics, EnrichmentPipeline, EnrichmentRunResult
 from .policy import EnrichmentBudget, EnrichmentPolicy
 from .prompts import EnrichmentPrompts
 from .router import EnrichmentRoute, EnrichmentRouter, RouteDecision
@@ -17,6 +17,8 @@ __all__ = [
     "OutputParser",
     "ArticleEnricher",
     "EnrichmentPipeline",
+    "EnrichmentMetrics",
+    "EnrichmentRunResult",
     "EnrichmentPolicy",
     "EnrichmentBudget",
     "content_fingerprint",
