@@ -82,3 +82,21 @@ Post-review verification:
 - Ruff: clean.
 - Mypy retrieval package: `Success: no issues found in 14 source files`.
 - Black: changed Python files formatted.
+
+## Final total-tie review
+
+An exact regression constructed duplicate articles with the same fingerprint, authority rank, and
+all previously compared fields while changing `provider`, `query_group`, and `source_class`.
+Reversing those inputs initially retained different objects, proving the remaining partial-key
+defect. The winner and final-order keys now share an explicit normalized projection covering every
+`RawArticle` field. Datetimes normalize to comparable UTC-naive ISO text; mappings and sets use
+canonical sorted JSON; bytes, sequences, floats, and datetimes have tagged representations; and
+unexpected opaque payload values reduce to stable qualified type markers rather than raising.
+
+Final verification:
+
+- Focused RSS/dedup/security/retrieval suite: `31 passed in 0.89s`.
+- Full suite: `324 passed in 6.91s`.
+- Ruff: clean.
+- Mypy retrieval package: `Success: no issues found in 14 source files`.
+- Black and `git diff --check`: clean.

@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Iterable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -65,45 +66,79 @@ def article_fingerprint(article: RawArticle) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
-def _preference(article: RawArticle) -> tuple[object, ...]:
-    """Sort best authority first, then use stable provenance/content tie-breaks."""
+def _datetime_key(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.isoformat()
+
+
+def _payload_projection(value: object) -> object:
+    """Convert JSON-like and accidental opaque payload values into stable data."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return {"$float": repr(value)}
+    if isinstance(value, bytes):
+        return {"$bytes": value.hex()}
+    if isinstance(value, datetime):
+        return {"$datetime": _datetime_key(value)}
+    if isinstance(value, dict):
+        pairs = [
+            (_payload_projection(key), _payload_projection(item)) for key, item in value.items()
+        ]
+        pairs.sort(key=lambda pair: json.dumps(pair[0], sort_keys=True, separators=(",", ":")))
+        return {"$dict": pairs}
+    if isinstance(value, (list, tuple)):
+        return {"$sequence": [_payload_projection(item) for item in value]}
+    if isinstance(value, (set, frozenset)):
+        items = [_payload_projection(item) for item in value]
+        items.sort(key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+        return {"$set": items}
+    value_type = type(value)
+    return {"$opaque_type": f"{value_type.__module__}.{value_type.__qualname__}"}
+
+
+def _payload_key(payload: object) -> str:
+    return json.dumps(_payload_projection(payload), sort_keys=True, separators=(",", ":"))
+
+
+def _article_projection(article: RawArticle) -> tuple[str, ...]:
+    """Return a comparable projection covering every RawArticle field."""
     return (
-        -_AUTHORITY.get(article.source_class or "", 0),
-        article.source_id or "",
+        article.provider,
         article.provider_article_id or "",
-        canonicalize_url(article.canonical_url or article.article_url),
+        article.query_group,
         article.title,
         article.description or "",
         article.content_snippet or "",
-        article.source_name,
-        article.language,
-        article.published_at.isoformat(),
         article.article_url,
+        canonicalize_url(article.canonical_url or article.article_url),
+        article.canonical_url or "",
+        article.source_name,
         article.source_url or "",
-        article.retrieved_at.isoformat() if article.retrieved_at else "",
-        article.source_published_at_raw or "",
-        article.source_domains,
-        article.source_countries,
+        _datetime_key(article.published_at),
+        article.language,
+        _payload_key(article.raw_payload_json),
+        article.source_id or "",
+        article.source_class or "",
+        "\0".join(article.source_domains),
+        "\0".join(article.source_countries),
         article.registry_version or "",
-        json.dumps(article.raw_payload_json, sort_keys=True, default=str),
+        _datetime_key(article.retrieved_at),
+        article.source_published_at_raw or "",
     )
+
+
+def _preference(article: RawArticle) -> tuple[object, ...]:
+    """Sort best authority first, then use a total deterministic article projection."""
+    return (-_AUTHORITY.get(article.source_class or "", 0), *_article_projection(article))
 
 
 def _result_order(article: RawArticle) -> tuple[str, ...]:
     """Provide a total stable order after authority winner selection."""
-    return (
-        article.published_at.isoformat(),
-        article.source_id or "",
-        article.provider,
-        article.provider_article_id or "",
-        canonicalize_url(article.canonical_url or article.article_url),
-        article_fingerprint(article),
-        article.title,
-        article.description or "",
-        article.content_snippet or "",
-        article.source_name,
-        article.language,
-    )
+    return (*_article_projection(article), article_fingerprint(article))
 
 
 def deduplicate_within_run(articles: Iterable[RawArticle]) -> DeduplicationResult:

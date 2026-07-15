@@ -61,6 +61,29 @@ def test_same_identity_tie_uses_total_deterministic_article_fields() -> None:
     assert deduplicate_within_run([earlier, later]).articles == (earlier,)
 
 
+def test_total_tie_break_covers_provider_query_and_source_class() -> None:
+    first = article(source_class="unranked_b", source_id="same", url="https://example.com/news/1")
+    second = replace(
+        first,
+        provider="gdelt",
+        query_group="fx",
+        source_class="unranked_a",
+    )
+    forward = deduplicate_within_run([first, second]).articles
+    reverse = deduplicate_within_run([second, first]).articles
+    assert forward == reverse
+    assert forward[0] == second
+
+
+def test_unserializable_raw_payload_never_breaks_deduplication() -> None:
+    opaque = object()
+    item = replace(
+        article(source_class="official", source_id="same", url="https://example.com/news/1"),
+        raw_payload_json={"set": {"b", "a"}, "opaque": opaque},
+    )
+    assert deduplicate_within_run([item]).articles == (item,)
+
+
 def test_content_fingerprint_collapses_tracking_url_variants() -> None:
     with_utm = article(
         source_class="industry",
