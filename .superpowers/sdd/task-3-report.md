@@ -1,48 +1,44 @@
-# Task 3 Report: Auditable Models, Migration, and Persistent Cache
+# Task 3 Report: Safe Fetching, Retry Classification, and Circuits
 
 ## Result
 
-Implemented backward-compatible enrichment audit metadata, a versioned cache ORM model,
-a reversible Alembic migration, and a validated async cache repository.
+Implemented URL safety validation, bounded streaming fetches, retry classification,
+per-source circuit behavior, and atomic durable retrieval claims/outcomes.
 
-## Implementation
+## TDD evidence
 
-- Added nullable audit columns to `NewsArticleProcessed` and non-null `llm_used` with
-  Python and server defaults of false so historical rows are backfilled safely.
-- Added `EnrichmentCacheEntry`, exported from the model package, with JSON payload,
-  timestamps, hit count, method check constraint, fingerprint lookup index, and unique
-  `(content_fingerprint, policy_version, taxonomy_version)` identity.
-- Added `EnrichmentCache.get()` and `put()` without independent commits. Reads validate
-  payloads before atomically incrementing hit count. Corrupt payloads log a warning and
-  return a miss without incrementing. Writes validate the original method and handle a
-  concurrent unique-key insert through a savepoint and update fallback.
-- Added reversible migration `f6a7b8_add_enrichment_routing_cache` on the current
-  `e5f6a7_add_risk_event_scan_tracking` head.
-- Made the pre-existing migration chain SQLite-compatible while preserving PostgreSQL
-  types and behavior: SQLite JSON variants replace unsupported ARRAY/JSONB during the
-  historical migration, PostgreSQL-only type conversion is skipped on SQLite, and
-  SQLite retains the safe `platform_language` server default because it cannot drop a
-  column default in place. Alembic only appends the asyncpg SSL query parameter to
-  PostgreSQL URLs.
+- Red: focused collection failed with three `ModuleNotFoundError` errors for
+  `retrieval.security`, `retrieval.fetching`, and `retrieval.audit`.
+- Green: `17 passed in 1.46s` for the three focused unit files plus the retrieval audit
+  migration integration test.
+- Full: `287 passed in 6.53s`.
+- Static: Black left 18 files unchanged; Ruff reported no issues; mypy reported success
+  across 13 retrieval source files.
 
-## TDD and Verification
+## Security and concurrency coverage
 
-- RED: focused tests failed during collection with missing
-  `procuresignal.enrichment.cache`.
-- GREEN: focused model/cache suite: 14 passed.
-- Full unit suite: 173 passed.
-- Fresh SQLite migration: upgraded base through head and downgraded Task 3 to
-  `e5f6a7_add_risk_event_scan_tracking`.
-- Alembic reports exactly one head: `f6a7b8_add_enrichment_routing_cache`.
-- Ruff passes for all changed Python files.
-- MyPy passes for the model package and cache repository.
-- `git diff --check` passes.
+- HTTPS-only, no credentials, exact host allowlist, public-only DNS answers, private,
+  loopback, link-local, literal IP, and IPv4-mapped IPv6 rejection.
+- Initial and redirect destination validation, redirect bound, decoded streaming byte cap,
+  structured failures, `Retry-After`, retryable 429/5xx/network failures, and deterministic
+  content-type rejection without retry.
+- Circuit opens after five consecutive failed fetches, becomes half-open after cooldown,
+  and resets on success.
+- PostgreSQL candidate reads use `FOR UPDATE SKIP LOCKED`; both PostgreSQL and SQLite use
+  a conditional owner/expiry update, commit before network work, recover stale leases, and
+  atomically claim sources through the existing unique run/source outcome constraint.
+- Persisted failure details accept only short safe tokens; exception messages and response
+  bodies are not stored.
 
-## Review Notes
+## Commit
 
-- Cache hit increments use one database-side arithmetic update to prevent lost updates
-  across concurrent readers.
-- The unique constraint is the final concurrency guard for writers; `put()` uses a
-  nested transaction so a competing insert does not roll back the pipeline transaction.
-- PostgreSQL migration execution was not available locally; PostgreSQL-specific behavior
-  was retained rather than replaced, while the required SQLite migration gate was run.
+Pending at report creation; populated in the final handoff.
+
+## Concerns
+
+- The URL policy rejects unsafe DNS answers on every request/redirect validation. Complete
+  connection-level DNS pinning depends on the injected HTTP transport honoring the validated
+  resolution; callers must not inject a transport with an independent untrusted resolver.
+- Circuit counters are process-local; durable run/source ownership and outcomes are database
+  backed, but cross-process circuit aggregation is not represented by the current Task 1/2
+  schema.

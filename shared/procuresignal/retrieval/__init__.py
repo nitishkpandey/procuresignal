@@ -1,7 +1,9 @@
 """News retrieval module."""
 
-from .base import NewsProvider, RawArticle
+from .audit import RetrievalAuditRepository
+from .base import FetchFailureCode, FetchResult, NewsProvider, RawArticle
 from .catalog import REGISTRY_VERSION, SOURCE_REGISTRY
+from .fetching import SafeFetcher
 from .persistence import ArticlePersistence
 from .providers import GDELTProvider, NewsAPIProvider, RSSProvider
 from .registry import (
@@ -15,6 +17,10 @@ from .registry import (
 
 __all__ = [
     "NewsProvider",
+    "FetchFailureCode",
+    "FetchResult",
+    "SafeFetcher",
+    "RetrievalAuditRepository",
     "RawArticle",
     "NewsAPIProvider",
     "GDELTProvider",

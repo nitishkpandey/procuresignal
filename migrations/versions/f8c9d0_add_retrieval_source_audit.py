@@ -17,8 +17,13 @@ def _counts() -> list[sa.Column]:
     return [
         sa.Column(name, sa.Integer(), server_default="0", nullable=False)
         for name in (
-            "attempted_count", "fetched_count", "accepted_count", "inserted_count",
-            "duplicate_count", "rejected_count", "failed_count",
+            "attempted_count",
+            "fetched_count",
+            "accepted_count",
+            "inserted_count",
+            "duplicate_count",
+            "rejected_count",
+            "failed_count",
         )
     ]
 
@@ -63,6 +68,8 @@ def upgrade() -> None:
         *_counts(),
         sa.Column("started_at", sa.DateTime(), nullable=True),
         sa.Column("finished_at", sa.DateTime(), nullable=True),
+        sa.Column("failure_code", sa.String(50), nullable=True),
+        sa.Column("outcome_detail", sa.String(500), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["run_id"], ["news_retrieval_runs.id"], ondelete="CASCADE"),
@@ -71,7 +78,8 @@ def upgrade() -> None:
     )
     op.create_index(
         "idx_retrieval_outcome_source_started",
-        "news_retrieval_source_outcomes", ["source_id", "started_at"],
+        "news_retrieval_source_outcomes",
+        ["source_id", "started_at"],
     )
 
 
@@ -84,7 +92,12 @@ def downgrade() -> None:
     op.drop_table("news_retrieval_runs")
     op.drop_index("idx_raw_source_id", table_name="news_articles_raw")
     for column in (
-        "source_published_at_raw", "retrieved_at", "registry_version", "source_countries",
-        "source_domains", "source_class", "source_id",
+        "source_published_at_raw",
+        "retrieved_at",
+        "registry_version",
+        "source_countries",
+        "source_domains",
+        "source_class",
+        "source_id",
     ):
         op.drop_column("news_articles_raw", column)

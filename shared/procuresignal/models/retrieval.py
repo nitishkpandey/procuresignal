@@ -50,6 +50,8 @@ class NewsRetrievalSourceOutcome(BaseModel):
     failed_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    failure_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    outcome_detail: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     run: Mapped[NewsRetrievalRun] = relationship(back_populates="outcomes")
     __table_args__ = (

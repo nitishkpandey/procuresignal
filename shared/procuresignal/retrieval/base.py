@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Optional
 
 import httpx
@@ -12,6 +13,30 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
+
+class FetchFailureCode(StrEnum):
+    UNSAFE_URL = "unsafe_url"
+    NETWORK_ERROR = "network_error"
+    HTTP_STATUS = "http_status"
+    UNEXPECTED_CONTENT_TYPE = "unexpected_content_type"
+    OVERSIZED_RESPONSE = "oversized_response"
+    TOO_MANY_REDIRECTS = "too_many_redirects"
+    CIRCUIT_OPEN = "circuit_open"
+
+
+@dataclass(frozen=True, slots=True)
+class FetchResult:
+    content: bytes | None = None
+    content_type: str | None = None
+    final_url: str | None = None
+    status_code: int | None = None
+    failure_code: FetchFailureCode | None = None
+    retry_after_seconds: float | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.failure_code is None
 
 
 @dataclass
