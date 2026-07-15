@@ -1,3 +1,4 @@
+import inspect
 import ipaddress
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -6,6 +7,7 @@ import httpcore
 import httpx
 import pytest
 
+import shared.procuresignal.retrieval.fetching as fetching_module
 from shared.procuresignal.retrieval.catalog import SOURCE_REGISTRY
 from shared.procuresignal.retrieval.fetching import (
     FetchFailureCode,
@@ -52,19 +54,29 @@ class ApprovedMockTransport(httpx.AsyncBaseTransport):
 
 
 def fetcher(handler, **kwargs):
-    return SafeFetcher._for_test(
-        transport=ApprovedMockTransport(handler),
+    result = SafeFetcher(
         policy=URLSafetyPolicy(resolver=public_resolver),
         circuit_store=MemoryCircuit(),
         owner="test-worker",
         **kwargs,
     )
+    result._client._transport = ApprovedMockTransport(handler)
+    return result
 
 
 def test_fetcher_rejects_unpinned_transport() -> None:
+    parameters = inspect.signature(SafeFetcher).parameters
+    assert not {"transport", "client", "factory", "_test_transport"} & parameters.keys()
     with pytest.raises(TypeError):
         SafeFetcher(
             transport=httpx.MockTransport(lambda request: httpx.Response(200)),
+            policy=URLSafetyPolicy(resolver=public_resolver),
+            circuit_store=MemoryCircuit(),
+            owner="test",
+        )
+    with pytest.raises(TypeError):
+        SafeFetcher(
+            _test_transport=httpx.MockTransport(lambda request: httpx.Response(200)),
             policy=URLSafetyPolicy(resolver=public_resolver),
             circuit_store=MemoryCircuit(),
             owner="test",
@@ -136,14 +148,14 @@ async def test_fetcher_approves_resolved_ip_for_actual_transport() -> None:
             200, content=b"ok", headers={"content-type": SOURCE.expected_content_types[0]}
         )
     )
-    async with SafeFetcher._for_test(
-        transport=transport,
+    f = SafeFetcher(
         policy=URLSafetyPolicy(resolver=public_resolver),
         circuit_store=MemoryCircuit(),
         owner="test-worker",
-    ) as f:
+    )
+    f._client._transport = transport
+    async with f:
         assert (await f.fetch(SOURCE)).ok
-    assert str(transport.approved[0].addresses[0]) == "93.184.216.34"
     assert transport.closed
 
 
@@ -182,7 +194,7 @@ async def test_pinned_backend_tries_all_approved_addresses() -> None:
     assert delegate.hosts == ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]
 
 
-async def test_pinned_transport_preserves_tls_sni_and_host_header() -> None:
+async def test_safe_fetcher_pins_dial_and_preserves_tls_sni_and_host_header(monkeypatch) -> None:
     class Stream(httpcore.AsyncNetworkStream):
         def __init__(self):
             self.sni = None
@@ -210,9 +222,12 @@ async def test_pinned_transport_preserves_tls_sni_and_host_header() -> None:
     stream = Stream()
 
     class Delegate(httpcore.AsyncNetworkBackend):
+        connected_host = None
+
         async def connect_tcp(
             self, host, port, timeout=None, local_address=None, socket_options=None
         ):
+            self.connected_host = host
             return stream
 
         async def connect_unix_socket(self, path, timeout=None, socket_options=None):
@@ -224,15 +239,17 @@ async def test_pinned_transport_preserves_tls_sni_and_host_header() -> None:
     delegate = Delegate()
     backend = PinnedNetworkBackend(delegate)
     transport = PinnedAsyncHTTPTransport(backend)
-    validated = await URLSafetyPolicy(resolver=public_resolver).validate(
-        SOURCE.endpoint_url, SOURCE.allowed_hosts
-    )
-    transport.approve(validated)
-    async with httpx.AsyncClient(transport=transport) as client:
-        response = await client.get(SOURCE.endpoint_url)
-    assert response.text == "ok"
-    assert stream.sni == validated.host
-    assert f"Host: {validated.host}".lower().encode() in bytes(stream.writes).lower()
+    monkeypatch.setattr(fetching_module, "PinnedAsyncHTTPTransport", lambda: transport)
+    async with SafeFetcher(
+        policy=URLSafetyPolicy(resolver=public_resolver),
+        circuit_store=MemoryCircuit(),
+        owner="test-worker",
+    ) as fetch:
+        response = await fetch.fetch(SOURCE)
+    assert response.content == b"ok"
+    assert delegate.connected_host == "93.184.216.34"
+    assert stream.sni == SOURCE.allowed_hosts[0]
+    assert f"Host: {SOURCE.allowed_hosts[0]}".lower().encode() in bytes(stream.writes).lower()
 
 
 async def test_backoff_jitter_is_bounded_and_injectable() -> None:

@@ -123,3 +123,27 @@ deterministic network-backend boundary made the test exercise httpcore's TLS/HTT
 - `httpx==0.25.2` and `httpcore==1.0.9` are explicitly pinned in `pyproject.toml`; the existing
   lock already resolves exactly those versions. The transport integration test guards the
   unavoidable internal adapter boundary.
+
+## Final HIGH remediation (2026-07-15)
+
+### Exact red/green evidence
+
+- Red regression command against the rejected constructor seam:
+  `pytest tests/unit/test_retrieval_fetching.py::test_fetcher_rejects_unpinned_transport -q`
+  produced `1 failed in 0.77s`; signature inspection found `_test_transport`.
+- Green focused security/fetch/audit/migration command: `38 passed in 1.49s`.
+- Green full suite: `308 passed in 6.43s`.
+- Black: `17 files would be left unchanged`; Ruff clean; mypy clean across 13 source files;
+  `git diff --check` clean.
+
+### Final transport boundary
+
+- SafeFetcher has no client, transport, backend, or factory argument and no `_for_test`
+  classmethod. Both the old `transport=` and `_test_transport=` keywords raise `TypeError`.
+- Every production SafeFetcher constructs `PinnedAsyncHTTPTransport`; `_attempt` calls its
+  `approve()` unconditionally before the request. There is no duck-typed/no-op approval path.
+- Offline response tests patch the already-owned client's response transport after construction,
+  without changing the SafeFetcher production constructor. The security integration monkeypatches
+  only concrete transport construction to supply a fake low-level backend, then drives a complete
+  SafeFetcher request and proves the actual dial used the approved public IP while TLS SNI and the
+  HTTP Host header retained the registry hostname.

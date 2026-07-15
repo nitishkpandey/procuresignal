@@ -144,11 +144,10 @@ class SafeFetcher:
         sleep: Sleep = asyncio.sleep,
         utc_now: UtcClock = lambda: datetime.now(timezone.utc),
         jitter: Callable[[float], float] = lambda base: random.uniform(0.0, base * 0.25),
-        _test_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if max_attempts <= 0 or max_response_bytes <= 0:
             raise ValueError("fetch bounds must be positive")
-        self.transport = _test_transport or PinnedAsyncHTTPTransport()
+        self.transport = PinnedAsyncHTTPTransport()
         self.policy = policy
         self.circuit_store = circuit_store
         self.owner = owner
@@ -165,11 +164,6 @@ class SafeFetcher:
             trust_env=False,
         )
         self._closed = False
-
-    @classmethod
-    def _for_test(cls, *, transport: httpx.AsyncBaseTransport, **kwargs: object) -> "SafeFetcher":
-        """Offline-test seam; production construction has no transport injection path."""
-        return cls(_test_transport=transport, **kwargs)  # type: ignore[arg-type]
 
     async def __aenter__(self) -> "SafeFetcher":
         return self
@@ -213,9 +207,7 @@ class SafeFetcher:
         for _ in range(self.max_redirects + 1):
             try:
                 validated = await self.policy.validate(url, source.allowed_hosts)
-                approve = getattr(self.transport, "approve", None)
-                if approve is not None:
-                    approve(validated)
+                self.transport.approve(validated)
                 async with self._client.stream("GET", url) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
