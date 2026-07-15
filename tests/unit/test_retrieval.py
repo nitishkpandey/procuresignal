@@ -7,7 +7,6 @@ from procuresignal.retrieval import (
     GDELTProvider,
     NewsAPIProvider,
     RawArticle,
-    RSSProvider,
 )
 
 
@@ -96,28 +95,6 @@ async def test_gdelt_provider_initialization() -> None:
     provider = GDELTProvider()
 
     assert provider.name == "gdelt"
-
-    await provider.close()
-
-
-@pytest.mark.asyncio
-async def test_rss_provider_initialization() -> None:
-    """Test RSS provider initialization."""
-    provider = RSSProvider()
-
-    assert provider.name == "rss"
-
-    await provider.close()
-
-
-@pytest.mark.asyncio
-async def test_rss_provider_feeds_exist() -> None:
-    """Test RSS provider has feeds configured."""
-    provider = RSSProvider()
-
-    assert len(provider.FEEDS) > 0
-    assert "supplier_risk" in provider.FEEDS
-    assert "regulatory" in provider.FEEDS
 
     await provider.close()
 

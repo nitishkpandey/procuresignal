@@ -3,6 +3,7 @@
 from .audit import RetrievalAuditRepository
 from .base import FetchFailureCode, FetchResult, NewsProvider, RawArticle
 from .catalog import REGISTRY_VERSION, SOURCE_REGISTRY
+from .deduplication import DeduplicationResult, article_fingerprint, deduplicate_within_run
 from .fetching import SafeFetcher
 from .persistence import ArticlePersistence
 from .providers import GDELTProvider, NewsAPIProvider, RSSProvider
@@ -20,6 +21,9 @@ __all__ = [
     "FetchFailureCode",
     "FetchResult",
     "SafeFetcher",
+    "DeduplicationResult",
+    "article_fingerprint",
+    "deduplicate_within_run",
     "RetrievalAuditRepository",
     "RawArticle",
     "NewsAPIProvider",

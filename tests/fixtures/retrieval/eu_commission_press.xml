@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="fr">
+  <title>European Commission Press Corner</title>
+  <link rel="alternate" href="https://ec.europa.eu/commission/presscorner/home/fr"/>
+  <entry><id>commission-ip-26-1000</id><title>Mesures européennes sur les matières premières</title>
+    <link rel="alternate" href="https://ec.europa.eu/commission/presscorner/detail/fr/ip_26_1000?utm_medium=feed"/>
+    <summary type="html">&lt;p&gt;La Commission protège les chaînes &lt;em&gt;d'approvisionnement&lt;/em&gt;.&lt;/p&gt;</summary>
+    <updated>2026-07-14T09:15:00+01:00</updated>
+  </entry>
+  <entry><id>commission-future</id><title>Future-dated notice</title>
+    <link href="/commission/presscorner/detail/en/ip_future"/><updated>2999-01-01T00:00:00Z</updated>
+  </entry>
+</feed>

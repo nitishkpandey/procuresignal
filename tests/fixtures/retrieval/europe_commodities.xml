@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Europe Commodities</title>
+ <link href="https://commodities.example/"/><entry><id>com-1</id><title>Metals market update</title>
+ <link href="/articles/metals;daily?edition=eu&amp;fbclid=ignored"/><published>2026-07-13T07:00:00-04:00</published>
+ <content type="html">&lt;div&gt;Copper &amp;amp; zinc prices.&lt;/div&gt;</content></entry>
+</feed>
