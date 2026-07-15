@@ -22,6 +22,7 @@ async def resolver(
         ("http://official.example/feed", ("official.example",)),
         ("https://user:pass@official.example/feed", ("official.example",)),
         ("https://127.0.0.1/feed", ("127.0.0.1",)),
+        ("https://[::1]/feed", ("::1",)),
         ("https://169.254.169.254/latest/meta-data", ("169.254.169.254",)),
         ("https://private.example/feed", ("private.example",)),
         ("https://mapped.example/feed", ("mapped.example",)),

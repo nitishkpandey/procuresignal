@@ -52,3 +52,33 @@ content-selecting query parameters.
 ## Commit
 
 Pending at report creation; final commit hash is reported in the task handoff.
+
+## Review fixes
+
+The review findings were reproduced test-first. The expanded focused suite initially reported
+`7 failed, 16 passed`, specifically demonstrating aware RSS timestamps, SQLite stripping their
+timezone on persistence, input-dependent ordering across distinct deduplication groups, and
+unbracketed IPv6/empty-root canonical URLs.
+
+Corrections:
+
+- RSS publication and retrieval timestamps are now UTC-normalized and stored as naive datetimes,
+  matching the existing `TIMESTAMP WITHOUT TIME ZONE` model and NewsAPI convention. A SQLite
+  model roundtrip asserts both values remain equal and naive after persistence.
+- Deduplication still selects the highest-authority winner per fingerprint, then applies a stable
+  total result ordering across publication time, provenance/provider identity, canonical URL,
+  fingerprint, and content tie-break fields. Reversing a run containing multiple distinct groups
+and a duplicate now produces the identical complete tuple. A second red test demonstrated that
+same-authority records with otherwise identical identity fields still depended on input order;
+publication and remaining provenance/payload fields now complete the deterministic winner key.
+- URL canonicalization brackets IPv6 hosts, removes default HTTP/HTTPS ports, and normalizes an
+  empty path to `/` without collapsing `/a` and `/a/`. The upstream safety-policy contract now
+  explicitly covers an IPv6 loopback literal alongside its existing IPv4 and userinfo rejection.
+
+Post-review verification:
+
+- Focused RSS/dedup/security/retrieval suite: `29 passed in 0.94s`.
+- Full suite: `322 passed in 7.30s`.
+- Ruff: clean.
+- Mypy retrieval package: `Success: no issues found in 14 source files`.
+- Black: changed Python files formatted.

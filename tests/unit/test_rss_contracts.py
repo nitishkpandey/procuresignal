@@ -1,8 +1,9 @@
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pytest
+from procuresignal.models import Base, NewsArticleRaw
 from procuresignal.retrieval import FetchResult
 from procuresignal.retrieval.catalog import REGISTRY_VERSION, SOURCE_REGISTRY
 from procuresignal.retrieval.providers.rss import RSSProvider
@@ -12,6 +13,7 @@ from procuresignal.retrieval.registry import (
     SourceClass,
     SourceDefinition,
 )
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 FIXTURES = Path("tests/fixtures/retrieval")
 
@@ -63,7 +65,9 @@ async def test_registry_source_contract_populates_provenance_and_primary_domain(
     assert first.source_name == definition.display_name
     assert first.source_url == definition.homepage_url
     assert first.language == language
-    assert first.published_at.tzinfo is timezone.utc
+    assert first.published_at.tzinfo is None
+    assert first.retrieved_at is not None
+    assert first.retrieved_at.tzinfo is None
 
 
 @pytest.mark.asyncio
@@ -78,23 +82,60 @@ async def test_rss_text_is_sanitized_bounded_and_relative_url_is_canonicalized()
         == "https://www.ecb.europa.eu/press/pr/date/2026/html/ecb.pr260714~abc.en.html"
     )
     assert article.provider_article_id == "ecb-2026-07-14-de"
-    assert article.published_at == datetime(2026, 7, 14, 16, 30, tzinfo=timezone.utc)
+    assert article.published_at == datetime(2026, 7, 14, 16, 30)
     assert len(article.title) <= 500
     assert len(article.description or "") <= 2_000
 
 
 @pytest.mark.asyncio
 async def test_atom_missing_description_and_future_timestamp_are_safe() -> None:
-    before = datetime.now(timezone.utc)
+    before = datetime.utcnow()
     articles = await RSSProvider(
         source("eu_commission_press"), FixtureFetcher("eu_commission_press.xml")
     ).fetch_articles(["commodities"])
-    after = datetime.now(timezone.utc)
+    after = datetime.utcnow()
 
-    assert articles[0].published_at == datetime(2026, 7, 14, 8, 15, tzinfo=timezone.utc)
+    assert articles[0].published_at == datetime(2026, 7, 14, 8, 15)
     assert articles[0].description == "La Commission protège les chaînes d'approvisionnement."
     assert articles[1].description is None
     assert before <= articles[1].published_at <= after
+
+
+@pytest.mark.asyncio
+async def test_rss_timestamps_roundtrip_through_naive_database_columns() -> None:
+    raw = (
+        await RSSProvider(source("ecb_press"), FixtureFetcher("ecb_press.xml")).fetch_articles([])
+    )[0]
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        stored = NewsArticleRaw(
+            provider=raw.provider,
+            provider_article_id=raw.provider_article_id,
+            query_group=raw.query_group,
+            ingest_hash="rss-naive-roundtrip",
+            title=raw.title,
+            description=raw.description,
+            content_snippet=raw.content_snippet,
+            article_url=raw.article_url,
+            canonical_url=raw.canonical_url,
+            source_name=raw.source_name,
+            source_url=raw.source_url,
+            published_at=raw.published_at,
+            retrieved_at=raw.retrieved_at,
+            language=raw.language,
+            ingested_at=datetime.utcnow(),
+        )
+        session.add(stored)
+        await session.commit()
+        await session.refresh(stored)
+        assert stored.published_at == raw.published_at
+        assert stored.retrieved_at == raw.retrieved_at
+        assert stored.published_at.tzinfo is None
+        assert stored.retrieved_at is not None and stored.retrieved_at.tzinfo is None
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

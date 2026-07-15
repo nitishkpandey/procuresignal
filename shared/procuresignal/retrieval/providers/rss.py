@@ -68,7 +68,7 @@ def _timestamp(entry: dict, now: datetime) -> tuple[datetime, str | None]:
         parsed = now
     elif parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    parsed = parsed.astimezone(timezone.utc)
+    parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return (min(parsed, now), str(raw) if raw else None)
 
 
@@ -96,7 +96,7 @@ class RSSProvider(NewsProvider):
         if not result.ok or result.content is None:
             return []
         parsed = feedparser.parse(result.content)
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         base_url = result.final_url or self.source.endpoint_url
         feed_language = parsed.feed.get("language")
         articles: list[RawArticle] = []

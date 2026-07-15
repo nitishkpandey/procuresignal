@@ -1,7 +1,12 @@
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 from procuresignal.retrieval.base import RawArticle
-from procuresignal.retrieval.deduplication import article_fingerprint, deduplicate_within_run
+from procuresignal.retrieval.deduplication import (
+    article_fingerprint,
+    canonicalize_url,
+    deduplicate_within_run,
+)
 
 
 def article(
@@ -49,6 +54,13 @@ def test_authority_choice_and_tie_break_are_independent_of_input_order() -> None
     assert deduplicate_within_run([earlier_id, later_id]).articles == (earlier_id,)
 
 
+def test_same_identity_tie_uses_total_deterministic_article_fields() -> None:
+    later = article(source_class="official", source_id="official", url="https://example.com/news/1")
+    earlier = replace(later, published_at=later.published_at - timedelta(minutes=1))
+    assert deduplicate_within_run([later, earlier]).articles == (earlier,)
+    assert deduplicate_within_run([earlier, later]).articles == (earlier,)
+
+
 def test_content_fingerprint_collapses_tracking_url_variants() -> None:
     with_utm = article(
         source_class="industry",
@@ -72,3 +84,25 @@ def test_canonicalization_does_not_overcollapse_distinct_content() -> None:
     result = deduplicate_within_run([first, different_path, different_query])
     assert len(result.articles) == 3
     assert result.duplicates == 0
+
+
+def test_complete_result_order_is_independent_of_input_order() -> None:
+    official = article(source_class="official", source_id="official", url="https://example.com/b")
+    media_copy = article(
+        source_class="established_media",
+        source_id="media",
+        url="https://example.com/b?utm_source=x",
+    )
+    distinct = article(source_class="industry", source_id="industry", url="https://example.com/a")
+    forward = deduplicate_within_run([official, media_copy, distinct])
+    reverse = deduplicate_within_run([distinct, media_copy, official])
+    assert forward.articles == reverse.articles
+    assert forward.articles == (distinct, official)
+    assert forward.duplicates == reverse.duplicates == 1
+
+
+def test_canonicalization_brackets_ipv6_and_normalizes_root_and_default_ports() -> None:
+    assert canonicalize_url("https://[2001:db8::1]:443") == "https://[2001:db8::1]/"
+    assert canonicalize_url("http://[2001:db8::1]:80/") == "http://[2001:db8::1]/"
+    assert canonicalize_url("https://example.com") == canonicalize_url("https://example.com/")
+    assert canonicalize_url("https://example.com/a") != canonicalize_url("https://example.com/a/")

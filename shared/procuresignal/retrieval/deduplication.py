@@ -1,5 +1,6 @@
 """Deterministic, bounded deduplication for one retrieval run."""
 
+import json
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Iterable
@@ -28,6 +29,8 @@ def canonicalize_url(url: str) -> str:
     """Normalize transport details and remove known attribution parameters."""
     parsed = urlsplit(url.strip())
     hostname = (parsed.hostname or "").lower()
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
     port = parsed.port
     if port is not None and not (
         (parsed.scheme.lower() == "https" and port == 443)
@@ -42,7 +45,7 @@ def canonicalize_url(url: str) -> str:
         ],
         doseq=True,
     )
-    return urlunsplit((parsed.scheme.lower(), hostname, parsed.path, query, ""))
+    return urlunsplit((parsed.scheme.lower(), hostname, parsed.path or "/", query, ""))
 
 
 def article_fingerprint(article: RawArticle) -> str:
@@ -70,6 +73,36 @@ def _preference(article: RawArticle) -> tuple[object, ...]:
         article.provider_article_id or "",
         canonicalize_url(article.canonical_url or article.article_url),
         article.title,
+        article.description or "",
+        article.content_snippet or "",
+        article.source_name,
+        article.language,
+        article.published_at.isoformat(),
+        article.article_url,
+        article.source_url or "",
+        article.retrieved_at.isoformat() if article.retrieved_at else "",
+        article.source_published_at_raw or "",
+        article.source_domains,
+        article.source_countries,
+        article.registry_version or "",
+        json.dumps(article.raw_payload_json, sort_keys=True, default=str),
+    )
+
+
+def _result_order(article: RawArticle) -> tuple[str, ...]:
+    """Provide a total stable order after authority winner selection."""
+    return (
+        article.published_at.isoformat(),
+        article.source_id or "",
+        article.provider,
+        article.provider_article_id or "",
+        canonicalize_url(article.canonical_url or article.article_url),
+        article_fingerprint(article),
+        article.title,
+        article.description or "",
+        article.content_snippet or "",
+        article.source_name,
+        article.language,
     )
 
 
@@ -79,5 +112,7 @@ def deduplicate_within_run(articles: Iterable[RawArticle]) -> DeduplicationResul
     for article in articles:
         total += 1
         groups.setdefault(article_fingerprint(article), []).append(article)
-    retained = tuple(min(group, key=_preference) for group in groups.values())
+    retained = tuple(
+        sorted((min(group, key=_preference) for group in groups.values()), key=_result_order)
+    )
     return DeduplicationResult(retained, total - len(retained))
