@@ -74,8 +74,10 @@ def _datetime_key(value: datetime | None) -> str:
     return value.isoformat()
 
 
-def _payload_projection(value: object) -> object:
+def _payload_projection(value: object, seen: set[int] | None = None) -> object:
     """Convert JSON-like and accidental opaque payload values into stable data."""
+    if seen is None:
+        seen = set()
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -84,50 +86,81 @@ def _payload_projection(value: object) -> object:
         return {"$bytes": value.hex()}
     if isinstance(value, datetime):
         return {"$datetime": _datetime_key(value)}
+    identity = id(value)
+    if identity in seen:
+        value_type = type(value)
+        return {"$cycle_type": f"{value_type.__module__}.{value_type.__qualname__}"}
+    seen.add(identity)
     if isinstance(value, dict):
         pairs = [
-            (_payload_projection(key), _payload_projection(item)) for key, item in value.items()
+            (_payload_projection(key, seen), _payload_projection(item, seen))
+            for key, item in value.items()
         ]
-        pairs.sort(key=lambda pair: json.dumps(pair[0], sort_keys=True, separators=(",", ":")))
+        pairs.sort(key=lambda pair: json.dumps(pair, sort_keys=True, separators=(",", ":")))
         return {"$dict": pairs}
     if isinstance(value, (list, tuple)):
-        return {"$sequence": [_payload_projection(item) for item in value]}
+        return {"$sequence": [_payload_projection(item, seen) for item in value]}
     if isinstance(value, (set, frozenset)):
-        items = [_payload_projection(item) for item in value]
+        items = [_payload_projection(item, seen) for item in value]
         items.sort(key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
         return {"$set": items}
     value_type = type(value)
-    return {"$opaque_type": f"{value_type.__module__}.{value_type.__qualname__}"}
+    opaque: dict[str, object] = {
+        "$opaque_type": f"{value_type.__module__}.{value_type.__qualname__}"
+    }
+    try:
+        state = vars(value)
+    except TypeError:
+        state = None
+    if state:
+        opaque["$state"] = _payload_projection(state, seen)
+    return opaque
 
 
 def _payload_key(payload: object) -> str:
     return json.dumps(_payload_projection(payload), sort_keys=True, separators=(",", ":"))
 
 
+def _optional_text(value: str | None) -> str:
+    tag = ("none", "") if value is None else ("str", value)
+    return json.dumps(tag, separators=(",", ":"))
+
+
+def _optional_datetime(value: datetime | None) -> str:
+    tag = ("none", "") if value is None else ("datetime", _datetime_key(value))
+    return json.dumps(tag, separators=(",", ":"))
+
+
+def _optional_payload(value: dict | None) -> str:
+    if value is None:
+        return json.dumps(("none", ""), separators=(",", ":"))
+    return json.dumps(("payload", _payload_key(value)), separators=(",", ":"))
+
+
 def _article_projection(article: RawArticle) -> tuple[str, ...]:
     """Return a comparable projection covering every RawArticle field."""
     return (
         article.provider,
-        article.provider_article_id or "",
+        _optional_text(article.provider_article_id),
         article.query_group,
         article.title,
-        article.description or "",
-        article.content_snippet or "",
+        _optional_text(article.description),
+        _optional_text(article.content_snippet),
         article.article_url,
         canonicalize_url(article.canonical_url or article.article_url),
-        article.canonical_url or "",
+        _optional_text(article.canonical_url),
         article.source_name,
-        article.source_url or "",
+        _optional_text(article.source_url),
         _datetime_key(article.published_at),
         article.language,
-        _payload_key(article.raw_payload_json),
-        article.source_id or "",
-        article.source_class or "",
+        _optional_payload(article.raw_payload_json),
+        _optional_text(article.source_id),
+        _optional_text(article.source_class),
         "\0".join(article.source_domains),
         "\0".join(article.source_countries),
-        article.registry_version or "",
-        _datetime_key(article.retrieved_at),
-        article.source_published_at_raw or "",
+        _optional_text(article.registry_version),
+        _optional_datetime(article.retrieved_at),
+        _optional_text(article.source_published_at_raw),
     )
 
 

@@ -100,3 +100,22 @@ Final verification:
 - Ruff: clean.
 - Mypy retrieval package: `Success: no issues found in 14 source files`.
 - Black and `git diff --check`: clean.
+
+## Optional-value and payload-order review
+
+Two exact regressions failed before correction: reversing duplicates that differed only by
+`provider_article_id=None` versus `""` selected different objects, and dictionaries containing
+same-type opaque keys canonicalized differently when insertion order changed. Optional fields now
+carry explicit `none`, `str`, `datetime`, or `payload` tags throughout the total article
+projection. Payload dictionaries project every key and value and sort the full pair, so colliding
+key projections with different values remain insertion-order independent. Opaque values use their
+stable module-qualified type and recursively canonicalized JSON-safe object state when available;
+cycles degrade to stable type markers and memory-address representations are never used.
+
+Final verification after these fixes:
+
+- Focused RSS/dedup/security/retrieval suite: `33 passed in 0.91s`.
+- Full suite: `326 passed in 7.16s`.
+- Ruff: clean.
+- Mypy retrieval package: `Success: no issues found in 14 source files`.
+- Black and `git diff --check`: clean.

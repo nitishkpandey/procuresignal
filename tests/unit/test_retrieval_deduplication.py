@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from procuresignal.retrieval.base import RawArticle
 from procuresignal.retrieval.deduplication import (
+    _payload_key,
     article_fingerprint,
     canonicalize_url,
     deduplicate_within_run,
@@ -73,6 +74,27 @@ def test_total_tie_break_covers_provider_query_and_source_class() -> None:
     reverse = deduplicate_within_run([second, first]).articles
     assert forward == reverse
     assert forward[0] == second
+
+
+def test_optional_none_and_empty_string_have_distinct_total_tie_keys() -> None:
+    missing = article(source_class="official", source_id="same", url="https://example.com/news/1")
+    missing = replace(missing, provider_article_id=None)
+    empty = replace(missing, provider_article_id="")
+    forward = deduplicate_within_run([missing, empty]).articles
+    reverse = deduplicate_within_run([empty, missing]).articles
+    assert forward == reverse
+    assert forward[0] == missing
+
+
+def test_payload_dict_sorts_full_projected_pairs_for_colliding_opaque_keys() -> None:
+    class OpaqueKey:
+        __slots__ = ()
+
+    first_key = OpaqueKey()
+    second_key = OpaqueKey()
+    forward = {first_key: "b", second_key: "a"}
+    reverse = {second_key: "a", first_key: "b"}
+    assert _payload_key(forward) == _payload_key(reverse)
 
 
 def test_unserializable_raw_payload_never_breaks_deduplication() -> None:
