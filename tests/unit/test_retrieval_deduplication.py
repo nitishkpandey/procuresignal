@@ -97,6 +97,26 @@ def test_payload_dict_sorts_full_projected_pairs_for_colliding_opaque_keys() -> 
     assert _payload_key(forward) == _payload_key(reverse)
 
 
+def test_payload_shared_aliases_expand_on_each_sibling_branch() -> None:
+    shared = {"value": 1}
+    assert _payload_key({"a": shared, "b": shared}) == _payload_key({"b": shared, "a": shared})
+
+
+def test_payload_shared_cyclic_node_is_insertion_order_independent() -> None:
+    class Node:
+        pass
+
+    shared = Node()
+    shared.self = shared
+    assert _payload_key({"a": shared, "b": shared}) == _payload_key({"b": shared, "a": shared})
+
+
+def test_payload_true_self_cycle_terminates_stably() -> None:
+    payload: dict[str, object] = {}
+    payload["self"] = payload
+    assert _payload_key(payload) == _payload_key(payload)
+
+
 def test_unserializable_raw_payload_never_breaks_deduplication() -> None:
     opaque = object()
     item = replace(

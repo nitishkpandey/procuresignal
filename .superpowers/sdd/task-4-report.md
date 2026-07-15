@@ -68,9 +68,9 @@ Corrections:
 - Deduplication still selects the highest-authority winner per fingerprint, then applies a stable
   total result ordering across publication time, provenance/provider identity, canonical URL,
   fingerprint, and content tie-break fields. Reversing a run containing multiple distinct groups
-and a duplicate now produces the identical complete tuple. A second red test demonstrated that
-same-authority records with otherwise identical identity fields still depended on input order;
-publication and remaining provenance/payload fields now complete the deterministic winner key.
+  and a duplicate now produces the identical complete tuple. A second red test demonstrated that
+  same-authority records with otherwise identical identity fields still depended on input order;
+  publication and remaining provenance/payload fields now complete the deterministic winner key.
 - URL canonicalization brackets IPv6 hosts, removes default HTTP/HTTPS ports, and normalizes an
   empty path to `/` without collapsing `/a` and `/a/`. The upstream safety-policy contract now
   explicitly covers an IPv6 loopback literal alongside its existing IPv4 and userinfo rejection.
@@ -116,6 +116,24 @@ Final verification after these fixes:
 
 - Focused RSS/dedup/security/retrieval suite: `33 passed in 0.91s`.
 - Full suite: `326 passed in 7.16s`.
+- Ruff: clean.
+- Mypy retrieval package: `Success: no issues found in 14 source files`.
+- Black and `git diff --check`: clean.
+
+## Payload alias and cycle review
+
+Sibling aliases exposed that the payload traversal used a global visited set: the first occurrence
+expanded fully while later sibling occurrences were incorrectly labeled cycles, making projected
+output depend on dictionary insertion order. Tests reproduced this for both a shared mapping and a
+shared opaque node containing a self-reference; a separate true self-cycle test confirmed stable
+termination. Traversal now tracks only the active recursion path. Container/opaque identities are
+added on entry and removed in `finally`, so sibling aliases expand on every branch while genuine
+back-edges retain stable qualified-type cycle markers.
+
+Final verification after this fix:
+
+- Focused RSS/dedup/security/retrieval suite: `36 passed in 1.39s`.
+- Full suite: `329 passed in 8.29s`.
 - Ruff: clean.
 - Mypy retrieval package: `Success: no issues found in 14 source files`.
 - Black and `git diff --check`: clean.

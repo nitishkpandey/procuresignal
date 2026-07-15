@@ -74,10 +74,10 @@ def _datetime_key(value: datetime | None) -> str:
     return value.isoformat()
 
 
-def _payload_projection(value: object, seen: set[int] | None = None) -> object:
+def _payload_projection(value: object, active: set[int] | None = None) -> object:
     """Convert JSON-like and accidental opaque payload values into stable data."""
-    if seen is None:
-        seen = set()
+    if active is None:
+        active = set()
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -87,34 +87,37 @@ def _payload_projection(value: object, seen: set[int] | None = None) -> object:
     if isinstance(value, datetime):
         return {"$datetime": _datetime_key(value)}
     identity = id(value)
-    if identity in seen:
+    if identity in active:
         value_type = type(value)
         return {"$cycle_type": f"{value_type.__module__}.{value_type.__qualname__}"}
-    seen.add(identity)
-    if isinstance(value, dict):
-        pairs = [
-            (_payload_projection(key, seen), _payload_projection(item, seen))
-            for key, item in value.items()
-        ]
-        pairs.sort(key=lambda pair: json.dumps(pair, sort_keys=True, separators=(",", ":")))
-        return {"$dict": pairs}
-    if isinstance(value, (list, tuple)):
-        return {"$sequence": [_payload_projection(item, seen) for item in value]}
-    if isinstance(value, (set, frozenset)):
-        items = [_payload_projection(item, seen) for item in value]
-        items.sort(key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
-        return {"$set": items}
-    value_type = type(value)
-    opaque: dict[str, object] = {
-        "$opaque_type": f"{value_type.__module__}.{value_type.__qualname__}"
-    }
+    active.add(identity)
     try:
-        state = vars(value)
-    except TypeError:
-        state = None
-    if state:
-        opaque["$state"] = _payload_projection(state, seen)
-    return opaque
+        if isinstance(value, dict):
+            pairs = [
+                (_payload_projection(key, active), _payload_projection(item, active))
+                for key, item in value.items()
+            ]
+            pairs.sort(key=lambda pair: json.dumps(pair, sort_keys=True, separators=(",", ":")))
+            return {"$dict": pairs}
+        if isinstance(value, (list, tuple)):
+            return {"$sequence": [_payload_projection(item, active) for item in value]}
+        if isinstance(value, (set, frozenset)):
+            items = [_payload_projection(item, active) for item in value]
+            items.sort(key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+            return {"$set": items}
+        value_type = type(value)
+        opaque: dict[str, object] = {
+            "$opaque_type": f"{value_type.__module__}.{value_type.__qualname__}"
+        }
+        try:
+            state = vars(value)
+        except TypeError:
+            state = None
+        if state:
+            opaque["$state"] = _payload_projection(state, active)
+        return opaque
+    finally:
+        active.remove(identity)
 
 
 def _payload_key(payload: object) -> str:
