@@ -1,93 +1,224 @@
-"""Bounded, redirect-safe fetching with retry and circuit protection."""
+"""DNS-pinned, bounded retrieval with deterministic retry classification."""
 
 import asyncio
+import contextvars
 import email.utils
-import time
+import math
+import ssl
+from abc import abstractmethod
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from typing import AsyncIterable, Awaitable, Callable, Iterable, Protocol
 from urllib.parse import urljoin
 
+import httpcore
 import httpx
+from httpcore._backends.base import SOCKET_OPTION
+from httpx._transports.default import AsyncResponseStream, map_httpcore_exceptions
 
 from .base import FetchFailureCode, FetchResult
 from .registry import SourceDefinition
-from .security import UnsafeURL, URLSafetyPolicy
+from .security import UnsafeURL, URLSafetyPolicy, ValidatedURL
 
 Sleep = Callable[[float], Awaitable[None]]
+UtcClock = Callable[[], datetime]
+REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=5.0)
+
+
+class SecureTransport(httpx.AsyncBaseTransport):
+    """Marker contract: the next connection must use the approved resolved IPs."""
+
+    @abstractmethod
+    def approve(self, validated: ValidatedURL) -> None:
+        raise NotImplementedError
+
+
+class CircuitStore(Protocol):
+    async def allow_circuit_request(self, source_id: str, owner: str, now: datetime) -> bool:
+        ...
+
+    async def record_circuit_failure(self, source_id: str, now: datetime) -> None:
+        ...
+
+    async def record_circuit_success(self, source_id: str, owner: str) -> bool:
+        ...
+
+
+class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    """Substitutes a validated IP only at TCP connect; TLS retains the hostname/SNI."""
+
+    def __init__(self, delegate: httpcore.AsyncNetworkBackend | None = None) -> None:
+        self._delegate = delegate or httpcore.AnyIOBackend()
+        self._approved: contextvars.ContextVar[dict[str, tuple[str, ...]]] = contextvars.ContextVar(
+            "approved_dns", default={}
+        )
+
+    def approve(self, validated: ValidatedURL) -> None:
+        current = dict(self._approved.get())
+        current[validated.host] = tuple(str(address) for address in validated.addresses)
+        self._approved.set(current)
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        approved = self._approved.get().get(host)
+        if not approved:
+            raise httpcore.ConnectError("connection destination was not DNS-pinned")
+        return await self._delegate.connect_tcp(
+            approved[0], port, timeout, local_address, socket_options
+        )
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Iterable[SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        raise httpcore.ConnectError("Unix sockets are disabled for remote retrieval")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._delegate.sleep(seconds)
+
+
+class PinnedHTTPTransport(SecureTransport):
+    def __init__(self, backend: PinnedNetworkBackend | None = None) -> None:
+        self.backend = backend or PinnedNetworkBackend()
+        context = ssl.create_default_context()
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=context,
+            max_keepalive_connections=0,
+            network_backend=self.backend,
+        )
+
+    def approve(self, validated: ValidatedURL) -> None:
+        self.backend.approve(validated)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if not isinstance(request.stream, httpx.AsyncByteStream):
+            raise TypeError("request stream must be asynchronous")
+        core_request = httpcore.Request(
+            method=request.method,
+            url=httpcore.URL(
+                scheme=request.url.raw_scheme,
+                host=request.url.raw_host,
+                port=request.url.port,
+                target=request.url.raw_path,
+            ),
+            headers=request.headers.raw,
+            content=request.stream,
+            extensions=request.extensions,
+        )
+        with map_httpcore_exceptions():
+            response = await self._pool.handle_async_request(core_request)
+        if not isinstance(response.stream, AsyncIterable):
+            raise TypeError("response stream must be asynchronous")
+        return httpx.Response(
+            status_code=response.status,
+            headers=response.headers,
+            stream=AsyncResponseStream(response.stream),
+            extensions=response.extensions,
+        )
+
+    async def aclose(self) -> None:
+        await self._pool.aclose()
 
 
 class SafeFetcher:
     def __init__(
         self,
         *,
-        client: httpx.AsyncClient,
         policy: URLSafetyPolicy,
+        circuit_store: CircuitStore,
+        owner: str,
+        transport: SecureTransport | None = None,
         max_response_bytes: int = 5 * 1024 * 1024,
         max_attempts: int = 3,
-        max_redirects: int = 5,
-        circuit_threshold: int = 5,
-        circuit_cooldown_seconds: float = 60,
+        max_redirects: int = 3,
         sleep: Sleep = asyncio.sleep,
-        clock: Callable[[], float] = time.monotonic,
+        utc_now: UtcClock = lambda: datetime.now(timezone.utc),
     ) -> None:
-        self.client = client
+        if transport is not None and not isinstance(transport, SecureTransport):
+            raise TypeError("transport must enforce validated DNS pinning")
+        self.transport = transport or PinnedHTTPTransport()
         self.policy = policy
+        self.circuit_store = circuit_store
+        self.owner = owner
         self.max_response_bytes = max_response_bytes
         self.max_attempts = max_attempts
-        self.max_redirects = max_redirects
-        self.circuit_threshold = circuit_threshold
-        self.circuit_cooldown_seconds = circuit_cooldown_seconds
+        self.max_redirects = min(max_redirects, 3)
         self.sleep = sleep
-        self.clock = clock
-        self._failures: dict[str, int] = {}
-        self._opened_at: dict[str, float] = {}
+        self.utc_now = utc_now
+        self._client = httpx.AsyncClient(
+            transport=self.transport,
+            timeout=REQUEST_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        )
+        self._closed = False
 
-    def failure_count(self, source_id: str) -> int:
-        return self._failures.get(source_id, 0)
+    async def __aenter__(self) -> "SafeFetcher":
+        return self
 
-    def _record_failure(self, source_id: str) -> None:
-        count = self._failures.get(source_id, 0) + 1
-        self._failures[source_id] = count
-        if count >= self.circuit_threshold:
-            self._opened_at[source_id] = self.clock()
+    async def __aexit__(self, *args: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        if not self._closed:
+            await self._client.aclose()
+            self._closed = True
 
     async def fetch(self, source: SourceDefinition) -> FetchResult:
-        opened = self._opened_at.get(source.source_id)
-        if opened is not None and self.clock() - opened < self.circuit_cooldown_seconds:
+        if self._closed:
+            raise RuntimeError("fetcher is closed")
+        now = self.utc_now()
+        if not await self.circuit_store.allow_circuit_request(source.source_id, self.owner, now):
             return FetchResult(failure_code=FetchFailureCode.CIRCUIT_OPEN)
         for attempt in range(self.max_attempts):
             result = await self._attempt(source)
-            if result.ok:
-                self._failures.pop(source.source_id, None)
-                self._opened_at.pop(source.source_id, None)
-                return result
             retryable = result.failure_code in {
                 FetchFailureCode.NETWORK_ERROR,
-                FetchFailureCode.HTTP_STATUS,
+                FetchFailureCode.RATE_LIMITED,
+                FetchFailureCode.TRANSIENT_HTTP_STATUS,
             }
-            if not retryable or attempt + 1 >= self.max_attempts:
-                self._record_failure(source.source_id)
+            if result.ok:
+                await self.circuit_store.record_circuit_success(source.source_id, self.owner)
                 return result
-            await self.sleep(result.retry_after_seconds or min(2**attempt, 30))
+            if not retryable or attempt + 1 >= self.max_attempts:
+                await self.circuit_store.record_circuit_failure(source.source_id, self.utc_now())
+                return result
+            delay = result.retry_after_seconds
+            await self.sleep(delay if delay is not None else min(2**attempt, 30))
         raise AssertionError("unreachable")
 
     async def _attempt(self, source: SourceDefinition) -> FetchResult:
         url = source.endpoint_url
-        for redirect_count in range(self.max_redirects + 1):
+        for _ in range(self.max_redirects + 1):
             try:
-                await self.policy.validate(url, source.allowed_hosts)
-                async with self.client.stream("GET", url, follow_redirects=False) as response:
+                validated = await self.policy.validate(url, source.allowed_hosts)
+                self.transport.approve(validated)
+                async with self._client.stream("GET", url) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
                         if not location:
                             return FetchResult(failure_code=FetchFailureCode.HTTP_STATUS)
                         url = urljoin(url, location)
                         continue
-                    if response.status_code == 429 or 500 <= response.status_code < 600:
+                    if response.status_code == 429:
+                        return FetchResult(
+                            status_code=429,
+                            failure_code=FetchFailureCode.RATE_LIMITED,
+                            retry_after_seconds=parse_retry_after(
+                                response.headers.get("Retry-After"), now=self.utc_now()
+                            ),
+                        )
+                    if 500 <= response.status_code < 600:
                         return FetchResult(
                             status_code=response.status_code,
-                            failure_code=FetchFailureCode.HTTP_STATUS,
-                            retry_after_seconds=_retry_after(response.headers.get("Retry-After")),
+                            failure_code=FetchFailureCode.TRANSIENT_HTTP_STATUS,
                         )
                     if response.status_code >= 400:
                         return FetchResult(
@@ -95,8 +226,7 @@ class SafeFetcher:
                             failure_code=FetchFailureCode.HTTP_STATUS,
                         )
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-                    expected = {item.lower() for item in source.expected_content_types}
-                    if content_type not in expected:
+                    if content_type not in {item.lower() for item in source.expected_content_types}:
                         return FetchResult(
                             status_code=response.status_code,
                             failure_code=FetchFailureCode.UNEXPECTED_CONTENT_TYPE,
@@ -114,17 +244,33 @@ class SafeFetcher:
         return FetchResult(failure_code=FetchFailureCode.TOO_MANY_REDIRECTS)
 
 
-def _retry_after(value: str | None) -> float | None:
+def parse_retry_after(value: str | None, *, now: datetime) -> float | None:
     if value is None:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
+        if not math.isfinite(seconds):
+            return None
     except ValueError:
         try:
             parsed = email.utils.parsedate_to_datetime(value)
-            return max(0.0, (parsed - datetime.now(timezone.utc)).total_seconds())
         except (TypeError, ValueError):
             return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        reference = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        seconds = (
+            parsed.astimezone(timezone.utc) - reference.astimezone(timezone.utc)
+        ).total_seconds()
+    return min(900.0, max(0.0, seconds))
 
 
-__all__ = ["FetchFailureCode", "FetchResult", "SafeFetcher"]
+__all__ = [
+    "FetchFailureCode",
+    "FetchResult",
+    "PinnedHTTPTransport",
+    "PinnedNetworkBackend",
+    "SafeFetcher",
+    "SecureTransport",
+    "parse_retry_after",
+]

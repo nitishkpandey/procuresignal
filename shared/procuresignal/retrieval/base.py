@@ -19,6 +19,8 @@ class FetchFailureCode(StrEnum):
     UNSAFE_URL = "unsafe_url"
     NETWORK_ERROR = "network_error"
     HTTP_STATUS = "http_status"
+    TRANSIENT_HTTP_STATUS = "transient_http_status"
+    RATE_LIMITED = "rate_limited"
     UNEXPECTED_CONTENT_TYPE = "unexpected_content_type"
     OVERSIZED_RESPONSE = "oversized_response"
     TOO_MANY_REDIRECTS = "too_many_redirects"

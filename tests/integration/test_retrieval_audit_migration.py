@@ -50,7 +50,13 @@ def test_populated_retrieval_audit_upgrade_and_downgrade(monkeypatch) -> None:
             column["name"]
             for column in sa.inspect(connection).get_columns("news_retrieval_source_outcomes")
         }
-        assert {"failure_code", "outcome_detail"} <= outcome_columns
+        assert {
+            "failure_code",
+            "outcome_detail",
+            "lease_owner",
+            "lease_expires_at",
+        } <= outcome_columns
+        assert sa.inspect(connection).has_table("news_retrieval_circuits")
         connection.execute(
             sa.text(
                 "INSERT INTO news_retrieval_source_outcomes "
@@ -68,6 +74,7 @@ def test_populated_retrieval_audit_upgrade_and_downgrade(monkeypatch) -> None:
             == "legacy"
         )
         assert not sa.inspect(connection).has_table("news_retrieval_runs")
+        assert not sa.inspect(connection).has_table("news_retrieval_circuits")
         assert "source_id" not in {
             col["name"] for col in sa.inspect(connection).get_columns("news_articles_raw")
         }

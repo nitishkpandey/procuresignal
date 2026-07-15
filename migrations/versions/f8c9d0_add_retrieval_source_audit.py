@@ -70,6 +70,8 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(), nullable=True),
         sa.Column("failure_code", sa.String(50), nullable=True),
         sa.Column("outcome_detail", sa.String(500), nullable=True),
+        sa.Column("lease_owner", sa.String(255), nullable=True),
+        sa.Column("lease_expires_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["run_id"], ["news_retrieval_runs.id"], ondelete="CASCADE"),
@@ -81,9 +83,23 @@ def upgrade() -> None:
         "news_retrieval_source_outcomes",
         ["source_id", "started_at"],
     )
+    op.create_table(
+        "news_retrieval_circuits",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("source_id", sa.String(255), nullable=False),
+        sa.Column("failure_count", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("open_until", sa.DateTime(), nullable=True),
+        sa.Column("probe_owner", sa.String(255), nullable=True),
+        sa.Column("probe_expires_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("source_id", name="uq_retrieval_circuit_source"),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("news_retrieval_circuits")
     op.drop_index(
         "idx_retrieval_outcome_source_started", table_name="news_retrieval_source_outcomes"
     )
