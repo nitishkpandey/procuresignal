@@ -83,3 +83,43 @@ using the standard inherited primary key plus a unique source ID and matching mi
 
 - `PinnedHTTPTransport` necessarily adapts httpx/httpcore transport internals available in the
   pinned dependency versions; upgrades of those libraries must run the offline pinning tests.
+
+## Second re-review remediation (2026-07-15)
+
+### Exact red evidence
+
+Command:
+`PYTHONPATH=shared .../.venv/bin/pytest tests/unit/test_retrieval_fetching.py -q`
+
+Observed before implementation: `16 failed, 3 passed in 0.95s`. Failures included missing
+`SafeFetcher._for_test`, non-positive/high bound handling, multi-address failover stopping after
+the first approved address, and missing bounded jitter. The first SNI integration run then
+failed because the test backend returned a stream as response bytes; replacing it with a real
+deterministic network-backend boundary made the test exercise httpcore's TLS/HTTP path.
+
+### Exact green evidence
+
+- Focused security/fetch/audit/migration command: `38 passed in 1.36s`.
+- Full suite command: `308 passed in 6.28s`.
+- Black: `19 files would be left unchanged`.
+- Ruff: no findings.
+- mypy: `Success: no issues found in 13 source files`.
+- Git diff check: clean.
+
+### Additional guarantees
+
+- Positive request/attempt bounds are mandatory; attempts cap at three and decoded response
+  bytes cap at 5 MiB even when hostile higher values are supplied.
+- Public SafeFetcher construction has no client/transport parameter and always constructs the
+  concrete `PinnedAsyncHTTPTransport`. Offline mocks use the explicitly private `_for_test`
+  seam; passing `transport=` or an ordinary/malicious transport to public construction fails.
+- The pinned backend tries every approved IPv4/IPv6 address within one remaining connect
+  deadline and emits only a sanitized aggregate failure. A deterministic transport integration
+  verifies the approved IP dial while preserving the original TLS SNI and HTTP Host header.
+- Exponential retry delay has injectable jitter bounded to 25%/5 seconds and all Retry-After
+  and computed delays remain capped at 15 minutes.
+- Circuit eligibility commits read-only paths before network execution. True `asyncio.gather`
+  two-session tests prove one winner for initial/stale source claims and half-open probes.
+- `httpx==0.25.2` and `httpcore==1.0.9` are explicitly pinned in `pyproject.toml`; the existing
+  lock already resolves exactly those versions. The transport integration test guards the
+  unavoidable internal adapter boundary.

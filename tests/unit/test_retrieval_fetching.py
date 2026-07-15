@@ -1,4 +1,5 @@
 import ipaddress
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import httpcore
@@ -8,9 +9,9 @@ import pytest
 from shared.procuresignal.retrieval.catalog import SOURCE_REGISTRY
 from shared.procuresignal.retrieval.fetching import (
     FetchFailureCode,
+    PinnedAsyncHTTPTransport,
     PinnedNetworkBackend,
     SafeFetcher,
-    SecureTransport,
     parse_retry_after,
 )
 from shared.procuresignal.retrieval.security import URLSafetyPolicy
@@ -33,7 +34,7 @@ async def public_resolver(host: str, port: int):
     return (ipaddress.ip_address("93.184.216.34"),)
 
 
-class ApprovedMockTransport(SecureTransport):
+class ApprovedMockTransport(httpx.AsyncBaseTransport):
     def __init__(self, handler):
         self.mock = httpx.MockTransport(handler)
         self.approved = []
@@ -51,7 +52,7 @@ class ApprovedMockTransport(SecureTransport):
 
 
 def fetcher(handler, **kwargs):
-    return SafeFetcher(
+    return SafeFetcher._for_test(
         transport=ApprovedMockTransport(handler),
         policy=URLSafetyPolicy(resolver=public_resolver),
         circuit_store=MemoryCircuit(),
@@ -68,6 +69,30 @@ def test_fetcher_rejects_unpinned_transport() -> None:
             circuit_store=MemoryCircuit(),
             owner="test",
         )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_attempts": 0},
+        {"max_attempts": -1},
+        {"max_response_bytes": 0},
+        {"max_response_bytes": -1},
+    ],
+)
+def test_fetcher_rejects_non_positive_bounds(kwargs) -> None:
+    with pytest.raises(ValueError):
+        fetcher(lambda request: httpx.Response(500), **kwargs)
+
+
+def test_fetcher_caps_hostile_high_bounds() -> None:
+    f = fetcher(
+        lambda request: httpx.Response(500),
+        max_attempts=999,
+        max_response_bytes=999_999_999,
+    )
+    assert f.max_attempts == 3
+    assert f.max_response_bytes == 5 * 1024 * 1024
 
 
 async def test_pinned_backend_connects_to_approved_ip_not_rebound_hostname() -> None:
@@ -111,7 +136,7 @@ async def test_fetcher_approves_resolved_ip_for_actual_transport() -> None:
             200, content=b"ok", headers={"content-type": SOURCE.expected_content_types[0]}
         )
     )
-    async with SafeFetcher(
+    async with SafeFetcher._for_test(
         transport=transport,
         policy=URLSafetyPolicy(resolver=public_resolver),
         circuit_store=MemoryCircuit(),
@@ -120,6 +145,106 @@ async def test_fetcher_approves_resolved_ip_for_actual_transport() -> None:
         assert (await f.fetch(SOURCE)).ok
     assert str(transport.approved[0].addresses[0]) == "93.184.216.34"
     assert transport.closed
+
+
+async def test_pinned_backend_tries_all_approved_addresses() -> None:
+    class FailoverBackend(httpcore.AsyncNetworkBackend):
+        def __init__(self):
+            self.hosts = []
+
+        async def connect_tcp(
+            self, host, port, timeout=None, local_address=None, socket_options=None
+        ):
+            self.hosts.append(host)
+            if len(self.hosts) == 1:
+                raise httpcore.ConnectError("secret first failure")
+            return httpcore.AsyncMockStream([])
+
+        async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+            raise AssertionError("not used")
+
+        async def sleep(self, seconds):
+            return None
+
+    delegate = FailoverBackend()
+    backend = PinnedNetworkBackend(delegate)
+    validated = replace(
+        await URLSafetyPolicy(resolver=public_resolver).validate(
+            SOURCE.endpoint_url, SOURCE.allowed_hosts
+        ),
+        addresses=(
+            ipaddress.ip_address("93.184.216.34"),
+            ipaddress.ip_address("2606:2800:220:1:248:1893:25c8:1946"),
+        ),
+    )
+    backend.approve(validated)
+    await backend.connect_tcp(validated.host, 443, timeout=5)
+    assert delegate.hosts == ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]
+
+
+async def test_pinned_transport_preserves_tls_sni_and_host_header() -> None:
+    class Stream(httpcore.AsyncNetworkStream):
+        def __init__(self):
+            self.sni = None
+            self.writes = bytearray()
+            self.response = [
+                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Type: application/rss+xml\r\n\r\nok"
+            ]
+
+        async def read(self, max_bytes, timeout=None):
+            return self.response.pop(0) if self.response else b""
+
+        async def write(self, buffer, timeout=None):
+            self.writes.extend(buffer)
+
+        async def aclose(self):
+            return None
+
+        async def start_tls(self, ssl_context, server_hostname=None, timeout=None):
+            self.sni = server_hostname
+            return self
+
+        def get_extra_info(self, info):
+            return None
+
+    stream = Stream()
+
+    class Delegate(httpcore.AsyncNetworkBackend):
+        async def connect_tcp(
+            self, host, port, timeout=None, local_address=None, socket_options=None
+        ):
+            return stream
+
+        async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+            raise AssertionError("not used")
+
+        async def sleep(self, seconds):
+            return None
+
+    delegate = Delegate()
+    backend = PinnedNetworkBackend(delegate)
+    transport = PinnedAsyncHTTPTransport(backend)
+    validated = await URLSafetyPolicy(resolver=public_resolver).validate(
+        SOURCE.endpoint_url, SOURCE.allowed_hosts
+    )
+    transport.approve(validated)
+    async with httpx.AsyncClient(transport=transport) as client:
+        response = await client.get(SOURCE.endpoint_url)
+    assert response.text == "ok"
+    assert stream.sni == validated.host
+    assert f"Host: {validated.host}".lower().encode() in bytes(stream.writes).lower()
+
+
+async def test_backoff_jitter_is_bounded_and_injectable() -> None:
+    sleeps = []
+
+    async def sleep(delay):
+        sleeps.append(delay)
+
+    await fetcher(
+        lambda request: httpx.Response(503), sleep=sleep, jitter=lambda base: base * 0.25
+    ).fetch(SOURCE)
+    assert sleeps == [1.25, 2.5]
 
 
 def test_retry_after_is_timezone_safe_finite_and_capped() -> None:

@@ -4,8 +4,9 @@ import asyncio
 import contextvars
 import email.utils
 import math
+import random
 import ssl
-from abc import abstractmethod
+import time
 from datetime import datetime, timezone
 from typing import AsyncIterable, Awaitable, Callable, Iterable, Protocol
 from urllib.parse import urljoin
@@ -22,14 +23,6 @@ from .security import UnsafeURL, URLSafetyPolicy, ValidatedURL
 Sleep = Callable[[float], Awaitable[None]]
 UtcClock = Callable[[], datetime]
 REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=5.0)
-
-
-class SecureTransport(httpx.AsyncBaseTransport):
-    """Marker contract: the next connection must use the approved resolved IPs."""
-
-    @abstractmethod
-    def approve(self, validated: ValidatedURL) -> None:
-        raise NotImplementedError
 
 
 class CircuitStore(Protocol):
@@ -68,9 +61,20 @@ class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
         approved = self._approved.get().get(host)
         if not approved:
             raise httpcore.ConnectError("connection destination was not DNS-pinned")
-        return await self._delegate.connect_tcp(
-            approved[0], port, timeout, local_address, socket_options
-        )
+        started = time.monotonic()
+        for address in approved:
+            remaining = (
+                None if timeout is None else max(0.0, timeout - (time.monotonic() - started))
+            )
+            if remaining == 0:
+                break
+            try:
+                return await self._delegate.connect_tcp(
+                    address, port, remaining, local_address, socket_options
+                )
+            except (OSError, httpcore.ConnectError, httpcore.ConnectTimeout):
+                continue
+        raise httpcore.ConnectError("all approved destination addresses failed")
 
     async def connect_unix_socket(
         self,
@@ -84,7 +88,7 @@ class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
         await self._delegate.sleep(seconds)
 
 
-class PinnedHTTPTransport(SecureTransport):
+class PinnedAsyncHTTPTransport(httpx.AsyncBaseTransport):
     def __init__(self, backend: PinnedNetworkBackend | None = None) -> None:
         self.backend = backend or PinnedNetworkBackend()
         context = ssl.create_default_context()
@@ -134,24 +138,26 @@ class SafeFetcher:
         policy: URLSafetyPolicy,
         circuit_store: CircuitStore,
         owner: str,
-        transport: SecureTransport | None = None,
         max_response_bytes: int = 5 * 1024 * 1024,
         max_attempts: int = 3,
         max_redirects: int = 3,
         sleep: Sleep = asyncio.sleep,
         utc_now: UtcClock = lambda: datetime.now(timezone.utc),
+        jitter: Callable[[float], float] = lambda base: random.uniform(0.0, base * 0.25),
+        _test_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        if transport is not None and not isinstance(transport, SecureTransport):
-            raise TypeError("transport must enforce validated DNS pinning")
-        self.transport = transport or PinnedHTTPTransport()
+        if max_attempts <= 0 or max_response_bytes <= 0:
+            raise ValueError("fetch bounds must be positive")
+        self.transport = _test_transport or PinnedAsyncHTTPTransport()
         self.policy = policy
         self.circuit_store = circuit_store
         self.owner = owner
-        self.max_response_bytes = max_response_bytes
-        self.max_attempts = max_attempts
+        self.max_response_bytes = min(max_response_bytes, 5 * 1024 * 1024)
+        self.max_attempts = min(max_attempts, 3)
         self.max_redirects = min(max_redirects, 3)
         self.sleep = sleep
         self.utc_now = utc_now
+        self.jitter = jitter
         self._client = httpx.AsyncClient(
             transport=self.transport,
             timeout=REQUEST_TIMEOUT,
@@ -159,6 +165,11 @@ class SafeFetcher:
             trust_env=False,
         )
         self._closed = False
+
+    @classmethod
+    def _for_test(cls, *, transport: httpx.AsyncBaseTransport, **kwargs: object) -> "SafeFetcher":
+        """Offline-test seam; production construction has no transport injection path."""
+        return cls(_test_transport=transport, **kwargs)  # type: ignore[arg-type]
 
     async def __aenter__(self) -> "SafeFetcher":
         return self
@@ -191,7 +202,10 @@ class SafeFetcher:
                 await self.circuit_store.record_circuit_failure(source.source_id, self.utc_now())
                 return result
             delay = result.retry_after_seconds
-            await self.sleep(delay if delay is not None else min(2**attempt, 30))
+            if delay is None:
+                base = min(float(2**attempt), 30.0)
+                delay = base + min(max(0.0, self.jitter(base)), base * 0.25, 5.0)
+            await self.sleep(min(delay, 900.0))
         raise AssertionError("unreachable")
 
     async def _attempt(self, source: SourceDefinition) -> FetchResult:
@@ -199,7 +213,9 @@ class SafeFetcher:
         for _ in range(self.max_redirects + 1):
             try:
                 validated = await self.policy.validate(url, source.allowed_hosts)
-                self.transport.approve(validated)
+                approve = getattr(self.transport, "approve", None)
+                if approve is not None:
+                    approve(validated)
                 async with self._client.stream("GET", url) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
@@ -268,9 +284,8 @@ def parse_retry_after(value: str | None, *, now: datetime) -> float | None:
 __all__ = [
     "FetchFailureCode",
     "FetchResult",
-    "PinnedHTTPTransport",
+    "PinnedAsyncHTTPTransport",
     "PinnedNetworkBackend",
     "SafeFetcher",
-    "SecureTransport",
     "parse_retry_after",
 ]

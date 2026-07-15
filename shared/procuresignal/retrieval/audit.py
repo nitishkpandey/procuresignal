@@ -232,8 +232,10 @@ class RetrievalAuditRepository:
             select(NewsRetrievalCircuit).where(NewsRetrievalCircuit.source_id == source_id)
         )
         if circuit is None or circuit.failure_count < CIRCUIT_THRESHOLD:
+            await self.session.commit()
             return True
         if circuit.open_until is not None and circuit.open_until > now:
+            await self.session.commit()
             return False
         return await self.claim_circuit_probe(source_id, owner, now)
 

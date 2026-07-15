@@ -136,6 +136,30 @@ async def test_source_stale_lease_reclaim_and_stale_owner_cannot_complete(sessio
         assert await repo.complete_source(run.id, "source", "new", now=now)
 
 
+async def test_concurrent_source_claim_and_stale_reclaim_have_one_winner(sessions) -> None:
+    now = datetime(2026, 7, 13, 12)
+    async with sessions() as setup:
+        run = NewsRetrievalRun(
+            run_key="sources", status="running", registry_version="v1", started_at=now
+        )
+        setup.add(run)
+        await setup.commit()
+        run_id = run.id
+    async with sessions() as one, sessions() as two:
+        results = await asyncio.gather(
+            RetrievalAuditRepository(one).claim_source(run_id, "source", "one", now),
+            RetrievalAuditRepository(two).claim_source(run_id, "source", "two", now),
+        )
+        assert sum(results) == 1
+    stale = now + timedelta(minutes=66)
+    async with sessions() as one, sessions() as two:
+        results = await asyncio.gather(
+            RetrievalAuditRepository(one).claim_source(run_id, "source", "three", stale),
+            RetrievalAuditRepository(two).claim_source(run_id, "source", "four", stale),
+        )
+        assert sum(results) == 1
+
+
 async def test_durable_circuit_opens_half_open_atomically_and_resets(sessions) -> None:
     now = datetime(2026, 7, 13, 12)
     async with sessions() as one, sessions() as two:
@@ -148,8 +172,20 @@ async def test_durable_circuit_opens_half_open_atomically_and_resets(sessions) -
         assert circuit is not None and circuit.open_until == now + timedelta(minutes=30)
         assert not await RetrievalAuditRepository(two).claim_circuit_probe("source", "two", now)
         due = now + timedelta(minutes=31)
-        assert await first.claim_circuit_probe("source", "one", due)
-        assert not await RetrievalAuditRepository(two).claim_circuit_probe("source", "two", due)
-        assert await first.record_circuit_success("source", "one")
+        probes = await asyncio.gather(
+            first.claim_circuit_probe("source", "one", due),
+            RetrievalAuditRepository(two).claim_circuit_probe("source", "two", due),
+        )
+        assert sum(probes) == 1
+        winner = "one" if probes[0] else "two"
+        winner_repo = first if probes[0] else RetrievalAuditRepository(two)
+        assert await winner_repo.record_circuit_success("source", winner)
         await one.refresh(circuit)
         assert circuit.failure_count == 0 and circuit.open_until is None
+
+
+async def test_circuit_eligibility_closes_read_transaction_before_network(sessions) -> None:
+    async with sessions() as session:
+        repo = RetrievalAuditRepository(session)
+        assert await repo.allow_circuit_request("missing", "worker", datetime(2026, 7, 13, 12))
+        assert not session.in_transaction()
