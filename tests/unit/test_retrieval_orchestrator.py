@@ -5,6 +5,8 @@ import pytest
 from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalRun
 from procuresignal.retrieval.base import FetchFailureCode, FetchResult, RawArticle
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
+from procuresignal.retrieval.providers.gdelt import GDELTProvider
+from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
 from procuresignal.retrieval.providers.rss import RSSProvider
 from procuresignal.retrieval.registry import (
     AdapterType,
@@ -252,3 +254,55 @@ def test_legacy_providers_are_registry_configuration(monkeypatch):
         ("gdelt", AdapterType.GDELT),
         ("newsapi", AdapterType.NEWSAPI),
     ]
+
+
+@pytest.mark.parametrize("provider_type", [NewsAPIProvider, GDELTProvider])
+async def test_legacy_adapters_use_safe_fetcher_and_authoritative_bytes(monkeypatch, provider_type):
+    monkeypatch.setenv("NEWSAPI_KEY", "top-secret")
+    configured = configured_registry(SourceRegistry(()))
+    if provider_type is GDELTProvider:
+        monkeypatch.setenv("GDELT_ENABLED", "true")
+        configured = configured_registry(SourceRegistry(()))
+        definition = next(item for item in configured.enabled() if item.source_id == "gdelt")
+    else:
+        definition = next(item for item in configured.enabled() if item.source_id == "newsapi")
+    calls = []
+
+    class Fetcher:
+        async def fetch(self, source, params=None):
+            calls.append((source.endpoint_url, params))
+            return FetchResult(content=b'{"status":"ok","articles":[]}', response_bytes=31)
+
+        async def aclose(self):
+            pass
+
+    provider = provider_type(source=definition, fetcher=Fetcher())
+    provider._get = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("generic client used")
+    )
+    await provider.fetch_articles(["regulatory"])
+    assert calls and provider.last_response_bytes == 31 * len(calls)
+    assert all("top-secret" not in url for url, _params in calls)
+    if provider_type is NewsAPIProvider:
+        assert all(params["apiKey"] == "top-secret" for _url, params in calls)
+
+
+async def test_newsapi_safe_fetch_failure_is_structured(monkeypatch):
+    monkeypatch.setenv("NEWSAPI_KEY", "secret")
+    definition = next(
+        item
+        for item in configured_registry(SourceRegistry(())).enabled()
+        if item.source_id == "newsapi"
+    )
+
+    class Fetcher:
+        async def fetch(self, _source, _params=None):
+            return FetchResult(failure_code=FetchFailureCode.CIRCUIT_OPEN)
+
+        async def aclose(self):
+            pass
+
+    with pytest.raises(Exception) as error:
+        await NewsAPIProvider(source=definition, fetcher=Fetcher()).fetch_articles(["regulatory"])
+    assert getattr(error.value, "result").failure_code is FetchFailureCode.CIRCUIT_OPEN
+    assert "secret" not in str(error.value)

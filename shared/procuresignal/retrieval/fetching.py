@@ -22,6 +22,7 @@ from .security import UnsafeURL, URLSafetyPolicy, ValidatedURL
 
 Sleep = Callable[[float], Awaitable[None]]
 UtcClock = Callable[[], datetime]
+QueryParams = dict[str, str | int | float | bool | None]
 REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=5.0)
 
 
@@ -176,14 +177,16 @@ class SafeFetcher:
             await self._client.aclose()
             self._closed = True
 
-    async def fetch(self, source: SourceDefinition) -> FetchResult:
+    async def fetch(
+        self, source: SourceDefinition, params: QueryParams | None = None
+    ) -> FetchResult:
         if self._closed:
             raise RuntimeError("fetcher is closed")
         now = self.utc_now()
         if not await self.circuit_store.allow_circuit_request(source.source_id, self.owner, now):
             return FetchResult(failure_code=FetchFailureCode.CIRCUIT_OPEN)
         for attempt in range(self.max_attempts):
-            result = await self._attempt(source)
+            result = await self._attempt(source, params)
             retryable = result.failure_code in {
                 FetchFailureCode.NETWORK_ERROR,
                 FetchFailureCode.RATE_LIMITED,
@@ -202,18 +205,21 @@ class SafeFetcher:
             await self.sleep(min(delay, 900.0))
         raise AssertionError("unreachable")
 
-    async def _attempt(self, source: SourceDefinition) -> FetchResult:
+    async def _attempt(
+        self, source: SourceDefinition, params: QueryParams | None = None
+    ) -> FetchResult:
         url = source.endpoint_url
         for _ in range(self.max_redirects + 1):
             try:
                 validated = await self.policy.validate(url, source.allowed_hosts)
                 self.transport.approve(validated)
-                async with self._client.stream("GET", url) as response:
+                async with self._client.stream("GET", url, params=params) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
                         if not location:
                             return FetchResult(failure_code=FetchFailureCode.HTTP_STATUS)
                         url = urljoin(url, location)
+                        params = None
                         continue
                     if response.status_code == 429:
                         return FetchResult(

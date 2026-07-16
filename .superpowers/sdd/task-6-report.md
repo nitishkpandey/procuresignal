@@ -88,3 +88,27 @@ Addressed all four review findings without enabling or implementing structured s
 - Close failures cannot replace an already durable success or escape `gather`; constructor failures become durable parser-failure outcomes and the run still completes.
 - NewsAPI/GDELT are registry entries feeding the same claim/concurrency/persistence path. No second worker loop was restored.
 - Known provider endpoint constants were reused; no new endpoint was invented and `SourceRegistry` validation remains unchanged.
+
+## Second review wave: mandatory SafeFetcher for legacy adapters
+
+- Extended `SafeFetcher.fetch()` with typed in-memory query parameters. Parameters are applied only to the initial approved HTTPS request and are removed on redirects, so a NewsAPI key cannot cross a redirect boundary.
+- Registry definitions remain secret-free. `NEWSAPI_KEY` is injected only into the `params` mapping passed directly to the safe transport; it is absent from source URLs, audit rows, result URLs, exception messages, and logs.
+- Orchestrator-created NewsAPI and GDELT providers now receive `SafeFetcher`; their injected mode does not construct or call the generic `NewsProvider` client.
+- Both adapters translate failed `FetchResult` values into `RetrievalFetchError`, accumulate decoded response bytes across successful pages and the terminal failure, and re-raise structured failures rather than silently reporting a partial success.
+- This preserves the one orchestrator path and inherits the reviewed DNS pinning, allowed-host/HTTPS validation, response cap, redirect cap, timeouts, retry, and durable circuit behavior.
+
+### Second-wave evidence
+
+- Focused provider/orchestrator/worker command: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_retrieval_fetching.py tests/unit/test_tasks.py -v`
+  - Exit 0: 49 passed. New regressions verify decoded byte accumulation, structured open-circuit failure, secret-free URLs, parameter-only API-key injection, and that no generic client request occurs for NewsAPI/GDELT injected adapters.
+- Full focused Task 6 command: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval*.py tests/unit/test_rss_contracts.py tests/unit/test_tasks.py tests/integration/test_api.py -v`
+  - Exit 0: 118 passed.
+- First second-wave static run was red: Ruff found two import-order errors and MyPy found three annotations/query-parameter typing errors. These were corrected without behavior changes.
+- Final static: `../../.venv/bin/ruff check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py`
+  - Exit 0, no findings.
+- Final types: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/orchestrator.py shared/procuresignal/retrieval/fetching.py shared/procuresignal/retrieval/providers/newsapi.py shared/procuresignal/retrieval/providers/gdelt.py shared/procuresignal/retrieval/providers/rss.py worker/tasks.py`
+  - Exit 0: success, no issues in 6 source files.
+- `git diff --check`
+  - Exit 0.
+
+No commit was attempted for this fix wave because the controller explicitly requested that sandbox-blocked git metadata operations be left to the controller.

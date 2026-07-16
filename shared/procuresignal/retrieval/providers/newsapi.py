@@ -1,12 +1,15 @@
 """NewsAPI.org provider implementation."""
 
+import json
 import os
+from dataclasses import replace
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
-from procuresignal.retrieval.base import NewsProvider, RawArticle
+from procuresignal.retrieval.base import NewsProvider, RawArticle, RetrievalFetchError
+from procuresignal.retrieval.registry import SourceDefinition
 
 
 class NewsAPIProvider(NewsProvider):
@@ -22,14 +25,45 @@ class NewsAPIProvider(NewsProvider):
         "nl": "nl",
     }
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        *,
+        source: SourceDefinition | None = None,
+        fetcher: Any = None,
+    ):
         """Initialize NewsAPI provider.
 
         Args:
             api_key: NewsAPI.org API key (defaults to NEWSAPI_KEY env var)
         """
-        super().__init__("newsapi")
+        if fetcher is None:
+            super().__init__("newsapi")
+        else:
+            self.name = "newsapi"
         self.api_key = api_key or os.getenv("NEWSAPI_KEY", "")
+        self.source = source
+        self.fetcher = fetcher
+        self.last_response_bytes = 0
+
+    async def close(self) -> None:
+        if self.fetcher is not None:
+            await self.fetcher.aclose()
+        else:
+            await super().close()
+
+    async def _json(self, url: str, params: dict) -> dict:
+        if self.fetcher is None:
+            return (await self._get(url, params)).json()
+        assert self.source is not None
+        result = await self.fetcher.fetch(replace(self.source, endpoint_url=url), params)
+        self.last_response_bytes += result.response_bytes
+        if not result.ok:
+            raise RetrievalFetchError(replace(result, response_bytes=self.last_response_bytes))
+        try:
+            return json.loads(result.content or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError("invalid_json") from exc
 
     async def health_check(self) -> bool:
         """Check if NewsAPI is accessible."""
@@ -62,7 +96,7 @@ class NewsAPIProvider(NewsProvider):
 
         for query in query_groups:
             try:
-                response = await self._get(
+                result = await self._json(
                     f"{self.BASE_URL}/everything",
                     {
                         "q": query,
@@ -71,8 +105,6 @@ class NewsAPIProvider(NewsProvider):
                         "apiKey": self.api_key,
                     },
                 )
-                result = response.json()
-
                 if result.get("status") != "ok":
                     continue
 
@@ -94,6 +126,8 @@ class NewsAPIProvider(NewsProvider):
                     )
                     articles.append(article)
 
+            except RetrievalFetchError:
+                raise
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     # Rate limit reached
@@ -112,7 +146,7 @@ class NewsAPIProvider(NewsProvider):
 
         for country in self.EUROPE_BUSINESS_COUNTRIES:
             try:
-                response = await self._get(
+                result = await self._json(
                     f"{self.BASE_URL}/top-headlines",
                     {
                         "country": country,
@@ -121,7 +155,6 @@ class NewsAPIProvider(NewsProvider):
                         "apiKey": self.api_key,
                     },
                 )
-                result = response.json()
                 if result.get("status") != "ok":
                     continue
 
@@ -143,6 +176,8 @@ class NewsAPIProvider(NewsProvider):
                         raw_payload_json={**item, "newsapi_country": country},
                     )
                     articles.append(article)
+            except RetrievalFetchError:
+                raise
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     break

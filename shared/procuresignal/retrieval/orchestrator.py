@@ -230,9 +230,11 @@ class RetrievalOrchestrator:
             provider.close = fetcher.aclose  # type: ignore[method-assign]
             return provider
         if definition.adapter is AdapterType.NEWSAPI:
-            return NewsAPIProvider()
+            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            return NewsAPIProvider(source=definition, fetcher=fetcher)
         if definition.adapter is AdapterType.GDELT:
-            return GDELTProvider()
+            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            return GDELTProvider(source=definition, fetcher=fetcher)
         raise ValueError("unsupported_adapter")
 
     @staticmethod
