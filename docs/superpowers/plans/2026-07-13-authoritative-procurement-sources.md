@@ -69,6 +69,10 @@ def test_production_registry_meets_phase_3_coverage() -> None:
     report = SOURCE_REGISTRY.validate_coverage()
     assert report.missing_domains == ()
     assert report.missing_authoritative_domains == ()
+    # Task 1 records the verified-access gap; Task 5 must close it.
+    assert report.missing_structured_authoritative_domains == (
+        ProcurementDomain.SANCTIONS,
+    )
     assert {"sanctions", "regulation"} <= {
         domain.value for domain in report.authoritative_domains
     }
@@ -145,7 +149,8 @@ must not be represented by a guessed URL.
 
 Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_source_registry.py -v`
 
-Expected: all registry tests pass and the snapshot exactly matches enabled IDs/version.
+Expected: all registry tests pass, the snapshot exactly matches the full reviewed catalog, and
+the report explicitly retains the structured-sanctions authority gap for Task 5.
 
 Run: `.venv/bin/ruff check shared/procuresignal/retrieval tests/unit/test_source_registry.py && .venv/bin/mypy shared/procuresignal/retrieval`
 
@@ -434,6 +439,9 @@ git commit -m "Replace hard-coded RSS feeds with source contracts"
 - Create: `tests/fixtures/retrieval/eu_financial_sanctions.xml`
 - Create: `tests/fixtures/retrieval/eu_financial_sanctions_expected.json`
 - Create: `tests/unit/test_sanctions_provider.py`
+- Modify: `shared/procuresignal/retrieval/catalog.py`
+- Modify: `tests/fixtures/retrieval/catalog_expected.json`
+- Modify: `tests/unit/test_source_registry.py`
 - Modify: `shared/procuresignal/retrieval/providers/__init__.py`
 - Modify: `shared/procuresignal/retrieval/__init__.py`
 
@@ -442,35 +450,49 @@ git commit -m "Replace hard-coded RSS feeds with source contracts"
 - Emits one `RawArticle` per stable designation/revision with `query_group="sanctions"`,
   `source_class="official"`, and official dataset provenance.
 
-- [ ] **Step 1: Add immutable official-format fixture and failing parser tests**
+- [ ] **Step 1: Verify supported official distribution access**
+
+Using only European Commission/DG FISMA or another primary EU owner source, verify either an
+anonymously accessible supported structured distribution or a documented credential-based
+download path. Record the ownership evidence URL, checked date, HTTP status, observed content
+type, authentication requirement, and supported endpoint in `catalog_expected.json`. Never
+copy a token into the registry or fixtures. Update `catalog.py` only after this verification.
+
+Enable `eu_financial_sanctions` only when the supported path can be fetched successfully under
+the documented runtime access model. Tests must show the Task 1 registry reports
+`missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)` and that the
+verified enabled definition changes it to `()`. If no supported access path can be verified,
+leave the source disabled, document the blocker, and do not claim Phase 3 coverage completion.
+
+- [ ] **Step 2: Add immutable official-format fixture and failing parser tests**
 
 Fixture cases must cover entity/person distinctions, aliases, multiple regulations, missing
 optional remarks, XML namespaces, non-ASCII names, duplicate aliases, and two revisions of one
 designation. Expected JSON stores stable IDs and exact normalized titles/descriptions; it is
 independent of parser output.
 
-- [ ] **Step 2: Add XML safety and identity tests**
+- [ ] **Step 3: Add XML safety and identity tests**
 
 Assert DOCTYPE/external-entity payload rejection, no network entity resolution, stable identity
 across field order changes, distinct identity across official revision changes, and official
 source URL retention.
 
-- [ ] **Step 3: Run tests and observe missing provider**
+- [ ] **Step 4: Run tests and observe missing provider**
 
 Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_sanctions_provider.py -v`
 
 Expected: collection fails because `EUSanctionsProvider` is absent.
 
-- [ ] **Step 4: Implement the structured adapter**
+- [ ] **Step 5: Implement the structured adapter**
 
 Parse with a standard-library XML parser only after explicitly rejecting `<!DOCTYPE` and
 `<!ENTITY` case-insensitively. Do not transform designations into compliance decisions; emit
 factual designation/update records for later matching and risk-event logic. Never log the full
 dataset or individual record bodies on failure.
 
-- [ ] **Step 5: Run sanctions, security, and static checks**
+- [ ] **Step 6: Run sanctions, registry, security, and static checks**
 
-Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_sanctions_provider.py tests/unit/test_retrieval_security.py -v`
+Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_sanctions_provider.py tests/unit/test_source_registry.py tests/unit/test_retrieval_security.py -v`
 
 Expected: all pass.
 
@@ -478,10 +500,10 @@ Run: `.venv/bin/ruff check shared/procuresignal/retrieval/providers/sanctions.py
 
 Expected: both succeed.
 
-- [ ] **Step 6: Commit Task 5**
+- [ ] **Step 7: Commit Task 5**
 
 ```bash
-git add shared/procuresignal/retrieval/providers tests/fixtures/retrieval/eu_financial_sanctions* tests/unit/test_sanctions_provider.py shared/procuresignal/retrieval/__init__.py
+git add shared/procuresignal/retrieval tests/fixtures/retrieval/eu_financial_sanctions* tests/fixtures/retrieval/catalog_expected.json tests/unit/test_sanctions_provider.py tests/unit/test_source_registry.py
 git commit -m "Ingest official EU sanctions designations"
 ```
 
@@ -573,6 +595,7 @@ against mocked HTTP, persists results to SQLite, reruns the same run/input, and 
 ```python
 assert coverage.missing_domains == ()
 assert coverage.missing_authoritative_domains == ()
+assert coverage.missing_structured_authoritative_domains == ()
 assert result.llm_calls == 0
 assert result.sources_succeeded >= 1
 assert result.sources_failed >= 1  # recorded partial-failure case
@@ -588,6 +611,10 @@ Run: `PYTHONPATH=shared .venv/bin/pytest tests/integration/test_retrieval_covera
 
 Expected before final wiring: FAIL on missing metrics or persistence integration. Implement only
 the wiring required by the approved design, then rerun to PASS.
+
+If Task 5 could not verify and enable a supported official structured sanctions distribution,
+this test must remain failed on `missing_structured_authoritative_domains`; the Phase 3 report
+must state the gap and completion must not be claimed. Do not weaken or skip the assertion.
 
 - [ ] **Step 3: Document configuration and source decisions**
 

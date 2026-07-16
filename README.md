@@ -68,6 +68,24 @@ Scheduled job IDs are stable and registered with `replace_existing=True`, `coale
 
 If a user has no saved preferences, feed generation falls back to general category-level procurement news. Saved preferences live in PostgreSQL and include supplier, location, category, misc signal filters, exclusions, and platform language. The currency monitor calls Frankfurter's latest EUR rates endpoint and displays daily central-bank exchange rates for procurement timing.
 
+### Retrieval source registry
+
+Authoritative and industry retrieval is controlled by the reviewed `sources-v1` registry. Each
+catalog entry can be overridden with `SOURCE_<SOURCE_ID>_ENABLED=true|false`; invalid values fail
+configuration instead of silently changing coverage. `NEWSAPI_KEY` adds NewsAPI, while GDELT is
+off unless `GDELT_ENABLED=true`. The example environment lists every production source toggle.
+
+Remote retrieval is HTTPS-only, allowlist- and DNS-pinned, and bounded to three attempts, three
+redirects, and 5 MiB of decoded response data (with 5 s connect/pool and 20 s read/write
+timeouts). These are reviewed security ceilings, not deployment knobs. The EU structured
+sanctions distribution remains deliberately disabled: its current official endpoint requires a
+query token and its approximately 24.7 MiB response exceeds the 5 MiB ceiling. Commission press
+coverage still supplies authoritative sanctions announcements, but it is not a structured list.
+
+Tests never call live source endpoints. Recorded XML fixtures are supplied through mocked fetch
+boundaries, OpenAI construction is poisoned, and SQLite verifies provenance, partial failure,
+deduplication, and same-run idempotency deterministically.
+
 ### Stopping Services
 
 ```bash

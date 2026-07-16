@@ -6,6 +6,7 @@ from .chat import ChatConversation, ChatMessage
 from .enrichment import EnrichmentCacheEntry
 from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
+from .retrieval import NewsRetrievalCircuit, NewsRetrievalRun, NewsRetrievalSourceOutcome
 from .risk_events import RiskEvent
 from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
 
@@ -26,4 +27,7 @@ __all__ = [
     "SignalSupplyChainImpact",
     "RiskEvent",
     "EnrichmentCacheEntry",
+    "NewsRetrievalRun",
+    "NewsRetrievalCircuit",
+    "NewsRetrievalSourceOutcome",
 ]

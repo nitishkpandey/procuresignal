@@ -3,7 +3,8 @@
 import hashlib
 from datetime import datetime
 
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import NewsArticleRaw
@@ -17,6 +18,8 @@ class ArticlePersistence:
     async def save_articles(
         session: AsyncSession,
         articles: list[RawArticle],
+        *,
+        commit: bool = True,
     ) -> tuple[int, int, int]:
         """Save articles to database with deduplication.
 
@@ -41,6 +44,11 @@ class ArticlePersistence:
                 )
 
                 # Use INSERT ... ON CONFLICT DO NOTHING for upsert
+                insert = (
+                    sqlite_insert
+                    if session.bind is not None and session.bind.dialect.name == "sqlite"
+                    else postgresql_insert
+                )
                 stmt = (
                     insert(NewsArticleRaw)
                     .values(
@@ -55,6 +63,13 @@ class ArticlePersistence:
                         canonical_url=article.canonical_url,
                         source_name=article.source_name,
                         source_url=article.source_url,
+                        source_id=article.source_id,
+                        source_class=article.source_class,
+                        source_domains=list(article.source_domains),
+                        source_countries=list(article.source_countries),
+                        registry_version=article.registry_version,
+                        retrieved_at=article.retrieved_at,
+                        source_published_at_raw=article.source_published_at_raw,
                         published_at=article.published_at,
                         language=article.language,
                         raw_payload_json=article.raw_payload_json,
@@ -63,7 +78,8 @@ class ArticlePersistence:
                     .on_conflict_do_nothing(index_elements=["ingest_hash"])
                 )
 
-                result = await session.execute(stmt)
+                async with session.begin_nested():
+                    result = await session.execute(stmt)
 
                 # Check if row was inserted
                 if getattr(result, "rowcount", 0) > 0:
@@ -76,7 +92,10 @@ class ArticlePersistence:
                 continue
 
         # Commit all inserts
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
 
         return inserted, duplicates, errors
 

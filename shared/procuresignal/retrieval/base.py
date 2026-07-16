@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Optional
 
 import httpx
@@ -12,6 +13,42 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
+
+class FetchFailureCode(StrEnum):
+    UNSAFE_URL = "unsafe_url"
+    NETWORK_ERROR = "network_error"
+    HTTP_STATUS = "http_status"
+    TRANSIENT_HTTP_STATUS = "transient_http_status"
+    RATE_LIMITED = "rate_limited"
+    UNEXPECTED_CONTENT_TYPE = "unexpected_content_type"
+    OVERSIZED_RESPONSE = "oversized_response"
+    TOO_MANY_REDIRECTS = "too_many_redirects"
+    CIRCUIT_OPEN = "circuit_open"
+    PARSER_ERROR = "parser_error"
+
+
+@dataclass(frozen=True, slots=True)
+class FetchResult:
+    content: bytes | None = None
+    content_type: str | None = None
+    final_url: str | None = None
+    status_code: int | None = None
+    failure_code: FetchFailureCode | None = None
+    retry_after_seconds: float | None = None
+    response_bytes: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return self.failure_code is None
+
+
+class RetrievalFetchError(RuntimeError):
+    """Structured fetch failure that never exposes response content."""
+
+    def __init__(self, result: FetchResult) -> None:
+        self.result = result
+        super().__init__((result.failure_code or FetchFailureCode.NETWORK_ERROR).value)
 
 
 @dataclass
@@ -35,6 +72,13 @@ class RawArticle:
     language: str = "en"
 
     raw_payload_json: Optional[dict] = None
+    source_id: Optional[str] = None
+    source_class: Optional[str] = None
+    source_domains: tuple[str, ...] = ()
+    source_countries: tuple[str, ...] = ()
+    registry_version: Optional[str] = None
+    retrieved_at: Optional[datetime] = None
+    source_published_at_raw: Optional[str] = None
 
 
 class NewsProvider(ABC):

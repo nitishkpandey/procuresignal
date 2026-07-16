@@ -1,9 +1,18 @@
 """GDELT Project provider (unlimited, free)."""
 
+import json
+from dataclasses import replace
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
-from procuresignal.retrieval.base import NewsProvider, RawArticle
+from procuresignal.retrieval.base import (
+    FetchFailureCode,
+    FetchResult,
+    NewsProvider,
+    RawArticle,
+    RetrievalFetchError,
+)
+from procuresignal.retrieval.registry import SourceDefinition
 
 
 class GDELTProvider(NewsProvider):
@@ -11,9 +20,39 @@ class GDELTProvider(NewsProvider):
 
     BASE_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 
-    def __init__(self) -> None:
+    def __init__(self, *, source: SourceDefinition | None = None, fetcher: Any = None) -> None:
         """Initialize GDELT provider."""
-        super().__init__("gdelt")
+        if fetcher is None:
+            super().__init__("gdelt")
+        else:
+            self.name = "gdelt"
+        self.source = source
+        self.fetcher = fetcher
+        self.last_response_bytes = 0
+
+    async def close(self) -> None:
+        if self.fetcher is not None:
+            await self.fetcher.aclose()
+        else:
+            await super().close()
+
+    async def _json(self, params: dict) -> dict:
+        if self.fetcher is None:
+            return (await self._get(self.BASE_URL, params)).json()
+        assert self.source is not None
+        result = await self.fetcher.fetch(self.source, params)
+        self.last_response_bytes += result.response_bytes
+        if not result.ok:
+            raise RetrievalFetchError(replace(result, response_bytes=self.last_response_bytes))
+        try:
+            return json.loads(result.content or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RetrievalFetchError(
+                FetchResult(
+                    failure_code=FetchFailureCode.PARSER_ERROR,
+                    response_bytes=self.last_response_bytes,
+                )
+            ) from exc
 
     async def health_check(self) -> bool:
         """Check if GDELT is accessible."""
@@ -60,8 +99,7 @@ class GDELTProvider(NewsProvider):
 
             for term in search_terms:
                 try:
-                    response = await self._get(
-                        self.BASE_URL,
+                    result = await self._json(
                         {
                             "query": term,
                             "mode": "json",
@@ -70,8 +108,6 @@ class GDELTProvider(NewsProvider):
                             "timespan": "7d",  # Last 7 days
                         },
                     )
-                    result = response.json()
-
                     for item in result.get("articles", []):
                         article = RawArticle(
                             provider="gdelt",
@@ -90,6 +126,8 @@ class GDELTProvider(NewsProvider):
                         )
                         articles.append(article)
 
+                except RetrievalFetchError:
+                    raise
                 except Exception:
                     continue
 

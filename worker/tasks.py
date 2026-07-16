@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine
 
@@ -17,11 +16,10 @@ from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsP
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
 from procuresignal.retrieval import (
-    ArticlePersistence,
-    GDELTProvider,
-    NewsAPIProvider,
+    REGISTRY_VERSION,
     RawArticle,
-    RSSProvider,
+    RetrievalOrchestrator,
+    configured_registry,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
 from sqlalchemy import desc, exists, or_, select, update
@@ -31,23 +29,6 @@ from worker.main import app
 from worker.signal_tasks import process_article_for_signals
 
 logger = logging.getLogger(__name__)
-
-NEWSAPI_QUERIES = [
-    "procurement supply chain",
-    "supplier risk",
-    "tariff changes",
-    "logistics disruption",
-    "regulatory compliance",
-    "European business procurement",
-]
-GDELT_QUERY_GROUPS = [
-    "supplier_risk",
-    "logistics_disruption",
-    "tariff_changes",
-    "regulatory",
-    "europe_business",
-]
-RSS_QUERY_GROUPS = ["supplier_risk", "regulatory", "logistics", "commodities"]
 
 # Cap enrichment per run so a backlog cannot monopolize the shared LLM budget.
 # The beat schedule drains the rest over subsequent runs.
@@ -327,55 +308,32 @@ def retrieve_news_task(self: Any) -> dict[str, Any]:
     """Retrieve news from all providers."""
 
     async def _run() -> dict[str, Any]:
-        async with session_scope() as session:
-            providers = [
-                ("newsapi", NewsAPIProvider(), NEWSAPI_QUERIES),
-                ("rss", RSSProvider(), RSS_QUERY_GROUPS),
-            ]
-            # GDELT's free endpoint aggressively 429s and can stall retrieval for minutes;
-            # opt in via GDELT_ENABLED=true only where a higher rate limit is available.
-            if os.getenv("GDELT_ENABLED", "false").lower() == "true":
-                providers.insert(1, ("gdelt", GDELTProvider(), GDELT_QUERY_GROUPS))
-            provider_results: dict[str, Any] = {}
-            total_fetched = 0
-            total_inserted = 0
-            total_duplicates = 0
-            total_errors = 0
-
-            for provider_name, provider, query_groups in providers:
-                try:
-                    articles = await provider.fetch_articles(query_groups)
-                    inserted, duplicates, errors = await ArticlePersistence.save_articles(
-                        session, articles
-                    )
-                    provider_results[provider_name] = {
-                        "fetched": len(articles),
-                        "inserted": inserted,
-                        "duplicates": duplicates,
-                        "errors": errors,
-                    }
-                    total_fetched += len(articles)
-                    total_inserted += inserted
-                    total_duplicates += duplicates
-                    total_errors += errors
-                except Exception as exc:
-                    logger.exception("%s retrieval failed: %s", provider_name, exc)
-                    provider_results[provider_name] = {"status": "error", "error": str(exc)}
-                finally:
-                    try:
-                        await provider.close()
-                    except Exception:
-                        logger.exception("Failed to close %s provider", provider_name)
-
-            return {
-                "status": "success",
-                "articles_fetched": total_fetched,
-                "articles_inserted": total_inserted,
-                "duplicates": total_duplicates,
-                "errors": total_errors,
-                "providers": provider_results,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+        now = datetime.utcnow()
+        scheduled = now.replace(hour=(now.hour // 6) * 6, minute=0, second=0, microsecond=0)
+        result = await RetrievalOrchestrator(
+            session_factory=session_scope,
+            registry=configured_registry(),
+            registry_version=REGISTRY_VERSION,
+            owner=str(self.request.id),
+        ).run(f"scheduled:{scheduled.isoformat()}Z")
+        return {
+            "status": "success" if result.status == "completed" else result.status,
+            "articles_fetched": result.articles_fetched,
+            "articles_inserted": result.articles_inserted,
+            "duplicates": result.duplicates,
+            "errors": result.errors,
+            "providers": {item.source_id: asdict(item) for item in result.source_results},
+            "timestamp": now.isoformat(),
+            "run_id": result.run_id,
+            "registry_version": result.registry_version,
+            "within_run_duplicates": result.within_run_duplicates,
+            "database_duplicates": result.database_duplicates,
+            "rejection_reasons": result.rejection_reasons,
+            "response_bytes": result.response_bytes,
+            "latency_ms": result.latency_ms,
+            "circuit_state": result.circuit_state,
+            "next_poll_at": result.next_poll_at.isoformat() if result.next_poll_at else None,
+        }
 
     return _run_with_retry(self, _run)
 

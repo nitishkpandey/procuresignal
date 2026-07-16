@@ -201,6 +201,8 @@ A deterministic test reads the committed registry and proves:
 
 - every Phase 3 domain appears in the registry;
 - sanctions and regulation include an authoritative source;
+- sanctions include an enabled official `structured_sanctions` source; official announcement
+  feeds count as sanctions news authority but do not satisfy this structured-data requirement;
 - two independent sources exist per domain where the matrix requires them;
 - enabled sources have recorded parser fixtures;
 - no enabled source uses plain HTTP, an unapproved hostname, or unknown licensing status;
@@ -238,4 +240,3 @@ Phase 3 is complete only when:
 - backend tests, Black, Ruff, MyPy, frontend lint/typecheck/tests/build, migrations, Compose
   validation, and independent whole-branch review pass;
 - limitations and rejected source candidates are documented in the Phase 3 completion report.
-
