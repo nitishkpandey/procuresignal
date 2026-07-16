@@ -8,10 +8,9 @@ propagation, and the Phase 3 source report are implemented. Production coverage 
 requires secret query injection and its 24,730,335-byte body exceeds the reviewed 5 MiB ceiling.
 No security boundary was weakened and no sanctions fixture or coverage claim was fabricated.
 
-One repository-wide formatting gate remains red on the pre-existing committed file
-`tests/unit/test_models.py`. It was not changed because this task is restricted to Task 7 wiring,
-docs, configuration, and report files. All changed Python files pass Black, Ruff, and MyPy, and
-the complete backend and frontend suites pass.
+The earlier Phase 3 formatting defect in `tests/unit/test_models.py` was corrected mechanically
+in the Task 7 commit so the final repository-wide Black gate is green. Black, Ruff, MyPy, and the
+complete backend and frontend suites all pass.
 
 ## TDD evidence
 
