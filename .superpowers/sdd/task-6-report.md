@@ -175,7 +175,7 @@ No commit was attempted, per controller instruction.
 
 ## Retry aggregation and renewal TOCTOU fix
 
-Same-owner retries now reconstruct terminal source results from durable `NewsRetrievalSourceOutcome` rows when a source claim is no longer available. Current-attempt and prior-attempt outcomes therefore appear exactly once in provider results and final run totals. A retry after every source completed can finalize the run from prior durable totals without refetching. Stored combined duplicate counts are conservatively surfaced as database duplicates because the audit schema does not persist the within-run/database split; response-byte metrics likewise remain available only for the active invocation because no durable byte column exists.
+Same-owner retries now reconstruct terminal source results from durable `NewsRetrievalSourceOutcome` rows when a source claim is no longer available. Current-attempt and prior-attempt outcomes therefore appear exactly once in provider results and final run totals. A retry after every source completed can finalize the run from prior durable totals without refetching.
 
 Run/source same-owner renewals now use ownership/status-guarded updates and require `rowcount == 1`. A concurrent completion/theft cannot return acquired/proceed. The failed run-renewal branch refreshes ORM state before classifying the result.
 
@@ -190,6 +190,23 @@ Run/source same-owner renewals now use ownership/status-guarded updates and requ
 - Ruff exited 0 with no findings.
 - Black exited 0 with 20 files unchanged.
 - MyPy exited 0 with no issues in 16 source files.
+- `git diff --check` exited 0.
+
+No commit was attempted, per controller instruction.
+
+## Schema-fidelity metrics
+
+The unreleased `f8c9d0` audit migration and `NewsRetrievalSourceOutcome` now include non-null, zero-defaulted `within_run_duplicate_count`, `database_duplicate_count`, and `response_bytes` columns while retaining combined `duplicate_count`. Successful source completion persists all three exact metrics. Failed terminal outcomes persist decoded response bytes. Retry reconstruction now restores exact per-source and run-level duplicate splits and bytes for both completed and failed prior outcomes.
+
+### Evidence
+
+- Migration/model/audit/orchestrator/worker focus: `PYTHONPATH=shared ../../.venv/bin/pytest tests/integration/test_retrieval_audit_migration.py tests/unit/test_models.py tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py -q`
+  - Exit 0: 52 passed. The populated SQLite migration verifies new zero defaults and downgrade preservation; model-created databases and retry round trips cover distinct nonzero duplicate splits and response bytes.
+- Full unit + integration: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit tests/integration -q`
+  - Exit 0: 351 passed.
+- Ruff exited 0 with no findings.
+- Black exited 0 with 20 files unchanged.
+- MyPy exited 0 with no issues in 17 source files.
 - `git diff --check` exited 0.
 
 No commit was attempted, per controller instruction.

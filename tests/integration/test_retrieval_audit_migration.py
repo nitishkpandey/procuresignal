@@ -55,6 +55,9 @@ def test_populated_retrieval_audit_upgrade_and_downgrade(monkeypatch) -> None:
             "outcome_detail",
             "lease_owner",
             "lease_expires_at",
+            "within_run_duplicate_count",
+            "database_duplicate_count",
+            "response_bytes",
         } <= outcome_columns
         assert sa.inspect(connection).has_table("news_retrieval_circuits")
         connection.execute(
@@ -66,6 +69,13 @@ def test_populated_retrieval_audit_upgrade_and_downgrade(monkeypatch) -> None:
             ),
             {"run_id": run_id, "now": datetime.utcnow()},
         )
+        metrics = connection.execute(
+            sa.text(
+                "SELECT within_run_duplicate_count,database_duplicate_count,response_bytes "
+                "FROM news_retrieval_source_outcomes WHERE source_id='ecb'"
+            )
+        ).one()
+        assert tuple(metrics) == (0, 0, 0)
         migration.downgrade()
         assert (
             connection.execute(

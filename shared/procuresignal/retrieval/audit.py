@@ -180,6 +180,7 @@ class RetrievalAuditRepository:
         detail: str | None = None,
         *,
         now: datetime,
+        response_bytes: int = 0,
     ) -> bool:
         if not isinstance(failure_code, FetchFailureCode):
             raise ValueError("failure_code must be a FetchFailureCode")
@@ -194,6 +195,7 @@ class RetrievalAuditRepository:
                 "failed_count": 1,
                 "failure_code": failure_code.value,
                 "outcome_detail": safe_detail,
+                "response_bytes": response_bytes,
                 "finished_at": now,
                 "lease_owner": None,
                 "lease_expires_at": None,

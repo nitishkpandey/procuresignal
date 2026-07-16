@@ -321,10 +321,11 @@ class RetrievalOrchestrator:
                     outcome.status,
                     outcome.fetched_count,
                     outcome.inserted_count,
-                    0,
-                    outcome.duplicate_count,
+                    outcome.within_run_duplicate_count,
+                    outcome.database_duplicate_count,
                     outcome.failed_count,
                     failure_code=outcome.failure_code,
+                    response_bytes=outcome.response_bytes,
                     next_poll_at=now + timedelta(minutes=definition.poll_minutes),
                 )
             provider: NewsProvider | None = None
@@ -364,6 +365,9 @@ class RetrievalOrchestrator:
                     accepted_count=len(deduped.articles),
                     inserted_count=inserted,
                     duplicate_count=database_duplicates + deduped.duplicates,
+                    within_run_duplicate_count=deduped.duplicates,
+                    database_duplicate_count=database_duplicates,
+                    response_bytes=response_bytes,
                     failed_count=errors,
                     commit=False,
                 )
@@ -404,17 +408,23 @@ class RetrievalOrchestrator:
                 code = code or FetchFailureCode.NETWORK_ERROR
                 if code is FetchFailureCode.PARSER_ERROR:
                     await repo.record_circuit_failure(definition.source_id, datetime.utcnow())
+                failure_response_bytes = (
+                    exc.result.response_bytes if isinstance(exc, RetrievalFetchError) else 0
+                )
                 await repo.fail_source(
-                    run_id, definition.source_id, self.owner, code, now=datetime.utcnow()
+                    run_id,
+                    definition.source_id,
+                    self.owner,
+                    code,
+                    now=datetime.utcnow(),
+                    response_bytes=failure_response_bytes,
                 )
                 return SourceRetrievalResult(
                     definition.source_id,
                     "failed",
                     errors=1,
                     failure_code=code.value,
-                    response_bytes=(
-                        exc.result.response_bytes if isinstance(exc, RetrievalFetchError) else 0
-                    ),
+                    response_bytes=failure_response_bytes,
                     circuit_state=await repo.circuit_state(definition.source_id, datetime.utcnow()),
                     latency_ms=int((time.monotonic() - started) * 1000),
                     next_poll_at=now + timedelta(minutes=definition.poll_minutes),

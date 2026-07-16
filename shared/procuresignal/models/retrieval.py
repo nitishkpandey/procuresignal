@@ -70,6 +70,15 @@ class NewsRetrievalSourceOutcome(BaseModel):
     duplicate_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    within_run_duplicate_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    database_duplicate_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    response_bytes: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     rejected_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )

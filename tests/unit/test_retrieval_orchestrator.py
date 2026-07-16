@@ -359,6 +359,10 @@ async def test_malformed_legacy_json_is_durable_parser_failure(maker, monkeypatc
     assert result.source_results[0].status == "failed"
     assert result.source_results[0].failure_code == "parser_error"
     assert "secret-body" not in repr(result)
+    async with maker() as session:
+        outcome = await session.scalar(select(NewsRetrievalSourceOutcome))
+        assert outcome is not None
+        assert outcome.response_bytes == len(malformed)
 
 
 async def test_five_parser_failures_open_circuit_and_half_open_success_closes(maker):
@@ -577,7 +581,10 @@ async def test_retry_aggregates_completed_prior_source_once(maker):
                 fetched_count=3,
                 accepted_count=3,
                 inserted_count=2,
-                duplicate_count=1,
+                duplicate_count=3,
+                within_run_duplicate_count=1,
+                database_duplicate_count=2,
+                response_bytes=77,
                 started_at=now,
                 finished_at=now,
             )
@@ -604,12 +611,19 @@ async def test_retry_aggregates_completed_prior_source_once(maker):
     assert result.status == "completed"
     assert result.articles_fetched == 4
     assert result.articles_inserted == 3
-    assert result.duplicates == 1
+    assert result.duplicates == 3
+    prior = next(item for item in result.source_results if item.source_id == "retry_a")
+    assert (prior.within_run_duplicates, prior.database_duplicates, prior.response_bytes) == (
+        1,
+        2,
+        77,
+    )
     assert {item.source_id for item in result.source_results} == {"retry_a", "retry_b"}
 
 
 async def test_retry_after_all_sources_complete_finalizes_prior_totals(maker):
     definition = source("already_done")
+    failed_definition = source("already_failed", "failed.test")
     now = datetime.utcnow()
     async with maker() as session:
         run = NewsRetrievalRun(
@@ -632,7 +646,23 @@ async def test_retry_after_all_sources_complete_finalizes_prior_totals(maker):
                 accepted_count=4,
                 inserted_count=3,
                 duplicate_count=1,
+                within_run_duplicate_count=1,
+                database_duplicate_count=0,
+                response_bytes=101,
                 rejected_count=1,
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        session.add(
+            NewsRetrievalSourceOutcome(
+                run_id=run.id,
+                source_id=failed_definition.source_id,
+                status="failed",
+                attempted_count=1,
+                failed_count=1,
+                failure_code="network_error",
+                response_bytes=29,
                 started_at=now,
                 finished_at=now,
             )
@@ -645,10 +675,13 @@ async def test_retry_after_all_sources_complete_finalizes_prior_totals(maker):
 
     result = await RetrievalOrchestrator(
         session_factory=maker,
-        registry=SourceRegistry((definition,)),
+        registry=SourceRegistry((definition, failed_definition)),
         registry_version="retry-v1",
         provider_factory=ForbiddenProvider,
         owner="celery-task-id",
     ).run("finalize-retry")
     assert result.status == "completed"
     assert (result.articles_fetched, result.articles_inserted, result.duplicates) == (5, 3, 1)
+    assert result.errors == 1
+    assert result.response_bytes == 130
+    assert result.rejection_reasons == {"network_error": 1}
