@@ -5,6 +5,7 @@ from .base import FetchFailureCode, FetchResult, NewsProvider, RawArticle
 from .catalog import REGISTRY_VERSION, SOURCE_REGISTRY
 from .deduplication import DeduplicationResult, article_fingerprint, deduplicate_within_run
 from .fetching import SafeFetcher
+from .orchestrator import RetrievalOrchestrator, RetrievalRunResult, SourceRetrievalResult
 from .persistence import ArticlePersistence
 from .providers import GDELTProvider, NewsAPIProvider, RSSProvider
 from .registry import (
@@ -30,6 +31,9 @@ __all__ = [
     "GDELTProvider",
     "RSSProvider",
     "ArticlePersistence",
+    "RetrievalOrchestrator",
+    "RetrievalRunResult",
+    "SourceRetrievalResult",
     "AdapterType",
     "CoverageReport",
     "ProcurementDomain",

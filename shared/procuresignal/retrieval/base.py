@@ -25,6 +25,7 @@ class FetchFailureCode(StrEnum):
     OVERSIZED_RESPONSE = "oversized_response"
     TOO_MANY_REDIRECTS = "too_many_redirects"
     CIRCUIT_OPEN = "circuit_open"
+    PARSER_ERROR = "parser_error"
 
 
 @dataclass(frozen=True, slots=True)

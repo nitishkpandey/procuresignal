@@ -52,6 +52,47 @@ def test_task_names_and_retry_config() -> None:
     assert prune_retention_task.max_retries == 2
 
 
+def test_retrieve_task_preserves_legacy_and_adds_audit_metrics(monkeypatch) -> None:
+    class Result:
+        status = "completed"
+        run_id = 42
+        registry_version = "sources-v1"
+        articles_fetched = 7
+        articles_inserted = 5
+        duplicates = 2
+        errors = 1
+        within_run_duplicates = 1
+        database_duplicates = 1
+        rejection_reasons = {"parser_error": 1}
+        response_bytes = 1234
+        latency_ms = 15
+        circuit_state = {"ecb_press": "closed"}
+        next_poll_at = datetime(2026, 7, 16, 13)
+        source_results = ()
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs):
+            assert kwargs["registry_version"] == "sources-v1"
+
+        async def run(self, run_key):
+            assert run_key.startswith("scheduled:")
+            return Result()
+
+    monkeypatch.setattr(tasks, "RetrievalOrchestrator", FakeOrchestrator)
+    result = retrieve_news_task.run()
+    assert {
+        "status",
+        "articles_fetched",
+        "articles_inserted",
+        "duplicates",
+        "errors",
+        "providers",
+        "timestamp",
+    } <= result.keys()
+    assert result["run_id"] == 42 and result["within_run_duplicates"] == 1
+    assert result["rejection_reasons"] == {"parser_error": 1}
+
+
 def test_celery_routes_and_schedule() -> None:
     """Celery should route periodic work onto the correct queues."""
     assert app.conf.task_routes["worker.tasks.retrieve_news_task"]["queue"] == "retrieval"

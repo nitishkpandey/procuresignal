@@ -1,92 +1,60 @@
-# Phase 2 Task 6: Integration And Full-Stack Verification
+# Task 6 Report: Orchestration, Persistence, Claims, and Worker Metrics
 
-## Delivered
+## Outcome
 
-- Added a SQLite integration test proving same-batch deterministic persistence and
-  compatible cache reuse, complete audit metadata, one cache hit, zero LLM client
-  construction/calls/tokens, two avoided calls, and an idempotent whole-batch retry
-  without duplicate processed rows.
-- Added the measured Phase 2 completion report at
-  `docs/superpowers/reports/2026-07-13-cost-optimized-enrichment.md`.
-- Preserved `docs/interview-preparation.md` without modification.
+Implemented registry-backed retrieval orchestration with durable run/source claims, stale-lease recovery, bounded global/per-host concurrency, partial-failure isolation, exact provider closure, provenance persistence, separate within-run/database duplicate metrics, redacted failure enums, and additive Celery worker metrics. The disabled structured-sanctions source remains disabled and no sanctions adapter was added.
 
-## Exact Verification
+## TDD evidence
 
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests/integration/test_api.py -k enrichment_pipeline_persists -v`
-  — 1 passed, 28 deselected.
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests/integration/test_api.py tests/unit/test_enrichment_pipeline.py tests/unit/test_enrichment_cache.py -v`
-  — 51 passed.
-- `DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase2-final-task6.db ../../.venv/bin/alembic upgrade head`
-  — passed.
-- `../../.venv/bin/alembic heads` — one head,
-  `f6a7b8_add_enrichment_routing_cache`.
-- `../../.venv/bin/black --check .` — passed, 131 files unchanged after
-  formatting the new integration test.
-- `../../.venv/bin/ruff check .` — passed.
-- `../../.venv/bin/mypy api worker shared` — success, 86 source files.
-- `PYTHONPATH=shared ../../.venv/bin/pytest tests -q` — 237 passed.
-- `npm run lint` — passed without warnings/errors.
-- `npm run typecheck` — passed on the final sequential run.
-- `npm run test:run` — 52 passed across 16 files.
-- `npm run build` — passed.
-- `docker compose config --quiet` — passed.
-- `git diff --check` — passed.
-- Incomplete-marker scan of the completion report — no matches.
+### Red
 
-## Diagnosed Environment Details
+1. `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -v`
+   - Exit 127 because this worktree does not contain `.venv`; no tests ran.
+2. `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -v`
+   - Exit 2 during collection with `ModuleNotFoundError: No module named 'procuresignal.retrieval.orchestrator'`, the expected missing-feature failure.
+3. `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_tasks.py -k retrieve -v`
+   - Exit 1: worker module lacked `RetrievalOrchestrator`, the expected worker-integration failure.
 
-The isolated worktree had no ignored `node_modules`. The first frontend attempt
-therefore could not resolve Next, TypeScript, or Vitest. A temporary ignored
-symlink to the main workspace's lockfile-compatible installed dependencies was
-used and removed after verification. A parallel typecheck then raced with the
-build's `.next` regeneration; the final sequential typecheck passed. Vitest
-reported the Vite CJS API deprecation, and the build reported Node experimental
-`localStorage` warnings; neither was a failure.
+### Green
 
-Compose validation covered configuration only, not image build or service runtime.
-No live PostgreSQL service was available; SQLite migration execution, populated
-migration tests, and PostgreSQL offline SQL generation provide the recorded phase
-evidence, while live data rehearsal remains a deployment prerequisite.
+1. `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -v`
+   - Exit 0: 3 passed.
+2. `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py -k 'retrieval or retrieve' -v`
+   - Exit 0: 4 passed, 14 deselected.
+3. `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval*.py tests/unit/test_tasks.py tests/integration/test_api.py -v`
+   - Exit 0: 104 passed (final fresh run after formatting and cleanup).
+4. `../../.venv/bin/ruff check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py`
+   - Initial exit 1 identified formatting/import issues; corrected with `ruff format` and `ruff check --fix`.
+5. `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/orchestrator.py shared/procuresignal/retrieval/persistence.py worker/tasks.py`
+   - Final exit 0: success, no issues in 3 source files.
+6. `git diff --check`
+   - Exit 0, no whitespace errors.
 
-## Commit
+## Files changed
 
-`69f64e6` — `Document cost-optimized enrichment results`.
+- `shared/procuresignal/retrieval/orchestrator.py`: result contracts, run-key claim/idempotency, stale reclaim, source claims, global six/per-host two semaphores, partial-failure handling, sanitized failure codes, lifecycle closure, aggregation and next-poll metrics.
+- `shared/procuresignal/retrieval/persistence.py`: all registry provenance fields, dialect-correct conflict inserts, and row savepoints.
+- `shared/procuresignal/retrieval/base.py`: parser failure enum.
+- `shared/procuresignal/retrieval/__init__.py`: public orchestration exports.
+- `worker/tasks.py`: one registry-backed orchestration path and legacy-plus-additive result payload.
+- `tests/unit/test_retrieval_orchestrator.py`: concurrency, partial failures, closure, claims, stale reclaim, rerun behavior, provenance, and duplicate-counter coverage.
+- `tests/unit/test_tasks.py`: worker result compatibility/audit metrics.
 
-`361c2f0` — `Strengthen enrichment audit integration coverage`.
+`docs/interview-preparation.md` and `tests/integration/test_api.py` were not modified. The existing integration suite was run in full as required and passed.
 
-The strengthened specification test passed immediately without a production-code
-change. Final review-fix verification: 237 backend tests passed; full-project
-Black and Ruff passed; MyPy found no issues in 86 source files; the report marker
-scan and `git diff --check` were clean.
+## Self-review
 
-## Final Review Fixes
+- Run and source claims commit before any network request.
+- Source outcomes and run completion occur in short transactions after fetch/persistence.
+- Two semaphores enforce six total and two per endpoint hostname.
+- Exceptions are exposed only as enum values; exception strings are neither persisted nor returned.
+- Every constructed provider is closed once from `finally`.
+- Persistence uses a nested transaction per row plus conflict-ignore, so an invalid row cannot erase previously successful inserts.
+- Provenance maps all Task 1 fields to `NewsArticleRaw`.
+- Structured sanctions remains explicitly absent because its registry entry is disabled and the default factory rejects non-RSS adapters.
+- Worker retains `status`, `articles_fetched`, `articles_inserted`, `duplicates`, `errors`, `providers`, and `timestamp`, while adding run/source audit metrics.
 
-- Added a durable raw lifecycle: terminal `skipped`/`quality_rejected` and retryable
-  `normalization_retry`/`deferred`, with attempt count and next-attempt timestamp.
-  Normalization pages until the post-normalization cap is filled, while transient
-  exceptions back off. Tests use more than one cap of initially unmarked newest
-  rejects and prove older valid rows progress; a transient row is retried only
-  after its backoff.
-- Deferred selection is independent of ingestion age and bounded by retention.
-  An aged due row is selected, redeferred, and excluded until its next attempt.
-- Restored deterministic supplier, region, and category evidence merging into
-  successful LLM output before cache/persistence, with an omission regression.
-- Replaced the router-only evaluation with a real `EnrichmentPipeline` run using
-  SQLite, production deterministic/cache routing, and immutable LLM recordings
-  stored separately from the expected baseline. The recordings include omitted
-  entities and invalid category/tag data; they are never synthesized in the test.
-  The gate remains 12/15 avoided accepted calls (80%) and at least 95% recall per
-  extraction dimension; current fixture achieves 100%.
-- Removed dead `EnrichmentPipeline.BATCH_SIZE`.
-- Added Alembic head `f7b8c9_terminal_enrichment`; fresh SQLite upgrade and
-  PostgreSQL offline SQL generation pass.
-- Added committed owner/expiry claims before normalization or LLM work. A two-session
-  SQLite concurrency regression proves only one worker normalizes/calls the fake
-  LLM and only one processed row is created. PostgreSQL uses `SKIP LOCKED` plus a
-  conditional ownership update; no lock spans the API call. Stale claims recover,
-  all route transitions clear leases, and unexpected failures durably release to
-  retry.
-- Added fresh-session task regressions proving reject-only and error-only lifecycle
-  updates survive writer close; empty enrichment reports normalization errors.
-- Final-fix backend evidence: 247 tests passed, Ruff clean, MyPy clean across 86
-  source files, and Black clean after formatting.
+## Concerns
+
+- The brief's literal `.venv/bin/pytest` path is absent inside the worktree; the repository-root environment at `../../.venv` was used.
+- Existing NewsAPI/GDELT provider classes remain available, but the worker now follows the reviewed default-enabled registry. The catalog contains no enabled NEWSAPI/GDELT source definitions, so they are not a parallel execution path. Adding such definitions would require a separately reviewed registry/snapshot change.
