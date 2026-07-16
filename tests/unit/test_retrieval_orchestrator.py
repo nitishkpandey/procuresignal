@@ -551,3 +551,104 @@ async def test_same_retry_owner_resumes_live_run_lease(maker):
     resumed, reacquired, status = await retry._claim("retry-run", datetime.utcnow())
     assert resumed.id == run.id
     assert reacquired and status == "running"
+
+
+async def test_retry_aggregates_completed_prior_source_once(maker):
+    first_source = source("retry_a", "a.test")
+    second_source = source("retry_b", "b.test")
+    now = datetime.utcnow()
+    async with maker() as session:
+        run = NewsRetrievalRun(
+            run_key="aggregate-retry",
+            status="running",
+            registry_version="retry-v1",
+            lease_owner="celery-task-id",
+            lease_expires_at=now + timedelta(minutes=60),
+            started_at=now,
+        )
+        session.add(run)
+        await session.flush()
+        session.add(
+            NewsRetrievalSourceOutcome(
+                run_id=run.id,
+                source_id=first_source.source_id,
+                status="completed",
+                attempted_count=1,
+                fetched_count=3,
+                accepted_count=3,
+                inserted_count=2,
+                duplicate_count=1,
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        await session.commit()
+
+    class Provider:
+        def __init__(self, definition):
+            self.definition = definition
+
+        async def fetch_articles(self, _groups):
+            return [article(self.definition, "retry-b")]
+
+        async def close(self):
+            pass
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((first_source, second_source)),
+        registry_version="retry-v1",
+        provider_factory=Provider,
+        owner="celery-task-id",
+    ).run("aggregate-retry")
+    assert result.status == "completed"
+    assert result.articles_fetched == 4
+    assert result.articles_inserted == 3
+    assert result.duplicates == 1
+    assert {item.source_id for item in result.source_results} == {"retry_a", "retry_b"}
+
+
+async def test_retry_after_all_sources_complete_finalizes_prior_totals(maker):
+    definition = source("already_done")
+    now = datetime.utcnow()
+    async with maker() as session:
+        run = NewsRetrievalRun(
+            run_key="finalize-retry",
+            status="running",
+            registry_version="retry-v1",
+            lease_owner="celery-task-id",
+            lease_expires_at=now + timedelta(minutes=60),
+            started_at=now,
+        )
+        session.add(run)
+        await session.flush()
+        session.add(
+            NewsRetrievalSourceOutcome(
+                run_id=run.id,
+                source_id=definition.source_id,
+                status="completed",
+                attempted_count=1,
+                fetched_count=5,
+                accepted_count=4,
+                inserted_count=3,
+                duplicate_count=1,
+                rejected_count=1,
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        await session.commit()
+
+    class ForbiddenProvider:
+        def __init__(self, _definition):
+            raise AssertionError("completed source was fetched again")
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="retry-v1",
+        provider_factory=ForbiddenProvider,
+        owner="celery-task-id",
+    ).run("finalize-retry")
+    assert result.status == "completed"
+    assert (result.articles_fetched, result.articles_inserted, result.duplicates) == (5, 3, 1)

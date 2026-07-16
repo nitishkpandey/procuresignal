@@ -173,6 +173,27 @@ Transport failure codes are not incremented by the orchestrator, preventing doub
 
 No commit was attempted, per controller instruction.
 
+## Retry aggregation and renewal TOCTOU fix
+
+Same-owner retries now reconstruct terminal source results from durable `NewsRetrievalSourceOutcome` rows when a source claim is no longer available. Current-attempt and prior-attempt outcomes therefore appear exactly once in provider results and final run totals. A retry after every source completed can finalize the run from prior durable totals without refetching. Stored combined duplicate counts are conservatively surfaced as database duplicates because the audit schema does not persist the within-run/database split; response-byte metrics likewise remain available only for the active invocation because no durable byte column exists.
+
+Run/source same-owner renewals now use ownership/status-guarded updates and require `rowcount == 1`. A concurrent completion/theft cannot return acquired/proceed. The failed run-renewal branch refreshes ORM state before classifying the result.
+
+### Evidence
+
+- Targeted retry regressions: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k 'retry_aggregates or all_sources_complete or retry_owner' -v`
+  - Exit 0: 3 passed, 16 deselected. Attempt A + retry B totals are included once; an all-sources-complete retry finalizes prior totals and never constructs a provider.
+- Focused audit/orchestrator/worker: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py -q`
+  - Exit 0: 43 passed.
+- Full backend unit + API integration: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit tests/integration/test_api.py -q`
+  - Exit 0: 335 passed.
+- Ruff exited 0 with no findings.
+- Black exited 0 with 20 files unchanged.
+- MyPy exited 0 with no issues in 16 source files.
+- `git diff --check` exited 0.
+
+No commit was attempted, per controller instruction.
+
 ## Final whole-branch review fixes
 
 ### Lease fencing and atomic persistence

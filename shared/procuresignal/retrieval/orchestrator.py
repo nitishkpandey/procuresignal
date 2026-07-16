@@ -15,7 +15,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from procuresignal.models import NewsRetrievalRun
+from procuresignal.models import NewsRetrievalRun, NewsRetrievalSourceOutcome
 from procuresignal.retrieval.audit import LEASE_DURATION, RetrievalAuditRepository
 from procuresignal.retrieval.base import (
     FetchFailureCode,
@@ -226,7 +226,7 @@ class RetrievalOrchestrator:
             if run.status == "completed":
                 return run, False, "already_completed"
             if run.status == "running" and run.lease_owner == self.owner:
-                await session.execute(
+                renewed = await session.execute(
                     update(NewsRetrievalRun)
                     .where(
                         NewsRetrievalRun.id == run.id,
@@ -239,7 +239,14 @@ class RetrievalOrchestrator:
                     )
                 )
                 await session.commit()
-                return run, True, "running"
+                if getattr(renewed, "rowcount", 0) == 1:
+                    return run, True, "running"
+                await session.refresh(run)
+                return (
+                    run,
+                    False,
+                    ("already_completed" if run.status == "completed" else "already_running"),
+                )
             result = await session.execute(
                 update(NewsRetrievalRun)
                 .where(
@@ -301,7 +308,25 @@ class RetrievalOrchestrator:
         async with self.session_factory() as session:
             repo = RetrievalAuditRepository(session)
             if not await repo.claim_source(run_id, definition.source_id, self.owner, now):
-                return SourceRetrievalResult(definition.source_id, "already_claimed")
+                outcome = await session.scalar(
+                    select(NewsRetrievalSourceOutcome).where(
+                        NewsRetrievalSourceOutcome.run_id == run_id,
+                        NewsRetrievalSourceOutcome.source_id == definition.source_id,
+                    )
+                )
+                if outcome is None or outcome.status == "running":
+                    return SourceRetrievalResult(definition.source_id, "already_claimed")
+                return SourceRetrievalResult(
+                    definition.source_id,
+                    outcome.status,
+                    outcome.fetched_count,
+                    outcome.inserted_count,
+                    0,
+                    outcome.duplicate_count,
+                    outcome.failed_count,
+                    failure_code=outcome.failure_code,
+                    next_poll_at=now + timedelta(minutes=definition.poll_minutes),
+                )
             provider: NewsProvider | None = None
             try:
                 provider = self._provider(definition, repo)

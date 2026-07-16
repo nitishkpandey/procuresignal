@@ -97,7 +97,7 @@ class RetrievalAuditRepository:
             and existing.lease_expires_at is not None
             and existing.lease_expires_at >= now
         ):
-            await self._execute(
+            renewed = await self._execute(
                 update(NewsRetrievalSourceOutcome)
                 .where(
                     NewsRetrievalSourceOutcome.id == existing.id,
@@ -110,7 +110,7 @@ class RetrievalAuditRepository:
                 )
             )
             await self.session.commit()
-            return True
+            return renewed.rowcount == 1
         await self.session.commit()
         result = await self._execute(
             update(NewsRetrievalSourceOutcome)
