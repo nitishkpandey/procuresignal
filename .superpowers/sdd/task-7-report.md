@@ -80,9 +80,10 @@ to raise; `result.llm_calls == 0` is asserted.
 - `PYTHONPATH=shared ../../.venv/bin/mypy api worker shared`
   - Exit 0: `Success: no issues found in 94 source files`.
 - `../../.venv/bin/black --check .`
-  - Exit 1: only `tests/unit/test_models.py` would be reformatted. This file has no Task 7 diff.
-- `../../.venv/bin/black --check tests/integration/test_retrieval_coverage.py shared/procuresignal/retrieval/orchestrator.py`
-  - Exit 0: both files would be left unchanged.
+  - Initial exit 1: only the earlier Phase 3 `tests/unit/test_models.py` needed formatting.
+  - `../../.venv/bin/black tests/unit/test_models.py` reformatted that file mechanically and it
+    is included in the Task 7 diff.
+  - Final repository-wide exit 0: 150 files would be left unchanged.
 
 ### Migrations
 
