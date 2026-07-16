@@ -6,7 +6,7 @@ import asyncio
 import os
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import AsyncContextManager, Callable
 from urllib.parse import urlsplit
@@ -73,6 +73,21 @@ class RetrievalRunResult:
     circuit_state: dict[str, str] = field(default_factory=dict)
     next_poll_at: datetime | None = None
 
+    @property
+    def llm_calls(self) -> int:
+        """Retrieval is deterministic and never enters an enrichment/LLM path."""
+        return 0
+
+    @property
+    def sources_succeeded(self) -> int:
+        """Count sources that completed their isolated retrieval outcome."""
+        return sum(item.status == "completed" for item in self.source_results)
+
+    @property
+    def sources_failed(self) -> int:
+        """Count sources that failed without aborting the retrieval run."""
+        return sum(item.status == "failed" for item in self.source_results)
+
 
 ProviderFactory = Callable[[SourceDefinition], NewsProvider]
 SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
@@ -95,7 +110,7 @@ GDELT_QUERY_GROUPS = (
 
 
 def configured_registry(base: SourceRegistry = SOURCE_REGISTRY) -> SourceRegistry:
-    """Add legacy providers only when their established deployment toggles enable them."""
+    """Apply explicit source toggles and add opt-in legacy providers."""
     additions: list[SourceDefinition] = []
     if os.getenv("NEWSAPI_KEY"):
         additions.append(
@@ -151,7 +166,18 @@ def configured_registry(base: SourceRegistry = SOURCE_REGISTRY) -> SourceRegistr
                 license_note="GDELT public API metadata with original publisher links.",
             )
         )
-    return SourceRegistry((*base.sources, *additions))
+    configured: list[SourceDefinition] = []
+    for source in (*base.sources, *additions):
+        variable = f"SOURCE_{source.source_id.upper()}_ENABLED"
+        raw_override = os.getenv(variable)
+        if raw_override is None:
+            configured.append(source)
+            continue
+        normalized = raw_override.strip().lower()
+        if normalized not in {"true", "false"}:
+            raise ValueError(f"{variable} must be true or false")
+        configured.append(replace(source, enabled_by_default=normalized == "true"))
+    return SourceRegistry(tuple(configured))
 
 
 class RetrievalOrchestrator:
