@@ -314,6 +314,7 @@ def retrieve_news_task(self: Any) -> dict[str, Any]:
             session_factory=session_scope,
             registry=configured_registry(),
             registry_version=REGISTRY_VERSION,
+            owner=str(self.request.id),
         ).run(f"scheduled:{scheduled.isoformat()}Z")
         return {
             "status": "success" if result.status == "completed" else result.status,

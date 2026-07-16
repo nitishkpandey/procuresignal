@@ -18,6 +18,8 @@ class ArticlePersistence:
     async def save_articles(
         session: AsyncSession,
         articles: list[RawArticle],
+        *,
+        commit: bool = True,
     ) -> tuple[int, int, int]:
         """Save articles to database with deduplication.
 
@@ -90,7 +92,10 @@ class ArticlePersistence:
                 continue
 
         # Commit all inserts
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
 
         return inserted, duplicates, errors
 

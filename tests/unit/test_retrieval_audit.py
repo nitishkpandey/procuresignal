@@ -51,6 +51,7 @@ async def test_two_sessions_claim_run_once_and_stale_lease_recovers(sessions) ->
             "worker-2", now + timedelta(minutes=66)
         )
         assert recovered is not None
+        assert recovered.attempted_count == 2
 
 
 async def test_concurrent_sqlite_claim_race_has_one_owner(sessions) -> None:
@@ -132,6 +133,13 @@ async def test_source_stale_lease_reclaim_and_stale_owner_cannot_complete(sessio
         repo = RetrievalAuditRepository(session)
         assert await repo.claim_source(run.id, "source", "old", now)
         assert await repo.claim_source(run.id, "source", "new", now + timedelta(minutes=66))
+        outcome = await session.scalar(
+            select(NewsRetrievalSourceOutcome).where(
+                NewsRetrievalSourceOutcome.run_id == run.id,
+                NewsRetrievalSourceOutcome.source_id == "source",
+            )
+        )
+        assert outcome is not None and outcome.attempted_count == 2
         assert not await repo.complete_source(run.id, "source", "old", now=now)
         assert await repo.complete_source(run.id, "source", "new", now=now)
 

@@ -57,7 +57,12 @@ class RetrievalAuditRepository:
                     ),
                 ),
             )
-            .values(status="running", lease_owner=owner, lease_expires_at=now + LEASE_DURATION)
+            .values(
+                status="running",
+                lease_owner=owner,
+                lease_expires_at=now + LEASE_DURATION,
+                attempted_count=NewsRetrievalRun.attempted_count + 1,
+            )
         )
         if result.rowcount != 1:
             await self.session.rollback()
@@ -65,7 +70,48 @@ class RetrievalAuditRepository:
         await self.session.commit()
         return await self.session.get(NewsRetrievalRun, candidate_id)
 
+    async def fence_run(self, run_id: int, owner: str, now: datetime) -> bool:
+        result = await self._execute(
+            update(NewsRetrievalRun)
+            .where(
+                NewsRetrievalRun.id == run_id,
+                NewsRetrievalRun.status == "running",
+                NewsRetrievalRun.lease_owner == owner,
+                NewsRetrievalRun.lease_expires_at >= now,
+            )
+            .values(lease_expires_at=NewsRetrievalRun.lease_expires_at)
+        )
+        return result.rowcount == 1
+
     async def claim_source(self, run_id: int, source_id: str, owner: str, now: datetime) -> bool:
+        existing = await self.session.scalar(
+            select(NewsRetrievalSourceOutcome).where(
+                NewsRetrievalSourceOutcome.run_id == run_id,
+                NewsRetrievalSourceOutcome.source_id == source_id,
+            )
+        )
+        if (
+            existing is not None
+            and existing.status == "running"
+            and existing.lease_owner == owner
+            and existing.lease_expires_at is not None
+            and existing.lease_expires_at >= now
+        ):
+            await self._execute(
+                update(NewsRetrievalSourceOutcome)
+                .where(
+                    NewsRetrievalSourceOutcome.id == existing.id,
+                    NewsRetrievalSourceOutcome.status == "running",
+                    NewsRetrievalSourceOutcome.lease_owner == owner,
+                )
+                .values(
+                    lease_expires_at=now + LEASE_DURATION,
+                    attempted_count=NewsRetrievalSourceOutcome.attempted_count + 1,
+                )
+            )
+            await self.session.commit()
+            return True
+        await self.session.commit()
         result = await self._execute(
             update(NewsRetrievalSourceOutcome)
             .where(
@@ -74,7 +120,12 @@ class RetrievalAuditRepository:
                 NewsRetrievalSourceOutcome.status == "running",
                 NewsRetrievalSourceOutcome.lease_expires_at < now,
             )
-            .values(lease_owner=owner, lease_expires_at=now + LEASE_DURATION, started_at=now)
+            .values(
+                lease_owner=owner,
+                lease_expires_at=now + LEASE_DURATION,
+                started_at=now,
+                attempted_count=NewsRetrievalSourceOutcome.attempted_count + 1,
+            )
         )
         if result.rowcount == 1:
             await self.session.commit()
@@ -102,7 +153,14 @@ class RetrievalAuditRepository:
             return False
 
     async def complete_source(
-        self, run_id: int, source_id: str, owner: str, *, now: datetime, **counts: int
+        self,
+        run_id: int,
+        source_id: str,
+        owner: str,
+        *,
+        now: datetime,
+        commit: bool = True,
+        **counts: int,
     ) -> bool:
         values: dict[str, object] = {
             "status": "completed",
@@ -111,7 +169,7 @@ class RetrievalAuditRepository:
             "lease_expires_at": None,
         }
         values.update(counts)
-        return await self._update_source(run_id, source_id, owner, now, values)
+        return await self._update_source(run_id, source_id, owner, now, values, commit=commit)
 
     async def fail_source(
         self,
@@ -143,7 +201,14 @@ class RetrievalAuditRepository:
         )
 
     async def _update_source(
-        self, run_id: int, source_id: str, owner: str, now: datetime, values: dict[str, object]
+        self,
+        run_id: int,
+        source_id: str,
+        owner: str,
+        now: datetime,
+        values: dict[str, object],
+        *,
+        commit: bool = True,
     ) -> bool:
         result = await self._execute(
             update(NewsRetrievalSourceOutcome)
@@ -156,7 +221,8 @@ class RetrievalAuditRepository:
             )
             .values(**values)
         )
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
         return result.rowcount == 1
 
     async def complete_run(self, run_id: int, owner: str, *, now: datetime, **counts: int) -> bool:

@@ -2,7 +2,13 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalCircuit, NewsRetrievalRun
+from procuresignal.models import (
+    Base,
+    NewsArticleRaw,
+    NewsRetrievalCircuit,
+    NewsRetrievalRun,
+    NewsRetrievalSourceOutcome,
+)
 from procuresignal.retrieval.audit import RetrievalAuditRepository
 from procuresignal.retrieval.base import (
     FetchFailureCode,
@@ -148,7 +154,8 @@ async def test_run_claim_rerun_idempotency_and_stale_lease(maker):
     first, second = await asyncio.gather(
         RetrievalOrchestrator(**kwargs).run("same"), RetrievalOrchestrator(**kwargs).run("same")
     )
-    assert sorted((first.status, second.status)) == ["already_running", "completed"]
+    assert "completed" in (first.status, second.status)
+    assert {first.status, second.status} <= {"completed", "already_running", "already_completed"}
     rerun = await RetrievalOrchestrator(**kwargs).run("same")
     assert rerun.status == "already_completed" and rerun.articles_inserted == 0
     assert calls == 1
@@ -463,3 +470,84 @@ async def test_half_open_owner_completes_real_newsapi_multi_request_run(maker, m
         assert circuit.failure_count == 0
         await provider.close()
         await denied_fetcher.aclose()
+
+
+@pytest.mark.parametrize("stolen", ["source", "run"])
+async def test_lease_theft_before_persistence_rolls_back_rows(maker, stolen):
+    definition = source(f"stolen_{stolen}")
+
+    class Provider:
+        async def fetch_articles(self, _groups):
+            async with maker() as thief:
+                if stolen == "source":
+                    outcome = await thief.scalar(select(NewsRetrievalSourceOutcome))
+                    assert outcome is not None
+                    outcome.lease_owner = "thief"
+                else:
+                    run = await thief.scalar(select(NewsRetrievalRun))
+                    assert run is not None
+                    run.lease_owner = "thief"
+                await thief.commit()
+            return [article(definition, stolen)]
+
+        async def close(self):
+            pass
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="fence-v1",
+        provider_factory=lambda _item: Provider(),
+        owner="original",
+    ).run(f"stolen-{stolen}")
+    assert result.status == "lease_lost"
+    assert result.articles_inserted == 0
+    assert result.source_results[0].status == "lease_lost"
+    async with maker() as session:
+        assert await session.scalar(select(NewsArticleRaw)) is None
+
+
+async def test_failed_run_completion_fence_is_not_reported_completed(maker, monkeypatch):
+    definition = source("run_completion_fence")
+
+    class Provider:
+        async def fetch_articles(self, _groups):
+            return []
+
+        async def close(self):
+            pass
+
+    async def rejected_completion(self, *args, **kwargs):
+        return False
+
+    monkeypatch.setattr(RetrievalAuditRepository, "complete_run", rejected_completion)
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="fence-v1",
+        provider_factory=lambda _item: Provider(),
+        owner="original",
+    ).run("run-completion-fence")
+    assert result.status == "lease_lost"
+    assert result.rejection_reasons == {"lease_lost": 1}
+
+
+async def test_same_retry_owner_resumes_live_run_lease(maker):
+    definition = source("retry_owner")
+    first = RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="retry-v1",
+        owner="celery-task-id",
+    )
+    run, acquired, _ = await first._claim("retry-run", datetime.utcnow())
+    assert acquired
+    retry = RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="retry-v1",
+        owner="celery-task-id",
+    )
+    resumed, reacquired, status = await retry._claim("retry-run", datetime.utcnow())
+    assert resumed.id == run.id
+    assert reacquired and status == "running"

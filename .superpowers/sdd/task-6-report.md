@@ -172,3 +172,40 @@ Transport failure codes are not incremented by the orchestrator, preventing doub
 - Ruff initially found one import-order issue in the new test, fixed mechanically. Final Ruff and `git diff --check` both exit 0.
 
 No commit was attempted, per controller instruction.
+
+## Final whole-branch review fixes
+
+### Lease fencing and atomic persistence
+
+- `ArticlePersistence.save_articles(..., commit=False)` keeps raw inserts in the caller's transaction.
+- The orchestrator fences the active run with an ownership/expiry-guarded write before persistence, then performs inserts and the guarded source completion in the same transaction. A failed run or source fence rolls back all candidate rows and returns `lease_lost`; it does not reset the circuit or report completion.
+- Circuit success is recorded only after the source transaction commits under a valid fence.
+- A rejected final `complete_run` returns a run-level `lease_lost` result with an explicit rejection instead of `completed`.
+
+### Retry ownership and takeover accounting
+
+- `RetrievalOrchestrator` accepts an explicit owner token. The Celery retrieval task supplies its stable task ID, which Celery preserves across retries.
+- A retry with the same owner resumes its live run/source leases; a different owner remains `already_running` until expiry or hard-death reclaim.
+- Expired run and source takeovers atomically increment `attempted_count`; new source claims start at one.
+
+### Red/green evidence
+
+- Red lease theft: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k lease_theft -v`
+  - Exit 1: 2 failed because rows inserted inside implicit SQLite savepoints survived the later fence rollback. Moving the guarded run write before savepoints established the outer write transaction and made rollback effective.
+- Green lease theft: same command after the transaction-boundary correction.
+  - Exit 0: 2 passed, 13 deselected. Both source-owner theft and run-owner theft return `lease_lost`, report zero inserts, and leave no raw rows.
+- Initial covering run exposed three test/implementation issues: missing run takeover increment, an unconditional write-based same-owner source check causing SQLite lock contention, and a race assertion that excluded the honest `already_completed` result. Run takeover now increments atomically; source resume first verifies matching live ownership before atomically renewing its lease/attempt count; the race contract accepts either running or completed observation while requiring exactly one completed execution.
+- Green covering audit/orchestrator/worker: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py -q`
+  - Exit 0: 41 passed.
+- Full backend unit plus API integration: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit tests/integration/test_api.py -q`
+  - Exit 0: 333 passed.
+- Ruff: `../../.venv/bin/ruff check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py`
+  - Exit 0, no findings.
+- Black: `../../.venv/bin/black --check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py`
+  - Exit 0: 20 files unchanged.
+- MyPy: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval worker/tasks.py`
+  - Exit 0: success, no issues in 16 source files.
+- `git diff --check`
+  - Exit 0.
+
+No commit was attempted, per controller instruction.

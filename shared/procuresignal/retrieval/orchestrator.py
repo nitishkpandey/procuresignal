@@ -188,12 +188,13 @@ class RetrievalOrchestrator:
         registry: SourceRegistry = SOURCE_REGISTRY,
         registry_version: str = REGISTRY_VERSION,
         provider_factory: ProviderFactory | None = None,
+        owner: str | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.registry = registry
         self.registry_version = registry_version
         self.provider_factory = provider_factory
-        self.owner = str(uuid.uuid4())
+        self.owner = owner or str(uuid.uuid4())
         self._global = asyncio.Semaphore(6)
         self._hosts: dict[str, asyncio.Semaphore] = {}
 
@@ -224,6 +225,21 @@ class RetrievalOrchestrator:
                     assert run is not None
             if run.status == "completed":
                 return run, False, "already_completed"
+            if run.status == "running" and run.lease_owner == self.owner:
+                await session.execute(
+                    update(NewsRetrievalRun)
+                    .where(
+                        NewsRetrievalRun.id == run.id,
+                        NewsRetrievalRun.status == "running",
+                        NewsRetrievalRun.lease_owner == self.owner,
+                    )
+                    .values(
+                        lease_expires_at=now + LEASE_DURATION,
+                        attempted_count=NewsRetrievalRun.attempted_count + 1,
+                    )
+                )
+                await session.commit()
+                return run, True, "running"
             result = await session.execute(
                 update(NewsRetrievalRun)
                 .where(
@@ -302,13 +318,19 @@ class RetrievalOrchestrator:
                     article.registry_version = article.registry_version or self.registry_version
                     article.retrieved_at = article.retrieved_at or retrieved_at
                 deduped = deduplicate_within_run(articles)
+                if not await repo.fence_run(run_id, self.owner, datetime.utcnow()):
+                    await session.rollback()
+                    return SourceRetrievalResult(
+                        definition.source_id,
+                        "lease_lost",
+                        errors=1,
+                        failure_code="lease_lost",
+                    )
                 inserted, database_duplicates, errors = await ArticlePersistence.save_articles(
-                    session, list(deduped.articles)
+                    session, list(deduped.articles), commit=False
                 )
                 response_bytes = int(getattr(provider, "last_response_bytes", 0))
-                await repo.record_circuit_success(definition.source_id, self.owner)
-                circuit_state = await repo.circuit_state(definition.source_id, datetime.utcnow())
-                await repo.complete_source(
+                completed = await repo.complete_source(
                     run_id,
                     definition.source_id,
                     self.owner,
@@ -318,7 +340,19 @@ class RetrievalOrchestrator:
                     inserted_count=inserted,
                     duplicate_count=database_duplicates + deduped.duplicates,
                     failed_count=errors,
+                    commit=False,
                 )
+                if not completed:
+                    await session.rollback()
+                    return SourceRetrievalResult(
+                        definition.source_id,
+                        "lease_lost",
+                        errors=1,
+                        failure_code="lease_lost",
+                    )
+                await session.commit()
+                await repo.record_circuit_success(definition.source_id, self.owner)
+                circuit_state = await repo.circuit_state(definition.source_id, datetime.utcnow())
                 return SourceRetrievalResult(
                     definition.source_id,
                     "completed",
@@ -387,8 +421,22 @@ class RetrievalOrchestrator:
         for item in results:
             if item.failure_code:
                 reasons[item.failure_code] = reasons.get(item.failure_code, 0) + 1
+        if any(item.status == "lease_lost" for item in results):
+            return RetrievalRunResult(
+                "lease_lost",
+                run.id,
+                self.registry_version,
+                results,
+                fetched,
+                inserted,
+                within + database,
+                errors,
+                within,
+                database,
+                reasons,
+            )
         async with self.session_factory() as session:
-            await RetrievalAuditRepository(session).complete_run(
+            completed = await RetrievalAuditRepository(session).complete_run(
                 run.id,
                 self.owner,
                 now=datetime.utcnow(),
@@ -397,6 +445,20 @@ class RetrievalOrchestrator:
                 inserted_count=inserted,
                 duplicate_count=within + database,
                 failed_count=errors,
+            )
+        if not completed:
+            return RetrievalRunResult(
+                "lease_lost",
+                run.id,
+                self.registry_version,
+                results,
+                fetched,
+                inserted,
+                within + database,
+                errors + 1,
+                within,
+                database,
+                {**reasons, "lease_lost": 1},
             )
         return RetrievalRunResult(
             "completed",
