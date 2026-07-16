@@ -8,7 +8,13 @@ from typing import Any, Optional
 
 import httpx
 
-from procuresignal.retrieval.base import NewsProvider, RawArticle, RetrievalFetchError
+from procuresignal.retrieval.base import (
+    FetchFailureCode,
+    FetchResult,
+    NewsProvider,
+    RawArticle,
+    RetrievalFetchError,
+)
 from procuresignal.retrieval.registry import SourceDefinition
 
 
@@ -63,7 +69,12 @@ class NewsAPIProvider(NewsProvider):
         try:
             return json.loads(result.content or b"{}")
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise ValueError("invalid_json") from exc
+            raise RetrievalFetchError(
+                FetchResult(
+                    failure_code=FetchFailureCode.PARSER_ERROR,
+                    response_bytes=self.last_response_bytes,
+                )
+            ) from exc
 
     async def health_check(self) -> bool:
         """Check if NewsAPI is accessible."""

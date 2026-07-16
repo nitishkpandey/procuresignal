@@ -306,3 +306,41 @@ async def test_newsapi_safe_fetch_failure_is_structured(monkeypatch):
         await NewsAPIProvider(source=definition, fetcher=Fetcher()).fetch_articles(["regulatory"])
     assert getattr(error.value, "result").failure_code is FetchFailureCode.CIRCUIT_OPEN
     assert "secret" not in str(error.value)
+
+
+@pytest.mark.parametrize("adapter", [AdapterType.NEWSAPI, AdapterType.GDELT])
+async def test_malformed_legacy_json_is_durable_parser_failure(maker, monkeypatch, adapter):
+    monkeypatch.setenv("NEWSAPI_KEY", "secret")
+    monkeypatch.setenv("GDELT_ENABLED", "true")
+    definition = next(
+        item
+        for item in configured_registry(SourceRegistry(())).enabled()
+        if item.adapter is adapter
+    )
+    malformed = b'{"secret-body":'
+
+    class Fetcher:
+        async def fetch(self, _source, _params=None):
+            return FetchResult(content=malformed, response_bytes=len(malformed))
+
+        async def aclose(self):
+            pass
+
+    def factory(item):
+        provider_type = NewsAPIProvider if item.adapter is AdapterType.NEWSAPI else GDELTProvider
+        return provider_type(source=item, fetcher=Fetcher())
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="parser-v1",
+        provider_factory=factory,
+    ).run(f"malformed-{adapter.value}")
+
+    assert result.status == "completed"
+    assert result.articles_inserted == 0
+    assert result.rejection_reasons == {"parser_error": 1}
+    assert result.response_bytes == len(malformed)
+    assert result.source_results[0].status == "failed"
+    assert result.source_results[0].failure_code == "parser_error"
+    assert "secret-body" not in repr(result)

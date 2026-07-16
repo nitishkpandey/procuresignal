@@ -112,3 +112,22 @@ Addressed all four review findings without enabling or implementing structured s
   - Exit 0.
 
 No commit was attempted for this fix wave because the controller explicitly requested that sandbox-blocked git metadata operations be left to the controller.
+
+## Final malformed-response fix
+
+NewsAPI and GDELT JSON decoding failures now become `RetrievalFetchError` instances carrying `FetchFailureCode.PARSER_ERROR` and the authoritative accumulated decoded byte count. Existing provider loops explicitly re-raise this structured exception, so malformed responses cannot become empty or partial successes. The orchestrator durably records the source failure and aggregates the parser rejection without persisting exception text or response content.
+
+### Red/green evidence
+
+- Red: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k malformed -v`
+  - Exit 1: 2 failed. Both NewsAPI and GDELT malformed-response cases returned no rejection because their generic provider exception handlers converted JSON decoding errors into empty success.
+- Green: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval.py tests/unit/test_retrieval_orchestrator.py -v`
+  - Exit 0: 16 passed, including both adapter-specific malformed production-response regressions.
+- Ruff: `../../.venv/bin/ruff check shared/procuresignal/retrieval/providers shared/procuresignal/retrieval/orchestrator.py tests/unit/test_retrieval_orchestrator.py`
+  - Exit 0, no findings.
+- MyPy: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/providers/newsapi.py shared/procuresignal/retrieval/providers/gdelt.py shared/procuresignal/retrieval/orchestrator.py`
+  - Exit 0: success, no issues in 3 source files.
+- `git diff --check`
+  - Exit 0.
+
+The regressions assert failed source status, `parser_error`, decoded bytes, zero inserts, and absence of malformed body content from the run result representation. No commit was attempted, per controller instruction.
