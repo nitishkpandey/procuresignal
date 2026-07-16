@@ -145,6 +145,7 @@ class SafeFetcher:
         sleep: Sleep = asyncio.sleep,
         utc_now: UtcClock = lambda: datetime.now(timezone.utc),
         jitter: Callable[[float], float] = lambda base: random.uniform(0.0, base * 0.25),
+        defer_success: bool = False,
     ) -> None:
         if max_attempts <= 0 or max_response_bytes <= 0:
             raise ValueError("fetch bounds must be positive")
@@ -158,6 +159,7 @@ class SafeFetcher:
         self.sleep = sleep
         self.utc_now = utc_now
         self.jitter = jitter
+        self.defer_success = defer_success
         self._client = httpx.AsyncClient(
             transport=self.transport,
             timeout=REQUEST_TIMEOUT,
@@ -193,7 +195,8 @@ class SafeFetcher:
                 FetchFailureCode.TRANSIENT_HTTP_STATUS,
             }
             if result.ok:
-                await self.circuit_store.record_circuit_success(source.source_id, self.owner)
+                if not self.defer_success:
+                    await self.circuit_store.record_circuit_success(source.source_id, self.owner)
                 return result
             if not retryable or attempt + 1 >= self.max_attempts:
                 await self.circuit_store.record_circuit_failure(source.source_id, self.utc_now())

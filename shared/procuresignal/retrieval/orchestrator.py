@@ -225,15 +225,21 @@ class RetrievalOrchestrator:
         if self.provider_factory is not None:
             return self.provider_factory(definition)
         if definition.adapter is AdapterType.RSS:
-            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            fetcher = SafeFetcher(
+                policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner, defer_success=True
+            )
             provider = RSSProvider(definition, fetcher, registry_version=self.registry_version)
             provider.close = fetcher.aclose  # type: ignore[method-assign]
             return provider
         if definition.adapter is AdapterType.NEWSAPI:
-            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            fetcher = SafeFetcher(
+                policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner, defer_success=True
+            )
             return NewsAPIProvider(source=definition, fetcher=fetcher)
         if definition.adapter is AdapterType.GDELT:
-            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            fetcher = SafeFetcher(
+                policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner, defer_success=True
+            )
             return GDELTProvider(source=definition, fetcher=fetcher)
         raise ValueError("unsupported_adapter")
 
@@ -274,6 +280,7 @@ class RetrievalOrchestrator:
                     session, list(deduped.articles)
                 )
                 response_bytes = int(getattr(provider, "last_response_bytes", 0))
+                await repo.record_circuit_success(definition.source_id, self.owner)
                 circuit_state = await repo.circuit_state(definition.source_id, datetime.utcnow())
                 await repo.complete_source(
                     run_id,
@@ -310,6 +317,8 @@ class RetrievalOrchestrator:
                     )
                 )
                 code = code or FetchFailureCode.NETWORK_ERROR
+                if code is FetchFailureCode.PARSER_ERROR:
+                    await repo.record_circuit_failure(definition.source_id, datetime.utcnow())
                 await repo.fail_source(
                     run_id, definition.source_id, self.owner, code, now=datetime.utcnow()
                 )

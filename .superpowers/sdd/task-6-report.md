@@ -131,3 +131,24 @@ NewsAPI and GDELT JSON decoding failures now become `RetrievalFetchError` instan
   - Exit 0.
 
 The regressions assert failed source status, `parser_error`, decoded bytes, zero inserts, and absence of malformed body content from the run result representation. No commit was attempted, per controller instruction.
+
+## Final circuit ownership fix
+
+Circuit-success reset is now deferred for orchestrator-owned `SafeFetcher` instances until the provider has fully parsed every response. SafeFetcher continues to own and count transport failures. The orchestrator adds exactly one circuit failure only for `PARSER_ERROR`, then completes the durable source failure. A fully parsed success resets the circuit at the source boundary, including a claimed half-open probe.
+
+### Red/green evidence
+
+- Red: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k parser_failures -v`
+  - Exit 1: the new five-failure regression found no circuit row, proving parser failures were not counted.
+- Green: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k 'parser_failures or malformed' -v`
+  - Exit 0: 3 passed, 9 deselected. Five consecutive parser failures open the durable circuit; a later half-open parsed success resets failure count and cooldown.
+- Full focused Task 6: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval*.py tests/unit/test_rss_contracts.py tests/unit/test_tasks.py tests/integration/test_api.py -v`
+  - Exit 0: 121 passed.
+- Ruff: `../../.venv/bin/ruff check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py`
+  - Exit 0, no findings.
+- MyPy: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/orchestrator.py shared/procuresignal/retrieval/fetching.py shared/procuresignal/retrieval/providers/newsapi.py shared/procuresignal/retrieval/providers/gdelt.py shared/procuresignal/retrieval/providers/rss.py worker/tasks.py`
+  - Exit 0: success, no issues in 6 source files.
+- `git diff --check`
+  - Exit 0.
+
+Transport failure codes are not incremented by the orchestrator, preventing double-counting. No commit was attempted, per controller instruction.

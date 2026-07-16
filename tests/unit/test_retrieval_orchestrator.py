@@ -2,8 +2,13 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalRun
-from procuresignal.retrieval.base import FetchFailureCode, FetchResult, RawArticle
+from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalCircuit, NewsRetrievalRun
+from procuresignal.retrieval.base import (
+    FetchFailureCode,
+    FetchResult,
+    RawArticle,
+    RetrievalFetchError,
+)
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
 from procuresignal.retrieval.providers.gdelt import GDELTProvider
 from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
@@ -344,3 +349,56 @@ async def test_malformed_legacy_json_is_durable_parser_failure(maker, monkeypatc
     assert result.source_results[0].status == "failed"
     assert result.source_results[0].failure_code == "parser_error"
     assert "secret-body" not in repr(result)
+
+
+async def test_five_parser_failures_open_circuit_and_half_open_success_closes(maker):
+    definition = source("parser_circuit")
+    should_fail = True
+
+    class Provider:
+        async def fetch_articles(self, _groups):
+            if should_fail:
+                raise RetrievalFetchError(
+                    FetchResult(failure_code=FetchFailureCode.PARSER_ERROR, response_bytes=7)
+                )
+            return []
+
+        async def close(self):
+            pass
+
+    orchestrator = RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="circuit-v1",
+        provider_factory=lambda _item: Provider(),
+    )
+    for attempt in range(5):
+        result = await orchestrator.run(f"parser-circuit-{attempt}")
+        assert result.rejection_reasons == {"parser_error": 1}
+
+    async with maker() as session:
+        circuit = await session.scalar(
+            select(NewsRetrievalCircuit).where(
+                NewsRetrievalCircuit.source_id == definition.source_id
+            )
+        )
+        assert circuit is not None
+        assert circuit.failure_count == 5
+        assert circuit.open_until is not None
+        circuit.open_until = datetime.utcnow() - timedelta(seconds=1)
+        circuit.probe_owner = orchestrator.owner
+        circuit.probe_expires_at = datetime.utcnow() + timedelta(minutes=65)
+        await session.commit()
+
+    should_fail = False
+    success = await orchestrator.run("parser-circuit-recovery")
+    assert success.source_results[0].status == "completed"
+    async with maker() as session:
+        recovered = await session.scalar(
+            select(NewsRetrievalCircuit).where(
+                NewsRetrievalCircuit.source_id == definition.source_id
+            )
+        )
+        assert recovered is not None
+        assert recovered.failure_count == 0
+        assert recovered.open_until is None
