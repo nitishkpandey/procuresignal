@@ -143,7 +143,7 @@ class SafeFetcher:
         max_attempts: int = 3,
         max_redirects: int = 3,
         sleep: Sleep = asyncio.sleep,
-        utc_now: UtcClock = lambda: datetime.now(timezone.utc),
+        utc_now: UtcClock = datetime.utcnow,
         jitter: Callable[[float], float] = lambda base: random.uniform(0.0, base * 0.25),
         defer_success: bool = False,
     ) -> None:

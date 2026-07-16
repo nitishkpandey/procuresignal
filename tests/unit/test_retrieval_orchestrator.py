@@ -3,12 +3,14 @@ from datetime import datetime, timedelta
 
 import pytest
 from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalCircuit, NewsRetrievalRun
+from procuresignal.retrieval.audit import RetrievalAuditRepository
 from procuresignal.retrieval.base import (
     FetchFailureCode,
     FetchResult,
     RawArticle,
     RetrievalFetchError,
 )
+from procuresignal.retrieval.fetching import SafeFetcher
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
 from procuresignal.retrieval.providers.gdelt import GDELTProvider
 from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
@@ -20,6 +22,7 @@ from procuresignal.retrieval.registry import (
     SourceDefinition,
     SourceRegistry,
 )
+from procuresignal.retrieval.security import URLSafetyPolicy
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -402,3 +405,61 @@ async def test_five_parser_failures_open_circuit_and_half_open_success_closes(ma
         assert recovered is not None
         assert recovered.failure_count == 0
         assert recovered.open_until is None
+
+
+async def test_half_open_owner_completes_real_newsapi_multi_request_run(maker, monkeypatch):
+    monkeypatch.setenv("NEWSAPI_KEY", "secret")
+    definition = next(
+        item
+        for item in configured_registry(SourceRegistry(())).enabled()
+        if item.adapter is AdapterType.NEWSAPI
+    )
+    old = datetime.utcnow() - timedelta(minutes=31)
+    async with maker() as owner_session, maker() as other_session:
+        owner_repo = RetrievalAuditRepository(owner_session)
+        other_repo = RetrievalAuditRepository(other_session)
+        for _ in range(5):
+            await owner_repo.record_circuit_failure(definition.source_id, old)
+
+        calls = 0
+        owner_fetcher = SafeFetcher(
+            policy=URLSafetyPolicy(),
+            circuit_store=owner_repo,
+            owner="probe-owner",
+            defer_success=True,
+        )
+
+        async def valid_attempt(_source, _params=None):
+            nonlocal calls
+            calls += 1
+            body = b'{"status":"ok","articles":[]}'
+            return FetchResult(content=body, response_bytes=len(body))
+
+        owner_fetcher._attempt = valid_attempt
+        probe = await owner_fetcher.fetch(definition)
+        assert probe.ok
+        provider = NewsAPIProvider(api_key="secret", source=definition, fetcher=owner_fetcher)
+        await provider.fetch_articles(["regulatory"])
+        assert calls == 7
+
+        denied_fetcher = SafeFetcher(
+            policy=URLSafetyPolicy(),
+            circuit_store=other_repo,
+            owner="other-owner",
+            defer_success=True,
+        )
+        denied_fetcher._attempt = valid_attempt
+        denied = await denied_fetcher.fetch(definition)
+        assert denied.failure_code is FetchFailureCode.CIRCUIT_OPEN
+        assert calls == 7
+
+        assert await owner_repo.record_circuit_success(definition.source_id, "probe-owner")
+        circuit = await owner_session.scalar(
+            select(NewsRetrievalCircuit).where(
+                NewsRetrievalCircuit.source_id == definition.source_id
+            )
+        )
+        assert circuit is not None
+        assert circuit.failure_count == 0
+        await provider.close()
+        await denied_fetcher.aclose()

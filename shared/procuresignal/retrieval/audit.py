@@ -237,6 +237,13 @@ class RetrievalAuditRepository:
         if circuit.open_until is not None and circuit.open_until > now:
             await self.session.commit()
             return False
+        if (
+            circuit.probe_owner == owner
+            and circuit.probe_expires_at is not None
+            and circuit.probe_expires_at >= now
+        ):
+            await self.session.commit()
+            return True
         return await self.claim_circuit_probe(source_id, owner, now)
 
     async def record_circuit_success(self, source_id: str, owner: str) -> bool:

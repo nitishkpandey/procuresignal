@@ -152,3 +152,23 @@ Circuit-success reset is now deferred for orchestrator-owned `SafeFetcher` insta
   - Exit 0.
 
 Transport failure codes are not incremented by the orchestrator, preventing double-counting. No commit was attempted, per controller instruction.
+
+## Half-open multi-request probe ownership
+
+`allow_circuit_request` now permits the current, unexpired `probe_owner` to continue a bounded multi-request source run. Other owners remain denied, and the existing expiry condition still permits one later atomic reclaim. SafeFetcher now uses the repository-compatible naive UTC clock by default, avoiding aware/naive comparisons against the database's timestamp-without-time-zone circuit columns.
+
+### Red/green evidence
+
+- Red: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py -k half_open_owner -v`
+  - Exit 1. The real NewsAPI/SafeFetcher recovery exercised the durable circuit and first exposed the production clock mismatch; after clock normalization it exposed the same-owner continuation denial targeted by this fix.
+- Green targeted: same command after the ownership change.
+  - Exit 0: 1 passed, 12 deselected. The claimed owner completed the initial probe plus all six NewsAPI requests, a different owner was denied without issuing a request, and the parsed success closed the circuit.
+- Circuit/concurrency coverage: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_audit.py tests/unit/test_retrieval_fetching.py tests/unit/test_retrieval_orchestrator.py -v`
+  - Exit 0: 42 passed.
+- Full focused Task 6: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval*.py tests/unit/test_rss_contracts.py tests/unit/test_tasks.py tests/integration/test_api.py -q`
+  - Exit 0: 122 passed.
+- MyPy: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/orchestrator.py shared/procuresignal/retrieval/audit.py shared/procuresignal/retrieval/fetching.py shared/procuresignal/retrieval/providers/newsapi.py shared/procuresignal/retrieval/providers/gdelt.py shared/procuresignal/retrieval/providers/rss.py worker/tasks.py`
+  - Exit 0: success, no issues in 7 source files.
+- Ruff initially found one import-order issue in the new test, fixed mechanically. Final Ruff and `git diff --check` both exit 0.
+
+No commit was attempted, per controller instruction.
