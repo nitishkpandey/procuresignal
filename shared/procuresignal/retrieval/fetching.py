@@ -243,8 +243,17 @@ class SafeFetcher:
                     async for chunk in response.aiter_bytes():
                         content.extend(chunk)
                         if len(content) > self.max_response_bytes:
-                            return FetchResult(failure_code=FetchFailureCode.OVERSIZED_RESPONSE)
-                    return FetchResult(bytes(content), content_type, url, response.status_code)
+                            return FetchResult(
+                                failure_code=FetchFailureCode.OVERSIZED_RESPONSE,
+                                response_bytes=len(content),
+                            )
+                    return FetchResult(
+                        bytes(content),
+                        content_type,
+                        url,
+                        response.status_code,
+                        response_bytes=len(content),
+                    )
             except UnsafeURL:
                 return FetchResult(failure_code=FetchFailureCode.UNSAFE_URL)
             except (httpx.HTTPError, TimeoutError):

@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 
 import feedparser
 
-from procuresignal.retrieval.base import FetchResult, NewsProvider, RawArticle
+from procuresignal.retrieval.base import FetchResult, NewsProvider, RawArticle, RetrievalFetchError
 from procuresignal.retrieval.catalog import REGISTRY_VERSION
 from procuresignal.retrieval.deduplication import canonicalize_url
 from procuresignal.retrieval.registry import ProcurementDomain, SourceDefinition
@@ -79,10 +79,18 @@ def _primary_domain(source: SourceDefinition) -> str:
 class RSSProvider(NewsProvider):
     """Fetch and parse the single registry source supplied at construction."""
 
-    def __init__(self, source: SourceDefinition, fetcher: _Fetcher) -> None:
+    def __init__(
+        self,
+        source: SourceDefinition,
+        fetcher: _Fetcher,
+        *,
+        registry_version: str = REGISTRY_VERSION,
+    ) -> None:
         self.name = "rss"
         self.source = source
         self.fetcher = fetcher
+        self.registry_version = registry_version
+        self.last_response_bytes = 0
 
     async def close(self) -> None:
         """The injected fetcher lifecycle remains owned by its caller."""
@@ -93,7 +101,10 @@ class RSSProvider(NewsProvider):
     async def fetch_articles(self, query_groups: list[str]) -> list[RawArticle]:
         del query_groups  # compatibility input; registry domains are authoritative
         result = await self.fetcher.fetch(self.source)
-        if not result.ok or result.content is None:
+        self.last_response_bytes = result.response_bytes
+        if not result.ok:
+            raise RetrievalFetchError(result)
+        if result.content is None:
             return []
         parsed = feedparser.parse(result.content)
         now = datetime.utcnow()
@@ -134,7 +145,7 @@ class RSSProvider(NewsProvider):
                     source_class=self.source.source_class.value,
                     source_domains=tuple(sorted(domain.value for domain in self.source.domains)),
                     source_countries=self.source.countries,
-                    registry_version=REGISTRY_VERSION,
+                    registry_version=self.registry_version,
                     retrieved_at=now,
                     source_published_at_raw=published_raw,
                 )

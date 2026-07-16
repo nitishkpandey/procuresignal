@@ -57,4 +57,34 @@ Implemented registry-backed retrieval orchestration with durable run/source clai
 ## Concerns
 
 - The brief's literal `.venv/bin/pytest` path is absent inside the worktree; the repository-root environment at `../../.venv` was used.
-- Existing NewsAPI/GDELT provider classes remain available, but the worker now follows the reviewed default-enabled registry. The catalog contains no enabled NEWSAPI/GDELT source definitions, so they are not a parallel execution path. Adding such definitions would require a separately reviewed registry/snapshot change.
+
+## Independent review fixes
+
+Addressed all four review findings without enabling or implementing structured sanctions:
+
+- `RSSProvider` now raises a structured `RetrievalFetchError` for every failed `FetchResult`; the orchestrator preserves the exact failure enum, decoded response-byte count, and durable circuit state.
+- `FetchResult.response_bytes` is populated by `SafeFetcher` from decoded streamed bytes, including the over-limit byte count. Article JSON serialization is no longer used as a transport-byte proxy.
+- RSS accepts the injected orchestration registry version, and legacy articles receive registry provenance before persistence.
+- `configured_registry()` adds NewsAPI when `NEWSAPI_KEY` exists and GDELT only when `GDELT_ENABLED=true`, using the providers' existing endpoint constants and validated `SourceDefinition` objects. The worker passes this registry into the same orchestrator path.
+- Provider construction is inside the source failure boundary; close is attempted exactly once only for constructed providers and isolated from durable source/run finalization.
+
+### Review-fix red/green evidence
+
+- Red: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval_orchestrator.py tests/unit/test_rss_contracts.py tests/unit/test_retrieval_fetching.py tests/unit/test_tasks.py -k 'retrieval or provider or rss or fetch' -v`
+  - 33 passed, 1 failed. The lifecycle regression initially assumed insertion order despite the registry's specified source-ID ordering; corrected to assert the source/status mapping. The new production RSS failure, legacy registry configuration, and lifecycle behavior otherwise executed.
+- Green: same focused behavior command after correction was covered by the final suite below.
+- Green: `PYTHONPATH=shared ../../.venv/bin/pytest tests/unit/test_retrieval*.py tests/unit/test_rss_contracts.py tests/unit/test_tasks.py tests/integration/test_api.py -v`
+  - Exit 0: 115 passed.
+- Static: `PYTHONPATH=shared ../../.venv/bin/mypy shared/procuresignal/retrieval/orchestrator.py shared/procuresignal/retrieval/persistence.py shared/procuresignal/retrieval/providers/rss.py worker/tasks.py`
+  - Exit 0: success, no issues in 4 source files.
+- Static cleanup: initial Ruff run found one import-order issue after the review patch; `ruff check --fix` corrected it.
+- Final static: `../../.venv/bin/ruff check shared/procuresignal/retrieval worker/tasks.py tests/unit/test_retrieval_orchestrator.py tests/unit/test_tasks.py tests/integration/test_api.py; git diff --check`
+  - Exit 0 with no findings.
+
+### Review-fix self-review
+
+- Structured fetch failures never include URLs, bodies, tokens, or exception strings in returned/persisted outcomes.
+- Open-circuit state comes from `NewsRetrievalCircuit`, not a constant result default.
+- Close failures cannot replace an already durable success or escape `gather`; constructor failures become durable parser-failure outcomes and the run still completes.
+- NewsAPI/GDELT are registry entries feeding the same claim/concurrency/persistence path. No second worker loop was restored.
+- Known provider endpoint constants were reused; no new endpoint was invented and `SourceRegistry` validation remains unchanged.

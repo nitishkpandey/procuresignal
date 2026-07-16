@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -17,13 +17,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import NewsRetrievalRun
 from procuresignal.retrieval.audit import LEASE_DURATION, RetrievalAuditRepository
-from procuresignal.retrieval.base import FetchFailureCode, NewsProvider
+from procuresignal.retrieval.base import (
+    FetchFailureCode,
+    NewsProvider,
+    RetrievalFetchError,
+)
 from procuresignal.retrieval.catalog import REGISTRY_VERSION, SOURCE_REGISTRY
 from procuresignal.retrieval.deduplication import deduplicate_within_run
 from procuresignal.retrieval.fetching import SafeFetcher
 from procuresignal.retrieval.persistence import ArticlePersistence
+from procuresignal.retrieval.providers.gdelt import GDELTProvider
+from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
 from procuresignal.retrieval.providers.rss import RSSProvider
-from procuresignal.retrieval.registry import AdapterType, SourceDefinition, SourceRegistry
+from procuresignal.retrieval.registry import (
+    AdapterType,
+    ProcurementDomain,
+    SourceClass,
+    SourceDefinition,
+    SourceRegistry,
+)
 from procuresignal.retrieval.security import URLSafetyPolicy
 
 
@@ -64,6 +76,82 @@ class RetrievalRunResult:
 
 ProviderFactory = Callable[[SourceDefinition], NewsProvider]
 SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
+
+NEWSAPI_QUERIES = (
+    "procurement supply chain",
+    "supplier risk",
+    "tariff changes",
+    "logistics disruption",
+    "regulatory compliance",
+    "European business procurement",
+)
+GDELT_QUERY_GROUPS = (
+    "supplier_risk",
+    "logistics_disruption",
+    "tariff_changes",
+    "regulatory",
+    "europe_business",
+)
+
+
+def configured_registry(base: SourceRegistry = SOURCE_REGISTRY) -> SourceRegistry:
+    """Add legacy providers only when their established deployment toggles enable them."""
+    additions: list[SourceDefinition] = []
+    if os.getenv("NEWSAPI_KEY"):
+        additions.append(
+            SourceDefinition(
+                source_id="newsapi",
+                display_name="NewsAPI",
+                homepage_url="https://newsapi.org/",
+                endpoint_url=f"{NewsAPIProvider.BASE_URL}/everything",
+                adapter=AdapterType.NEWSAPI,
+                source_class=SourceClass.ESTABLISHED_MEDIA,
+                domains=frozenset(
+                    {
+                        ProcurementDomain.REGULATION,
+                        ProcurementDomain.LOGISTICS,
+                        ProcurementDomain.SUPPLIER_RISK,
+                        ProcurementDomain.EUROPE_BUSINESS,
+                    }
+                ),
+                countries=("eu",),
+                languages=("en",),
+                poll_minutes=360,
+                item_limit=100,
+                expected_content_types=("application/json",),
+                allowed_hosts=("newsapi.org",),
+                trust_seed=0.65,
+                license_note="Configured NewsAPI account; retain publisher attribution.",
+            )
+        )
+    if os.getenv("GDELT_ENABLED", "false").lower() == "true":
+        additions.append(
+            SourceDefinition(
+                source_id="gdelt",
+                display_name="GDELT",
+                homepage_url="https://www.gdeltproject.org/",
+                endpoint_url=GDELTProvider.BASE_URL,
+                adapter=AdapterType.GDELT,
+                source_class=SourceClass.ESTABLISHED_MEDIA,
+                domains=frozenset(
+                    {
+                        ProcurementDomain.REGULATION,
+                        ProcurementDomain.LOGISTICS,
+                        ProcurementDomain.SUPPLIER_RISK,
+                        ProcurementDomain.EUROPE_BUSINESS,
+                    }
+                ),
+                countries=("us",),
+                languages=("en",),
+                poll_minutes=360,
+                item_limit=100,
+                expected_content_types=("application/json",),
+                allowed_hosts=("api.gdeltproject.org",),
+                trust_seed=0.65,
+                license_note="GDELT public API metadata with original publisher links.",
+            )
+        )
+    return SourceRegistry((*base.sources, *additions))
 
 
 class RetrievalOrchestrator:
@@ -136,12 +224,24 @@ class RetrievalOrchestrator:
     ) -> NewsProvider:
         if self.provider_factory is not None:
             return self.provider_factory(definition)
-        if definition.adapter is not AdapterType.RSS:
-            raise ValueError("unsupported_adapter")
-        fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
-        provider = RSSProvider(definition, fetcher)
-        provider.close = fetcher.aclose  # type: ignore[method-assign]
-        return provider
+        if definition.adapter is AdapterType.RSS:
+            fetcher = SafeFetcher(policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner)
+            provider = RSSProvider(definition, fetcher, registry_version=self.registry_version)
+            provider.close = fetcher.aclose  # type: ignore[method-assign]
+            return provider
+        if definition.adapter is AdapterType.NEWSAPI:
+            return NewsAPIProvider()
+        if definition.adapter is AdapterType.GDELT:
+            return GDELTProvider()
+        raise ValueError("unsupported_adapter")
+
+    @staticmethod
+    def _queries(definition: SourceDefinition) -> list[str]:
+        if definition.adapter is AdapterType.NEWSAPI:
+            return list(NEWSAPI_QUERIES)
+        if definition.adapter is AdapterType.GDELT:
+            return list(GDELT_QUERY_GROUPS)
+        return []
 
     async def _source(self, run_id: int, definition: SourceDefinition) -> SourceRetrievalResult:
         host = urlsplit(definition.endpoint_url).hostname or ""
@@ -152,18 +252,27 @@ class RetrievalOrchestrator:
             repo = RetrievalAuditRepository(session)
             if not await repo.claim_source(run_id, definition.source_id, self.owner, now):
                 return SourceRetrievalResult(definition.source_id, "already_claimed")
-            provider = self._provider(definition, repo)
+            provider: NewsProvider | None = None
             try:
+                provider = self._provider(definition, repo)
                 async with self._global, host_semaphore:
-                    articles = await provider.fetch_articles([])
+                    articles = await provider.fetch_articles(self._queries(definition))
+                retrieved_at = datetime.utcnow()
+                for article in articles:
+                    article.source_id = article.source_id or definition.source_id
+                    article.source_class = article.source_class or definition.source_class.value
+                    article.source_domains = article.source_domains or tuple(
+                        sorted(domain.value for domain in definition.domains)
+                    )
+                    article.source_countries = article.source_countries or definition.countries
+                    article.registry_version = article.registry_version or self.registry_version
+                    article.retrieved_at = article.retrieved_at or retrieved_at
                 deduped = deduplicate_within_run(articles)
                 inserted, database_duplicates, errors = await ArticlePersistence.save_articles(
                     session, list(deduped.articles)
                 )
-                response_bytes = sum(
-                    len(json.dumps(article.raw_payload_json or {}, default=str).encode())
-                    for article in articles
-                )
+                response_bytes = int(getattr(provider, "last_response_bytes", 0))
+                circuit_state = await repo.circuit_state(definition.source_id, datetime.utcnow())
                 await repo.complete_source(
                     run_id,
                     definition.source_id,
@@ -184,15 +293,21 @@ class RetrievalOrchestrator:
                     database_duplicates,
                     errors,
                     response_bytes=response_bytes,
+                    circuit_state=circuit_state,
                     latency_ms=int((time.monotonic() - started) * 1000),
                     next_poll_at=now + timedelta(minutes=definition.poll_minutes),
                 )
             except Exception as exc:
                 code = (
-                    FetchFailureCode.NETWORK_ERROR
-                    if isinstance(exc, (TimeoutError, ConnectionError))
-                    else FetchFailureCode.PARSER_ERROR
+                    exc.result.failure_code
+                    if isinstance(exc, RetrievalFetchError)
+                    else (
+                        FetchFailureCode.NETWORK_ERROR
+                        if isinstance(exc, (TimeoutError, ConnectionError))
+                        else FetchFailureCode.PARSER_ERROR
+                    )
                 )
+                code = code or FetchFailureCode.NETWORK_ERROR
                 await repo.fail_source(
                     run_id, definition.source_id, self.owner, code, now=datetime.utcnow()
                 )
@@ -201,11 +316,19 @@ class RetrievalOrchestrator:
                     "failed",
                     errors=1,
                     failure_code=code.value,
+                    response_bytes=(
+                        exc.result.response_bytes if isinstance(exc, RetrievalFetchError) else 0
+                    ),
+                    circuit_state=await repo.circuit_state(definition.source_id, datetime.utcnow()),
                     latency_ms=int((time.monotonic() - started) * 1000),
                     next_poll_at=now + timedelta(minutes=definition.poll_minutes),
                 )
             finally:
-                await provider.close()
+                if provider is not None:
+                    try:
+                        await provider.close()
+                    except Exception:
+                        pass
 
     async def run(self, run_key: str) -> RetrievalRunResult:
         started = time.monotonic()

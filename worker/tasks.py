@@ -19,6 +19,7 @@ from procuresignal.retrieval import (
     REGISTRY_VERSION,
     RawArticle,
     RetrievalOrchestrator,
+    configured_registry,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
 from sqlalchemy import desc, exists, or_, select, update
@@ -311,6 +312,7 @@ def retrieve_news_task(self: Any) -> dict[str, Any]:
         scheduled = now.replace(hour=(now.hour // 6) * 6, minute=0, second=0, microsecond=0)
         result = await RetrievalOrchestrator(
             session_factory=session_scope,
+            registry=configured_registry(),
             registry_version=REGISTRY_VERSION,
         ).run(f"scheduled:{scheduled.isoformat()}Z")
         return {

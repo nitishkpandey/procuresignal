@@ -36,10 +36,19 @@ class FetchResult:
     status_code: int | None = None
     failure_code: FetchFailureCode | None = None
     retry_after_seconds: float | None = None
+    response_bytes: int = 0
 
     @property
     def ok(self) -> bool:
         return self.failure_code is None
+
+
+class RetrievalFetchError(RuntimeError):
+    """Structured fetch failure that never exposes response content."""
+
+    def __init__(self, result: FetchResult) -> None:
+        self.result = result
+        super().__init__((result.failure_code or FetchFailureCode.NETWORK_ERROR).value)
 
 
 @dataclass

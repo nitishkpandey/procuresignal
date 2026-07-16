@@ -3,8 +3,9 @@ from datetime import datetime, timedelta
 
 import pytest
 from procuresignal.models import Base, NewsArticleRaw, NewsRetrievalRun
-from procuresignal.retrieval.base import RawArticle
-from procuresignal.retrieval.orchestrator import RetrievalOrchestrator
+from procuresignal.retrieval.base import FetchFailureCode, FetchResult, RawArticle
+from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
+from procuresignal.retrieval.providers.rss import RSSProvider
 from procuresignal.retrieval.registry import (
     AdapterType,
     ProcurementDomain,
@@ -195,3 +196,59 @@ async def test_provenance_and_duplicate_counters_are_separate(maker):
         == ("provenance", "official", ["regulation"], ["de"], "test-v1", datetime(2026, 7, 16, 12))
         for row in rows
     )
+
+
+async def test_real_rss_failure_preserves_fetch_code_bytes_and_circuit(maker):
+    definition = source("real")
+
+    class Fetcher:
+        async def fetch(self, _source):
+            return FetchResult(failure_code=FetchFailureCode.OVERSIZED_RESPONSE, response_bytes=99)
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="injected-v2",
+        provider_factory=lambda item: RSSProvider(item, Fetcher(), registry_version="injected-v2"),
+    ).run("real-failure")
+    assert result.rejection_reasons == {"oversized_response": 1}
+    assert result.response_bytes == 99
+    assert result.source_results[0].status == "failed"
+
+
+async def test_provider_construction_and_close_failures_do_not_strand_run(maker):
+    definitions = (source("construct"), source("close", "close.test"))
+
+    class Provider:
+        async def fetch_articles(self, _groups):
+            return []
+
+        async def close(self):
+            raise RuntimeError("close secret")
+
+    def factory(definition):
+        if definition.source_id == "construct":
+            raise RuntimeError("constructor secret")
+        return Provider()
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry(definitions),
+        registry_version="v",
+        provider_factory=factory,
+    ).run("lifecycle")
+    assert result.status == "completed"
+    assert {item.source_id: item.status for item in result.source_results} == {
+        "construct": "failed",
+        "close": "completed",
+    }
+
+
+def test_legacy_providers_are_registry_configuration(monkeypatch):
+    monkeypatch.setenv("NEWSAPI_KEY", "configured")
+    monkeypatch.setenv("GDELT_ENABLED", "true")
+    configured = configured_registry(SourceRegistry(()))
+    assert [(item.source_id, item.adapter) for item in configured.enabled()] == [
+        ("gdelt", AdapterType.GDELT),
+        ("newsapi", AdapterType.NEWSAPI),
+    ]

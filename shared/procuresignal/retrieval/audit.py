@@ -254,5 +254,16 @@ class RetrievalAuditRepository:
         await self.session.commit()
         return result.rowcount == 1
 
+    async def circuit_state(self, source_id: str, now: datetime) -> str:
+        circuit = await self.session.scalar(
+            select(NewsRetrievalCircuit).where(NewsRetrievalCircuit.source_id == source_id)
+        )
+        await self.session.commit()
+        if circuit is None or circuit.failure_count < CIRCUIT_THRESHOLD:
+            return "closed"
+        if circuit.open_until is not None and circuit.open_until > now:
+            return "open"
+        return "half_open"
+
     async def _execute(self, statement: Executable) -> CursorResult[object]:
         return cast(CursorResult[object], await self.session.execute(statement))
