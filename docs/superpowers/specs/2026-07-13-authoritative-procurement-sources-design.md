@@ -225,6 +225,36 @@ The feature can be disabled per source. Existing NewsAPI/GDELT behavior remains 
 Rollback disables new sources first; schema downgrade remains supported while Phase 3 data is
 still within the retention window.
 
+## Approved Structured Sanctions Streaming Amendment (2026-07-17)
+
+The verified DG FISMA XML 1.1 distribution is approximately 24.7 MiB and requires a query
+token. It cannot use the ordinary 5 MiB in-memory feed boundary. The following narrow exception
+is approved without weakening ordinary retrieval:
+
+- The existing 5 MiB decoded-response maximum remains immutable for RSS, Atom, NewsAPI,
+  GDELT, redirects, and every source except `eu_financial_sanctions`.
+- A separate `LargeObjectFetchPolicy` allows only source ID `eu_financial_sanctions`, adapter
+  `structured_sanctions`, the reviewed Webgate hostname, `application/xml`, and a strict
+  32 MiB decoded-byte maximum.
+- The response streams into an owner-created temporary file with restrictive permissions; it
+  is never accumulated in memory. The file is removed on success, parse error, cancellation,
+  timeout, oversize, or consumer exit.
+- The token is supplied at runtime through `EU_FISMA_SANCTIONS_TOKEN` or an injected secret
+  resolver. It is never stored in `SourceDefinition`, source snapshots, fixtures, database
+  rows, logs, metrics, error text, final URLs, or reports.
+- DNS pinning, HTTPS/host allowlisting, redirect revalidation, three-attempt retry maximum,
+  5-second connect timeout, 20-second read timeout, durable circuit behavior, and content-type
+  validation remain identical to ordinary safe fetching.
+- Redirects may not change the reviewed host when credentials are present. The token is added
+  only to requests for that exact host and must not be forwarded to a redirect target.
+- XML parsing is incremental and rejects DOCTYPE and ENTITY declarations before processing
+  designation content. It emits bounded factual records and never logs dataset bodies.
+- Missing tokens produce a classified, non-retryable configuration result. They do not disable
+  other sources or expose whether a particular token value was supplied.
+
+This exception is source-scoped and cannot be selected by arbitrary callers through a byte-limit
+parameter. Adding another large source requires a new reviewed allowlist entry and tests.
+
 ## Completion Criteria
 
 Phase 3 is complete only when:

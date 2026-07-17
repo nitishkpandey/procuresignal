@@ -14,6 +14,9 @@
 - Existing REST, WebSocket, frontend, NewsAPI, optional GDELT, and worker result contracts remain backward compatible.
 - Fetch only registry-declared HTTPS endpoints on approved public hostnames; validate every redirect and reject URL credentials, loopback, link-local, private, reserved, multicast, and unspecified addresses.
 - Maximum decoded response size is 5 MiB; maximum redirects is 3; connect timeout is 5 seconds; read timeout is 20 seconds.
+- Approved exception: only `eu_financial_sanctions` with adapter `structured_sanctions` may use
+  the sealed 32 MiB streamed temporary-file boundary defined in the design amendment; callers
+  cannot override either maximum.
 - Global source concurrency is 6 and per-host concurrency is 2.
 - Transient fetches retry at most 3 attempts; respect `Retry-After` up to 15 minutes; otherwise use bounded exponential backoff with jitter.
 - Open a source circuit after 5 consecutive failures for 30 minutes; one half-open success closes it.
@@ -436,6 +439,7 @@ git commit -m "Replace hard-coded RSS feeds with source contracts"
 
 **Files:**
 - Create: `shared/procuresignal/retrieval/providers/sanctions.py`
+- Create: `shared/procuresignal/retrieval/large_object.py`
 - Create: `tests/fixtures/retrieval/eu_financial_sanctions.xml`
 - Create: `tests/fixtures/retrieval/eu_financial_sanctions_expected.json`
 - Create: `tests/unit/test_sanctions_provider.py`
@@ -444,9 +448,12 @@ git commit -m "Replace hard-coded RSS feeds with source contracts"
 - Modify: `tests/unit/test_source_registry.py`
 - Modify: `shared/procuresignal/retrieval/providers/__init__.py`
 - Modify: `shared/procuresignal/retrieval/__init__.py`
+- Modify: `.env.example`
 
 **Interfaces:**
 - Produces `EUSanctionsProvider(source: SourceDefinition, fetcher: SafeFetcher)`.
+- Produces `LargeObjectFetcher`, sealed to the reviewed sanctions source and 32 MiB streamed
+  decoded-byte limit, and `TemporaryFetchArtifact` as an async context manager.
 - Emits one `RawArticle` per stable designation/revision with `query_group="sanctions"`,
   `source_class="official"`, and official dataset provenance.
 
@@ -458,39 +465,64 @@ download path. Record the ownership evidence URL, checked date, HTTP status, obs
 type, authentication requirement, and supported endpoint in `catalog_expected.json`. Never
 copy a token into the registry or fixtures. Update `catalog.py` only after this verification.
 
-Enable `eu_financial_sanctions` only when the supported path can be fetched successfully under
-the documented runtime access model. Tests must show the Task 1 registry reports
+Use the verified DG FISMA XML 1.1 Webgate distribution with the token removed from the catalog
+URL. The runtime access model is `EU_FISMA_SANCTIONS_TOKEN` supplied by the deployment secret
+store. Enable `eu_financial_sanctions` only after the sealed streaming path passes its security
+and cleanup tests. Tests must show the Task 1 registry reports
 `missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)` and that the
 verified enabled definition changes it to `()`. If no supported access path can be verified,
 leave the source disabled, document the blocker, and do not claim Phase 3 coverage completion.
 
-- [ ] **Step 2: Add immutable official-format fixture and failing parser tests**
+- [ ] **Step 2: Add failing source-scoped streaming and secret-redaction tests**
+
+Assert ordinary `SafeFetcher` still rejects responses over 5 MiB. Assert `LargeObjectFetcher`
+rejects every source except the exact sanctions ID/adapter/host/content type, streams 24.7 MiB
+without retaining the body in memory, stops at 32 MiB, uses restrictive temporary-file
+permissions, and deletes the file for success, oversize, parse failure, cancellation, and
+context exit. The constructor exposes no arbitrary limit/source override.
+
+Assert a missing token returns a stable configuration failure. A supplied token may appear only
+in the outbound request to the exact approved host. It must be absent from captured logs,
+exceptions, audit details, returned URLs, database values, snapshots, and redirect requests.
+Reuse the concrete pinned transport; do not add an unpinned test/client seam.
+
+- [ ] **Step 3: Implement sealed streaming retrieval**
+
+Implement `LargeObjectFetcher` with a fixed `LargeObjectFetchPolicy` entry for
+`eu_financial_sanctions`. Stream decoded chunks to an owner-created `0600` temporary file,
+counting bytes before each write. Share Task 3 URL validation, pinned transport, timeout,
+retry/circuit, and failure classification. Add the secret query parameter only immediately
+before the approved-host request and redact it from all observable results. Always unlink in
+`finally`/context exit.
+
+- [ ] **Step 4: Add immutable official-format fixture and failing parser tests**
 
 Fixture cases must cover entity/person distinctions, aliases, multiple regulations, missing
 optional remarks, XML namespaces, non-ASCII names, duplicate aliases, and two revisions of one
 designation. Expected JSON stores stable IDs and exact normalized titles/descriptions; it is
 independent of parser output.
 
-- [ ] **Step 3: Add XML safety and identity tests**
+- [ ] **Step 5: Add XML safety and identity tests**
 
 Assert DOCTYPE/external-entity payload rejection, no network entity resolution, stable identity
 across field order changes, distinct identity across official revision changes, and official
 source URL retention.
 
-- [ ] **Step 4: Run tests and observe missing provider**
+- [ ] **Step 6: Run tests and observe missing provider**
 
 Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_sanctions_provider.py -v`
 
 Expected: collection fails because `EUSanctionsProvider` is absent.
 
-- [ ] **Step 5: Implement the structured adapter**
+- [ ] **Step 7: Implement the structured adapter**
 
-Parse with a standard-library XML parser only after explicitly rejecting `<!DOCTYPE` and
-`<!ENTITY` case-insensitively. Do not transform designations into compliance decisions; emit
+Parse the temporary artifact incrementally with a standard-library XML parser only after
+explicitly rejecting `<!DOCTYPE` and `<!ENTITY` case-insensitively. Clear processed elements to
+keep memory bounded. Do not transform designations into compliance decisions; emit
 factual designation/update records for later matching and risk-event logic. Never log the full
 dataset or individual record bodies on failure.
 
-- [ ] **Step 6: Run sanctions, registry, security, and static checks**
+- [ ] **Step 8: Run sanctions, registry, security, and static checks**
 
 Run: `PYTHONPATH=shared .venv/bin/pytest tests/unit/test_sanctions_provider.py tests/unit/test_source_registry.py tests/unit/test_retrieval_security.py -v`
 
@@ -500,7 +532,7 @@ Run: `.venv/bin/ruff check shared/procuresignal/retrieval/providers/sanctions.py
 
 Expected: both succeed.
 
-- [ ] **Step 7: Commit Task 5**
+- [ ] **Step 9: Commit Task 5**
 
 ```bash
 git add shared/procuresignal/retrieval tests/fixtures/retrieval/eu_financial_sanctions* tests/fixtures/retrieval/catalog_expected.json tests/unit/test_sanctions_provider.py tests/unit/test_source_registry.py
