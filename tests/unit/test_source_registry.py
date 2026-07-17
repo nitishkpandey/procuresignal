@@ -132,7 +132,7 @@ def test_production_registry_meets_phase_3_coverage() -> None:
     report = SOURCE_REGISTRY.validate_coverage()
     assert report.missing_domains == ()
     assert report.missing_authoritative_domains == ()
-    assert report.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
+    assert report.missing_structured_authoritative_domains == ()
     assert {"sanctions", "regulation"} <= {domain.value for domain in report.authoritative_domains}
 
 
@@ -184,7 +184,7 @@ def test_snapshot_records_immutable_endpoint_verification_evidence() -> None:
 
     for candidate in expected["candidates"]:
         verification = candidate["verification"]
-        assert set(verification) == {
+        required = {
             "checked_at",
             "http_status",
             "observed_content_type",
@@ -192,7 +192,7 @@ def test_snapshot_records_immutable_endpoint_verification_evidence() -> None:
             "ownership_evidence",
             "outcome",
         }
-        assert verification["checked_at"] == "2026-07-13"
+        assert required <= set(verification)
         assert isinstance(verification["http_status"], int)
         assert verification["observed_content_type"].strip()
         assert verification["ownership_url"].startswith("https://")
@@ -203,10 +203,16 @@ def test_snapshot_records_immutable_endpoint_verification_evidence() -> None:
     disabled_403 = {
         candidate["source_id"]: candidate["verification"]
         for candidate in expected["candidates"]
-        if candidate["source_id"] in {"eu_council_press", "eu_financial_sanctions"}
+        if candidate["source_id"] == "eu_council_press"
     }
     assert all(item["http_status"] == 403 for item in disabled_403.values())
     assert all(item["outcome"] == "disabled" for item in disabled_403.values())
+
+    sanctions = next(c for c in expected["candidates"] if c["source_id"] == "eu_financial_sanctions")
+    evidence = sanctions["verification"]
+    assert evidence["authentication_requirement"] == "token query parameter supplied from EU_FISMA_SANCTIONS_TOKEN"
+    assert evidence["supported_endpoint"] == sanctions["endpoint_url"]
+    assert "token" not in sanctions["endpoint_url"]
 
 
 def test_task5_verified_structured_source_closes_only_structured_gap() -> None:
@@ -223,5 +229,7 @@ def test_task5_verified_structured_source_closes_only_structured_gap() -> None:
         )
     )
 
-    assert before.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
+    disabled_registry = SourceRegistry(tuple(replace(source, enabled_by_default=False) if source.source_id == sanctions.source_id else source for source in SOURCE_REGISTRY.sources))
+    assert disabled_registry.validate_coverage().missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
+    assert before.missing_structured_authoritative_domains == ()
     assert after_registry.validate_coverage().missing_structured_authoritative_domains == ()

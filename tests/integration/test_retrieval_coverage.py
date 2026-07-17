@@ -7,7 +7,6 @@ from procuresignal.retrieval.base import FetchFailureCode, FetchResult
 from procuresignal.retrieval.catalog import REGISTRY_VERSION, SOURCE_REGISTRY
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
 from procuresignal.retrieval.providers.rss import RSSProvider
-from procuresignal.retrieval.registry import ProcurementDomain
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -114,9 +113,9 @@ async def test_production_registry_offline_coverage_and_idempotency(tmp_path, mo
     coverage = SOURCE_REGISTRY.validate_coverage()
     assert coverage.missing_domains == ()
     assert coverage.missing_authoritative_domains == ()
-    # Approved security exception: the official sanctions object needs secret query
-    # injection and is ~24.7 MiB, beyond SafeFetcher's reviewed 5 MiB ceiling.
-    assert coverage.missing_structured_authoritative_domains == (ProcurementDomain.SANCTIONS,)
+    # The reviewed sealed streaming adapter closes the structured sanctions gap
+    # without changing SafeFetcher's ordinary five MiB ceiling.
+    assert coverage.missing_structured_authoritative_domains == ()
     assert result.llm_calls == 0
     assert result.sources_succeeded >= 1
     assert result.sources_failed >= 1
