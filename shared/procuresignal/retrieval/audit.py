@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import cast
 
 from sqlalchemy import CursorResult, and_, case, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Executable, Select
 
@@ -112,21 +112,33 @@ class RetrievalAuditRepository:
             await self.session.commit()
             return renewed.rowcount == 1
         await self.session.commit()
-        result = await self._execute(
-            update(NewsRetrievalSourceOutcome)
-            .where(
-                NewsRetrievalSourceOutcome.run_id == run_id,
-                NewsRetrievalSourceOutcome.source_id == source_id,
-                NewsRetrievalSourceOutcome.status == "running",
-                NewsRetrievalSourceOutcome.lease_expires_at < now,
+        try:
+            result = await self._execute(
+                update(NewsRetrievalSourceOutcome)
+                .where(
+                    NewsRetrievalSourceOutcome.run_id == run_id,
+                    NewsRetrievalSourceOutcome.source_id == source_id,
+                    NewsRetrievalSourceOutcome.status == "running",
+                    NewsRetrievalSourceOutcome.lease_expires_at < now,
+                )
+                .values(
+                    lease_owner=owner,
+                    lease_expires_at=now + LEASE_DURATION,
+                    started_at=now,
+                    attempted_count=NewsRetrievalSourceOutcome.attempted_count + 1,
+                )
             )
-            .values(
-                lease_owner=owner,
-                lease_expires_at=now + LEASE_DURATION,
-                started_at=now,
-                attempted_count=NewsRetrievalSourceOutcome.attempted_count + 1,
+        except OperationalError as error:
+            bind = self.session.bind
+            sqlite_locked = (
+                bind is not None
+                and bind.dialect.name == "sqlite"
+                and "database is locked" in str(error.orig).lower()
             )
-        )
+            if not sqlite_locked:
+                raise
+            await self.session.rollback()
+            return False
         if result.rowcount == 1:
             await self.session.commit()
             return True

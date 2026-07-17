@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -166,6 +166,54 @@ async def test_concurrent_source_claim_and_stale_reclaim_have_one_winner(session
             RetrievalAuditRepository(two).claim_source(run_id, "source", "four", stale),
         )
         assert sum(results) == 1
+
+
+async def test_sqlite_source_claim_treats_write_lock_as_lost_race(tmp_path) -> None:
+    now = datetime(2026, 7, 13, 12)
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'locked-audit.db'}",
+        connect_args={"timeout": 0.01},
+    )
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with maker() as setup:
+        run = NewsRetrievalRun(
+            run_key="locked-source",
+            status="running",
+            registry_version="v1",
+            started_at=now,
+        )
+        setup.add(run)
+        await setup.flush()
+        setup.add(
+            NewsRetrievalSourceOutcome(
+                run_id=run.id,
+                source_id="source",
+                status="running",
+                started_at=now,
+                lease_owner="old",
+                lease_expires_at=now - timedelta(minutes=1),
+            )
+        )
+        await setup.commit()
+        run_id = run.id
+
+    async with maker() as locker, maker() as contender:
+        await locker.execute(
+            update(NewsRetrievalRun)
+            .where(NewsRetrievalRun.id == run_id)
+            .values(registry_version="write-lock")
+        )
+        assert not await RetrievalAuditRepository(contender).claim_source(
+            run_id,
+            "source",
+            "contender",
+            now,
+        )
+        await locker.rollback()
+
+    await engine.dispose()
 
 
 async def test_durable_circuit_opens_half_open_atomically_and_resets(sessions) -> None:
