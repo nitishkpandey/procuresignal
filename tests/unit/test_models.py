@@ -3,10 +3,7 @@
 from datetime import datetime
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from shared.procuresignal.models import (
+from procuresignal.models import (
     Base,
     NewsArticleProcessed,
     NewsArticleRaw,
@@ -16,7 +13,9 @@ from shared.procuresignal.models import (
     RiskEvent,
     UserNewsPreference,
 )
-from shared.procuresignal.retrieval.base import RawArticle
+from procuresignal.retrieval.base import RawArticle
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
 def test_raw_article_provenance_defaults_preserve_existing_callers() -> None:

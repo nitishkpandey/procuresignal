@@ -1,8 +1,7 @@
 import ipaddress
 
 import pytest
-
-from shared.procuresignal.retrieval.security import UnsafeURL, URLSafetyPolicy
+from procuresignal.retrieval.security import UnsafeURL, URLSafetyPolicy
 
 
 async def resolver(

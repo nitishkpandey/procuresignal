@@ -2,18 +2,17 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from shared.procuresignal.models import (
+from procuresignal.models import (
     Base,
     NewsRetrievalCircuit,
     NewsRetrievalRun,
     NewsRetrievalSourceOutcome,
 )
-from shared.procuresignal.retrieval.audit import RetrievalAuditRepository, run_candidate_statement
-from shared.procuresignal.retrieval.base import FetchFailureCode
+from procuresignal.retrieval.audit import RetrievalAuditRepository, run_candidate_statement
+from procuresignal.retrieval.base import FetchFailureCode
+from sqlalchemy import select, update
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 def test_postgresql_claim_candidate_uses_skip_locked() -> None:

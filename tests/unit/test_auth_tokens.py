@@ -6,8 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
-
-from shared.procuresignal.auth.tokens import (
+from procuresignal.auth.tokens import (
     AccessClaims,
     decode_access_token,
     encode_access_token,

@@ -1,10 +1,7 @@
 """Tests for identity, tenancy, session, and audit models."""
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from shared.procuresignal.models import (
+from procuresignal.models import (
     AuditLog,
     Base,
     Membership,
@@ -13,6 +10,8 @@ from shared.procuresignal.models import (
     Role,
     User,
 )
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
 @pytest.fixture

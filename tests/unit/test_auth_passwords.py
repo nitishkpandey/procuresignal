@@ -1,6 +1,6 @@
 """Tests for password hashing."""
 
-from shared.procuresignal.auth.passwords import hash_password, verify_password
+from procuresignal.auth.passwords import hash_password, verify_password
 
 
 def test_hash_is_argon2id_and_independently_salted() -> None:
@@ -27,7 +27,7 @@ def test_absent_password_never_verifies() -> None:
 
 def test_dummy_hash_value_itself_does_not_authenticate_a_passwordless_user() -> None:
     """The timing equalizer must not become a backdoor password."""
-    from shared.procuresignal.auth.passwords import _DUMMY_PASSWORD
+    from procuresignal.auth.passwords import _DUMMY_PASSWORD
 
     assert verify_password(_DUMMY_PASSWORD, None) is False
 

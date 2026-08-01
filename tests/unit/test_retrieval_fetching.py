@@ -5,18 +5,17 @@ from datetime import datetime, timezone
 
 import httpcore
 import httpx
+import procuresignal.retrieval.fetching as fetching_module
 import pytest
-
-import shared.procuresignal.retrieval.fetching as fetching_module
-from shared.procuresignal.retrieval.catalog import SOURCE_REGISTRY
-from shared.procuresignal.retrieval.fetching import (
+from procuresignal.retrieval.catalog import SOURCE_REGISTRY
+from procuresignal.retrieval.fetching import (
     FetchFailureCode,
     PinnedAsyncHTTPTransport,
     PinnedNetworkBackend,
     SafeFetcher,
     parse_retry_after,
 )
-from shared.procuresignal.retrieval.security import URLSafetyPolicy
+from procuresignal.retrieval.security import URLSafetyPolicy
 
 SOURCE = SOURCE_REGISTRY.sources[0]
 
