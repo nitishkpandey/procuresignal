@@ -1,6 +1,8 @@
 """SQLAlchemy models."""
 
 from .articles import NewsArticleProcessed, NewsArticleRaw
+from .audit import AuditLog
+from .auth import Membership, Organization, RefreshToken, Role, User
 from .base import Base, BaseModel
 from .chat import ChatConversation, ChatMessage
 from .enrichment import EnrichmentCacheEntry
@@ -13,6 +15,12 @@ from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
 __all__ = [
     "Base",
     "BaseModel",
+    "Organization",
+    "User",
+    "Membership",
+    "RefreshToken",
+    "Role",
+    "AuditLog",
     "NewsArticleRaw",
     "NewsArticleProcessed",
     "ChatConversation",
