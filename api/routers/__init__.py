@@ -1,5 +1,15 @@
 """API routers."""
 
-from . import articles, chat, currency, feed, health, preferences, signals
+from . import articles, auth, chat, currency, feed, health, preferences, risk_events, signals
 
-__all__ = ["articles", "chat", "currency", "feed", "health", "preferences", "signals"]
+__all__ = [
+    "articles",
+    "auth",
+    "chat",
+    "currency",
+    "feed",
+    "health",
+    "preferences",
+    "risk_events",
+    "signals",
+]
