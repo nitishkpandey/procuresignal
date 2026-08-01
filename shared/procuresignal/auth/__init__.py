@@ -10,6 +10,7 @@ from .tokens import (
     hash_refresh_token,
     mint_refresh_token,
     refresh_token_expiry,
+    require_auth_secret,
 )
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "mint_refresh_token",
     "hash_refresh_token",
     "refresh_token_expiry",
+    "require_auth_secret",
     "ACCESS_TOKEN_TTL",
     "REFRESH_TOKEN_TTL",
 ]

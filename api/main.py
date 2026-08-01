@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from procuresignal.auth.tokens import require_auth_secret
 from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -22,9 +23,42 @@ from api.routers import (
 )
 from api.scheduler import create_scheduler, scheduler_enabled
 
+DEFAULT_ALLOWED_ORIGIN = "http://localhost:3000"
+
+
+def allowed_origins() -> list[str]:
+    """Browser origins permitted to call this API with credentials.
+
+    A wildcard is refused outright. Browsers already reject `*` alongside
+    `allow_credentials`, so it would silently break the refresh cookie, and if it
+    did work it would let any site on the internet read every user's data.
+    """
+
+    raw = getenv("CORS_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGIN)
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if any(origin == "*" for origin in origins):
+        raise RuntimeError(
+            "CORS_ALLOWED_ORIGINS must name explicit origins; '*' cannot be used "
+            "with credentialed requests"
+        )
+    return origins or [DEFAULT_ALLOWED_ORIGIN]
+
+
+def require_startup_configuration() -> None:
+    """Fail fast on a misconfigured deployment.
+
+    Checked at import rather than at first sign-in, so a bad deployment cannot come
+    up healthy and then reject every user.
+    """
+
+    require_auth_secret()
+    allowed_origins()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    require_startup_configuration()
+
     database_url = getenv("DATABASE_URL")
     if database_url:
         await init_db(database_url)
@@ -52,7 +86,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

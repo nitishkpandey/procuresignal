@@ -5,6 +5,7 @@ from procuresignal.models import Role
 
 from api.dependencies import AuthenticatedUser
 from api.main import app
+from api.rate_limit import login_limiter, registration_limiter
 
 
 def fixed_identity(public_id: str, *, role: Role = Role.OWNER) -> AuthenticatedUser:
@@ -24,6 +25,27 @@ def fixed_identity(public_id: str, *, role: Role = Role.OWNER) -> AuthenticatedU
         organization_public_id="org-test",
         role=role,
     )
+
+
+@pytest.fixture(autouse=True)
+def _auth_secret(monkeypatch: pytest.MonkeyPatch):
+    """The app refuses to start without a signing secret, so every test gets one.
+
+    Set through monkeypatch so a test checking the missing-secret behaviour can
+    still delete it.
+    """
+
+    monkeypatch.setenv("AUTH_SECRET_KEY", "test-secret-key-that-is-long-enough-32")
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Throttles are process-wide singletons, so one test's attempts would
+    otherwise count against the next one."""
+
+    for limiter in (login_limiter, registration_limiter):
+        limiter.reset()
+    yield
 
 
 @pytest.fixture(autouse=True)

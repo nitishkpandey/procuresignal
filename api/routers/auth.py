@@ -18,6 +18,12 @@ from api.dependencies import (
     get_current_user,
     get_session,
 )
+from api.rate_limit import (
+    login_key,
+    login_limiter,
+    registration_key,
+    registration_limiter,
+)
 from api.schemas.auth import (
     AccessTokenResponse,
     LoginRequest,
@@ -32,6 +38,15 @@ REFRESH_COOKIE_NAME = "procuresignal_refresh"
 # Scoped so the browser only sends the refresh token to the endpoints that rotate it,
 # rather than attaching it to every ordinary API call.
 REFRESH_COOKIE_PATH = "/api/auth"
+
+
+def _too_many_attempts(retry_after: int) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Too many attempts. Try again later.",
+        headers={"Retry-After": str(retry_after)},
+    )
+
 
 _INVALID_CREDENTIALS = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -91,6 +106,11 @@ async def register(
 ) -> TokenResponse:
     """Create an account, its organization if needed, and an initial session."""
 
+    throttle_key = registration_key(context.client_ip)
+    retry_after = registration_limiter.check(throttle_key)
+    if retry_after is not None:
+        raise _too_many_attempts(retry_after)
+
     try:
         issued = await service.register(
             session,
@@ -101,6 +121,7 @@ async def register(
             client_ip=context.client_ip,
         )
     except service.EmailAlreadyRegisteredError:
+        registration_limiter.record(throttle_key)
         await record_audit(
             session,
             action="user.register",
@@ -138,6 +159,11 @@ async def login(
 ) -> TokenResponse:
     """Exchange credentials for a session."""
 
+    throttle_key = login_key(context.client_ip, payload.email)
+    retry_after = login_limiter.check(throttle_key)
+    if retry_after is not None:
+        raise _too_many_attempts(retry_after)
+
     try:
         issued = await service.authenticate(
             session,
@@ -147,6 +173,7 @@ async def login(
             client_ip=context.client_ip,
         )
     except service.InvalidCredentialsError:
+        login_limiter.record(throttle_key)
         await record_audit(
             session,
             action="user.login",

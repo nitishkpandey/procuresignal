@@ -285,3 +285,69 @@ def test_authentication_events_are_audited(client: TestClient) -> None:
     assert ("user.register", "success") in actions
     assert ("user.login", "failure") in actions
     assert all("wrong-password-x" not in str(row.detail) for row in rows)
+
+
+# --- throttling -----------------------------------------------------------------
+
+
+def test_repeated_failed_logins_are_throttled(client: TestClient) -> None:
+    register(client)
+
+    for _ in range(5):
+        assert (
+            client.post(
+                "/api/auth/login", json={"email": "buyer@acme.com", "password": "wrong-but-long"}
+            ).status_code
+            == 401
+        )
+
+    blocked = client.post(
+        "/api/auth/login", json={"email": "buyer@acme.com", "password": "wrong-but-long"}
+    )
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) > 0
+
+
+def test_throttling_does_not_punish_a_different_account(client: TestClient) -> None:
+    """One address being attacked must not lock out everyone else."""
+    register(client, "victim@acme.com")
+    register(client, "bystander@acme.com")
+
+    for _ in range(6):
+        client.post(
+            "/api/auth/login", json={"email": "victim@acme.com", "password": "wrong-but-long"}
+        )
+
+    assert (
+        client.post(
+            "/api/auth/login", json={"email": "bystander@acme.com", "password": PASSWORD}
+        ).status_code
+        == 200
+    )
+
+
+def test_successful_logins_are_never_throttled(client: TestClient) -> None:
+    register(client)
+
+    for _ in range(20):
+        assert (
+            client.post(
+                "/api/auth/login", json={"email": "buyer@acme.com", "password": PASSWORD}
+            ).status_code
+            == 200
+        )
+
+
+def test_repeated_duplicate_registrations_are_throttled(client: TestClient) -> None:
+    """Retrying a taken address is how registration gets used to enumerate accounts."""
+    register(client)
+
+    statuses = [
+        client.post(
+            "/api/auth/register", json={"email": "buyer@acme.com", "password": PASSWORD}
+        ).status_code
+        for _ in range(12)
+    ]
+
+    assert 409 in statuses
+    assert statuses[-1] == 429

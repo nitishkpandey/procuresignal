@@ -37,6 +37,16 @@ def _secret() -> str:
     return secret
 
 
+def require_auth_secret() -> None:
+    """Raise unless the signing secret is usable.
+
+    One definition of "valid secret", shared by the startup check and every token
+    operation, so the two cannot disagree.
+    """
+
+    _secret()
+
+
 def encode_access_token(claims: AccessClaims, *, now: datetime | None = None) -> str:
     """Sign a short-lived access token."""
 
