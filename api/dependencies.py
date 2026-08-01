@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, WebSocket, WebSocketException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from procuresignal.auth import decode_access_token
 from procuresignal.config import database
@@ -14,6 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+# Offered by the client alongside the token itself, and echoed back on accept so the
+# browser does not fail the handshake.
+WEBSOCKET_BEARER_SUBPROTOCOL = "bearer"
+# Private-use close code mirroring HTTP 401; 1008 (policy violation) would not
+# distinguish authentication from any other refusal.
+WS_UNAUTHENTICATED = 4401
 
 # Roles are declared strongest first, so a lower index outranks a higher one.
 _ROLE_RANK = {role: index for index, role in enumerate(Role)}
@@ -80,24 +87,23 @@ def get_client_context(request: Request) -> ClientContext:
     )
 
 
-async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-    session: AsyncSession = Depends(get_session),
-) -> AuthenticatedUser:
-    """Resolve the caller from their access token.
+async def resolve_access_token(token: str, session: AsyncSession) -> Optional[AuthenticatedUser]:
+    """Turn a raw access token into an identity, or `None` if it is not usable.
 
-    The user and membership are re-read on every request, and the token's version claim
-    is compared against the stored one. That costs an indexed query per request and buys
+    The user and membership are re-read every time, and the token's version claim is
+    compared against the stored one. That costs an indexed query per call and buys
     immediate revocation instead of waiting out the token's remaining lifetime.
+
+    Shared by the HTTP and WebSocket entry points so the two cannot drift apart.
     """
 
-    if credentials is None or not credentials.credentials:
-        raise _unauthenticated()
+    if not token:
+        return None
 
     try:
-        claims = decode_access_token(credentials.credentials)
+        claims = decode_access_token(token)
     except jwt.InvalidTokenError:
-        raise _unauthenticated() from None
+        return None
 
     row = (
         await session.execute(
@@ -109,11 +115,11 @@ async def get_current_user(
         )
     ).first()
     if row is None:
-        raise _unauthenticated()
+        return None
 
     user, membership, organization = row
     if not user.is_active or user.token_version != claims.token_version:
-        raise _unauthenticated()
+        return None
 
     return AuthenticatedUser(
         id=user.id,
@@ -123,6 +129,50 @@ async def get_current_user(
         organization_public_id=organization.public_id,
         role=Role(membership.role),
     )
+
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    session: AsyncSession = Depends(get_session),
+) -> AuthenticatedUser:
+    """Resolve the caller of an HTTP request from their bearer token."""
+
+    if credentials is None:
+        raise _unauthenticated()
+
+    resolved = await resolve_access_token(credentials.credentials, session)
+    if resolved is None:
+        raise _unauthenticated()
+    return resolved
+
+
+def access_token_from_subprotocols(websocket: WebSocket) -> Optional[str]:
+    """Read the access token from `Sec-WebSocket-Protocol`.
+
+    Browsers cannot set an Authorization header on a WebSocket, and a query string
+    would put the token into access logs, proxy logs, and browser history. The
+    subprotocol header is the remaining place a browser can put a credential.
+
+    The client offers two values: the literal "bearer" and the token itself.
+    """
+
+    protocols = websocket.scope.get("subprotocols") or []
+    if len(protocols) == 2 and protocols[0] == WEBSOCKET_BEARER_SUBPROTOCOL:
+        return protocols[1]
+    return None
+
+
+async def get_current_ws_user(
+    websocket: WebSocket,
+    session: AsyncSession = Depends(get_session),
+) -> AuthenticatedUser:
+    """Resolve the caller of a WebSocket, closing the socket before accepting it."""
+
+    token = access_token_from_subprotocols(websocket)
+    resolved = await resolve_access_token(token or "", session)
+    if resolved is None:
+        raise WebSocketException(code=WS_UNAUTHENTICATED, reason="Not authenticated")
+    return resolved
 
 
 def require_role(

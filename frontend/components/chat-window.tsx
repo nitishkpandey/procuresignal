@@ -63,6 +63,8 @@ export function ChatWindow({
       if (active) dispatch({ kind: "reset", next: initialChatState(res.messages) });
     });
 
+    // BROKEN until the auth store lands: the socket now expects an access token here,
+    // and both arguments are strings so the compiler cannot catch the mismatch.
     const socket = socketFactory(userId, conversationId, {
       onFrame: (frame) => dispatch({ kind: "frame", frame }),
       onOpen: () => setConnected(true),

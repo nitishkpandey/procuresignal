@@ -9,6 +9,7 @@ from fastapi import (
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
+    WebSocketException,
     status,
 )
 from procuresignal.chat.chat_client import ChatLLMClient
@@ -18,7 +19,14 @@ from procuresignal.models import ChatConversation, ChatMessage
 from sqlalchemy import asc, delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.dependencies import AuthenticatedUser, get_current_user, get_session
+from api.dependencies import (
+    WEBSOCKET_BEARER_SUBPROTOCOL,
+    WS_UNAUTHENTICATED,
+    AuthenticatedUser,
+    get_current_user,
+    get_current_ws_user,
+    get_session,
+)
 from api.schemas.chat import (
     ClearHistoryResponse,
     ConversationListResponse,
@@ -209,19 +217,37 @@ async def _persist_assistant_message(
         await session.commit()
 
 
-@router.websocket("/ws/chat/{user_id}/{conversation_id}")
-async def chat_websocket(websocket: WebSocket, user_id: str, conversation_id: str) -> None:
-    """Stream a context-aware chat response, persisting both sides of the exchange."""
+@router.websocket("/ws/chat/{conversation_id}")
+async def chat_websocket(
+    websocket: WebSocket,
+    conversation_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_ws_user),
+) -> None:
+    """Stream a context-aware chat response, persisting both sides of the exchange.
 
-    await websocket.accept()
+    Authentication happens in the dependency, before the handshake is accepted, so an
+    unauthenticated caller never reaches this body.
+    """
+
+    user_id = current_user.public_id
 
     session_maker = (
         getattr(database.db_config, "session_maker", None) if database.db_config else None
     )
     if session_maker is None:
+        await websocket.accept(subprotocol=WEBSOCKET_BEARER_SUBPROTOCOL)
         await websocket.send_json({"type": "error", "content": "Database not initialized"})
         await websocket.close()
         return
+
+    # Checked before accepting: the conversation is created on demand, so without this
+    # any caller could name someone else's id and be handed their thread.
+    async with session_maker() as session:
+        existing = await _get_conversation(session, conversation_id)
+    if existing is not None and existing.user_id != user_id:
+        raise WebSocketException(code=WS_UNAUTHENTICATED, reason="Not authenticated")
+
+    await websocket.accept(subprotocol=WEBSOCKET_BEARER_SUBPROTOCOL)
 
     try:
         client = _build_chat_client()
