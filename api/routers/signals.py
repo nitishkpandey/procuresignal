@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from procuresignal.config import database
+from procuresignal.models import Role, SignalMetadata
 from procuresignal.models import Signal as SignalModel
-from procuresignal.models import SignalMetadata
 from sqlalchemy import func, select
 
-router = APIRouter(prefix="/api/signals", tags=["signals"])
+from api.dependencies import get_current_user, require_role
+
+router = APIRouter(
+    prefix="/api/signals", tags=["signals"], dependencies=[Depends(get_current_user)]
+)
 
 
 def _serialize_signal(obj: SignalModel) -> dict[str, Any]:
@@ -83,7 +87,7 @@ async def get_entity_signals(entity_id: str) -> dict[str, Any]:
         return {"entity_id": entity_id, "signals": [_serialize_signal(i) for i in items]}
 
 
-@router.post("/{signal_id}/acknowledge")
+@router.post("/{signal_id}/acknowledge", dependencies=[Depends(require_role(Role.MEMBER))])
 async def acknowledge_signal(signal_id: str) -> dict[str, Any]:
     if not database.db_config:
         raise HTTPException(status_code=500, detail="DB not configured")

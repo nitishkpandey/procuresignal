@@ -27,7 +27,6 @@ class PreferenceUpdate(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: str = Field(..., min_length=1, max_length=100)
     interested_categories: Optional[list[str]] = None
     interested_suppliers: Optional[list[str]] = None
     interested_regions: Optional[list[str]] = None
@@ -37,13 +36,6 @@ class PreferenceUpdate(BaseModel):
     excluded_regions: Optional[list[str]] = None
     excluded_signals: Optional[list[str]] = None
     platform_language: str = Field("en", min_length=2, max_length=10)
-
-    @field_validator("user_id", mode="before")
-    @classmethod
-    def normalize_user_id(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            return value.strip()
-        return value
 
     @field_validator("platform_language", mode="before")
     @classmethod
@@ -91,35 +83,10 @@ class PreferenceLanguageUpdate(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: str = Field(..., min_length=1, max_length=100)
     platform_language: str = Field("en", min_length=2, max_length=10)
-
-    @field_validator("user_id", mode="before")
-    @classmethod
-    def normalize_user_id(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            return value.strip()
-        return value
 
     @field_validator("platform_language", mode="before")
     @classmethod
     def normalize_platform_language(cls, value: Any) -> str:
         text = str(value or "en").strip().lower()
         return text or "en"
-
-
-class PreferenceBulkUpdate(BaseModel):
-    """Bulk preference update request."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    items: list[PreferenceUpdate] = Field(default_factory=list, min_length=1)
-
-
-class PreferenceBulkResponse(BaseModel):
-    """Bulk preference update response."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    updated_count: int = Field(..., ge=0)
-    preferences: list[PreferenceResponse] = Field(default_factory=list)

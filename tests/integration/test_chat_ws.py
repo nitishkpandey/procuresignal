@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import api.routers.chat as chat_router
+from api.dependencies import get_current_user
 from api.main import app
+from tests.conftest import fixed_identity
 
 
 class _StubChatClient:
@@ -47,6 +49,7 @@ def ws_client(monkeypatch):
 
     monkeypatch.setattr(chat_router, "_build_chat_client", lambda: _StubChatClient())
 
+    app.dependency_overrides[get_current_user] = lambda: fixed_identity("u1")
     with TestClient(app) as client:
         yield client
     database_module.db_config = original

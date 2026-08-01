@@ -5,7 +5,7 @@ from typing import Any
 from typing import cast as type_cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from procuresignal.models import RiskEvent, UserNewsPreference
+from procuresignal.models import RiskEvent, Role, UserNewsPreference
 from procuresignal.personalization.matcher import PreferenceMatcher
 from procuresignal.risk_events.taxonomy import risk_terms_for
 from procuresignal.signals.taxonomy import normalize_signal_term
@@ -14,18 +14,19 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement, Select
 
-from api.dependencies import get_session
+from api.dependencies import AuthenticatedUser, get_current_user, get_session, require_role
 from api.schemas.risk_event import RiskEventItem, RiskEventResponse, RiskEventStatusUpdate
 from api.translation import translate_risk_events
 
-router = APIRouter(prefix="/api/risk-events", tags=["risk-events"])
+router = APIRouter(
+    prefix="/api/risk-events", tags=["risk-events"], dependencies=[Depends(get_current_user)]
+)
 
 RISK_EVENT_RETENTION_DAYS = 14
 
 
 @router.get("", response_model=RiskEventResponse)
 async def list_risk_events(
-    user_id: str = Query(..., min_length=1, max_length=100),
     risk_type: str | None = Query(None),
     severity: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
@@ -35,10 +36,12 @@ async def list_risk_events(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     language: str = Query("en", min_length=2, max_length=10),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> RiskEventResponse:
-    """List procurement risk events."""
+    """List procurement risk events ranked against the caller's preferences."""
 
+    user_id = current_user.public_id
     cutoff = datetime.utcnow() - timedelta(days=RISK_EVENT_RETENTION_DAYS)
     stmt = _apply_filters(select(RiskEvent), risk_type, severity, status_filter).where(
         RiskEvent.published_at >= cutoff
@@ -85,7 +88,11 @@ async def get_risk_event(
     return translated[0]
 
 
-@router.patch("/{risk_event_id}/status", response_model=RiskEventItem)
+@router.patch(
+    "/{risk_event_id}/status",
+    response_model=RiskEventItem,
+    dependencies=[Depends(require_role(Role.MEMBER))],
+)
 async def update_risk_event_status(
     risk_event_id: int,
     payload: RiskEventStatusUpdate,

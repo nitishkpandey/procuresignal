@@ -9,11 +9,11 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.article_entities import regions_for_response, suppliers_for_response
-from api.dependencies import get_session
+from api.dependencies import AuthenticatedUser, get_current_user, get_session
 from api.schemas.feed import ArticleInFeed, FeedResponse
 from api.translation import translate_feed_articles
 
-router = APIRouter(prefix="/api", tags=["feed"])
+router = APIRouter(prefix="/api", tags=["feed"], dependencies=[Depends(get_current_user)])
 
 
 async def _load_feed_rows(
@@ -46,14 +46,15 @@ async def _count_feed_rows(session: AsyncSession, user_id: str) -> int:
 
 @router.get("/feed", response_model=FeedResponse)
 async def get_personalized_feed(
-    user_id: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(50, ge=1, le=200),
     days: int = Query(7, ge=1, le=30),
     language: str = Query("en", min_length=2, max_length=10),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> FeedResponse:
-    """Get the user's personalized feed."""
+    """Get the authenticated user's personalized feed."""
 
+    user_id = current_user.public_id
     feed_rows = await _load_feed_rows(session, user_id=user_id, limit=limit)
     if len(feed_rows) < limit:
         await PersonalizationPipeline.generate_feed(

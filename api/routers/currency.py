@@ -1,11 +1,14 @@
 """Currency monitoring endpoints."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from procuresignal.currency import CurrencyMonitor
 
+from api.dependencies import get_current_user
 from api.schemas.currency import CurrencyMonitorResponseSchema
 
-router = APIRouter(prefix="/api/currency", tags=["currency"])
+router = APIRouter(
+    prefix="/api/currency", tags=["currency"], dependencies=[Depends(get_current_user)]
+)
 
 
 @router.get("/eur-monitor", response_model=CurrencyMonitorResponseSchema)

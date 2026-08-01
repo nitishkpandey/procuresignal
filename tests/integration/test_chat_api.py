@@ -9,8 +9,9 @@ from procuresignal.models import Base, ChatMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from api.dependencies import get_session
+from api.dependencies import get_current_user, get_session
 from api.main import app
+from tests.conftest import fixed_identity
 
 
 @pytest.fixture()
@@ -42,7 +43,11 @@ def chat_client(monkeypatch):
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    # Mutable so a test can act as a different user without minting real tokens.
+    identity = {"public_id": "u1"}
+    app.dependency_overrides[get_current_user] = lambda: fixed_identity(identity["public_id"])
     with TestClient(app) as client:
+        client.identity = identity  # type: ignore[attr-defined]
         yield client
     app.dependency_overrides.clear()
     database_module.db_config = original
@@ -68,14 +73,16 @@ def test_messages_for_unknown_conversation_404(chat_client: TestClient):
 
 
 def test_clear_conversation_history_deletes_user_conversations(chat_client: TestClient):
-    first = chat_client.post("/api/conversations", params={"user_id": "u1"})
-    second = chat_client.post("/api/conversations", params={"user_id": "u1"})
-    other = chat_client.post("/api/conversations", params={"user_id": "u2"})
+    first = chat_client.post("/api/conversations")
+    second = chat_client.post("/api/conversations")
+    chat_client.identity["public_id"] = "u2"
+    other = chat_client.post("/api/conversations")
+    chat_client.identity["public_id"] = "u1"
     assert first.status_code == 200
     assert second.status_code == 200
     assert other.status_code == 200
 
-    deleted = chat_client.delete("/api/conversations", params={"user_id": "u1"})
+    deleted = chat_client.delete("/api/conversations")
 
     assert deleted.status_code == 200
     assert deleted.json() == {
@@ -83,9 +90,10 @@ def test_clear_conversation_history_deletes_user_conversations(chat_client: Test
         "deleted_conversations": 2,
         "deleted_messages": 0,
     }
-    listed = chat_client.get("/api/conversations", params={"user_id": "u1"})
+    listed = chat_client.get("/api/conversations")
     assert listed.json()["conversations"] == []
-    other_listed = chat_client.get("/api/conversations", params={"user_id": "u2"})
+    chat_client.identity["public_id"] = "u2"
+    other_listed = chat_client.get("/api/conversations")
     assert other_listed.json()["total_count"] == 1
 
 
@@ -109,7 +117,7 @@ def test_clear_conversation_history_deletes_messages(chat_client: TestClient):
 
     asyncio.run(add_message())
 
-    deleted = chat_client.delete("/api/conversations", params={"user_id": "u1"})
+    deleted = chat_client.delete("/api/conversations")
 
     assert deleted.status_code == 200
     assert deleted.json()["deleted_messages"] == 1

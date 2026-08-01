@@ -20,11 +20,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from api.dependencies import get_session
+from api.dependencies import get_current_user, get_session
 from api.main import app
 from api.routers import articles as articles_router
 from api.routers import currency as currency_router
 from api.routers import feed as feed_router
+from tests.conftest import fixed_identity
 
 
 @pytest.mark.asyncio
@@ -265,8 +266,12 @@ def api_client(monkeypatch: pytest.MonkeyPatch):
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    # Mutable so a test can act as a different user without minting real tokens.
+    identity = {"public_id": "user-123"}
+    app.dependency_overrides[get_current_user] = lambda: fixed_identity(identity["public_id"])
 
     with TestClient(app) as client:
+        client.identity = identity  # type: ignore[attr-defined]
         yield client
 
     app.dependency_overrides.clear()
@@ -320,12 +325,6 @@ def test_currency_endpoint_uses_service_defaults(
     assert response.status_code == 200
     assert response.json()["base"] == "EUR"
     assert monitor.calls == [{"days": 30}]
-
-
-def test_feed_missing_user_id(api_client: TestClient) -> None:
-    response = api_client.get("/api/feed")
-
-    assert response.status_code == 422
 
 
 def test_feed_endpoint(api_client: TestClient) -> None:
@@ -617,7 +616,8 @@ def test_feed_translates_articles_when_language_requested(
 
 
 def test_feed_without_preferences_returns_general_news(api_client: TestClient) -> None:
-    response = api_client.get("/api/feed", params={"user_id": "new-user", "limit": 20})
+    api_client.identity["public_id"] = "new-user"
+    response = api_client.get("/api/feed", params={"limit": 20})
 
     assert response.status_code == 200
     payload = response.json()
@@ -628,16 +628,14 @@ def test_feed_without_preferences_returns_general_news(api_client: TestClient) -
 def test_feed_with_unmatched_preferences_falls_back_to_general_news(
     api_client: TestClient,
 ) -> None:
+    api_client.identity["public_id"] = "unmatched-user"
     saved = api_client.post(
         "/api/preferences",
-        json={
-            "user_id": "unmatched-user",
-            "interested_signals": ["warning"],
-        },
+        json={"interested_signals": ["warning"]},
     )
     assert saved.status_code == 200
 
-    response = api_client.get("/api/feed", params={"user_id": "unmatched-user", "limit": 20})
+    response = api_client.get("/api/feed", params={"limit": 20})
 
     assert response.status_code == 200
     payload = response.json()
@@ -696,10 +694,10 @@ def test_language_update_does_not_clear_existing_feed(api_client: TestClient) ->
 
 
 def test_preferences_round_trip(api_client: TestClient) -> None:
+    api_client.identity["public_id"] = "user-new"
     response = api_client.post(
         "/api/preferences",
         json={
-            "user_id": "user-new",
             "interested_categories": ["Automotive"],
             "interested_suppliers": ["Bosch"],
             "interested_regions": ["Germany"],
@@ -737,29 +735,6 @@ def test_preference_category_alias_generates_feed(api_client: TestClient) -> Non
     assert feed.status_code == 200
     assert feed.json()["articles"]
     assert feed.json()["articles"][0]["category"] == "automotive"
-
-
-def test_bulk_preferences(api_client: TestClient) -> None:
-    response = api_client.post(
-        "/api/preferences/bulk",
-        json={
-            "items": [
-                {
-                    "user_id": "bulk-1",
-                    "interested_categories": ["Manufacturing"],
-                    "interested_suppliers": ["Siemens"],
-                },
-                {
-                    "user_id": "bulk-2",
-                    "interested_regions": ["Poland"],
-                    "excluded_signals": ["strike"],
-                },
-            ]
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["updated_count"] == 2
 
 
 def test_get_article_not_found(api_client: TestClient) -> None:

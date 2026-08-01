@@ -13,11 +13,11 @@ from api.article_entities import (
     regions_for_response,
     suppliers_for_response,
 )
-from api.dependencies import get_session
+from api.dependencies import AuthenticatedUser, get_current_user, get_session
 from api.schemas.article import ArticleDetail, ArticleReadResponse, SearchResponse, SearchResult
 from api.translation import translate_article_detail, translate_search_results
 
-router = APIRouter(prefix="/api", tags=["articles"])
+router = APIRouter(prefix="/api", tags=["articles"], dependencies=[Depends(get_current_user)])
 
 
 def _build_article_detail(processed: NewsArticleProcessed, raw: NewsArticleRaw) -> ArticleDetail:
@@ -65,11 +65,12 @@ async def get_article(
 @router.post("/articles/{article_id}/read", response_model=ArticleReadResponse)
 async def mark_article_read(
     article_id: int,
-    user_id: str = Query(..., min_length=1, max_length=100),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ArticleReadResponse:
-    """Mark an article as read for the given user."""
+    """Mark an article as read for the authenticated user."""
 
+    user_id = current_user.public_id
     result = await session.execute(
         select(UserNewsFeed).where(
             UserNewsFeed.user_id == user_id,

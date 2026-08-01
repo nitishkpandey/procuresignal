@@ -7,7 +7,6 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    Query,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -19,7 +18,7 @@ from procuresignal.models import ChatConversation, ChatMessage
 from sqlalchemy import asc, delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.dependencies import get_session
+from api.dependencies import AuthenticatedUser, get_current_user, get_session
 from api.schemas.chat import (
     ClearHistoryResponse,
     ConversationListResponse,
@@ -39,13 +38,13 @@ async def _get_conversation(session: AsyncSession, conversation_id: str) -> Chat
 
 @router.post("/conversations", response_model=ConversationResponse)
 async def create_conversation(
-    user_id: str = Query(..., min_length=1, max_length=100),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationResponse:
     """Create a new, empty conversation and return its generated id."""
 
     conversation = ChatConversation(
-        user_id=user_id,
+        user_id=current_user.public_id,
         conversation_id=str(uuid.uuid4()),
         title=None,
         message_count=0,
@@ -59,11 +58,12 @@ async def create_conversation(
 
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
-    user_id: str = Query(..., min_length=1, max_length=100),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationListResponse:
-    """List a user's conversations, most recently active first."""
+    """List the caller's conversations, most recently active first."""
 
+    user_id = current_user.public_id
     rows = (
         await session.scalars(
             select(ChatConversation)
@@ -80,11 +80,12 @@ async def list_conversations(
 
 @router.delete("/conversations", response_model=ClearHistoryResponse)
 async def clear_conversation_history(
-    user_id: str = Query(..., min_length=1, max_length=100),
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ClearHistoryResponse:
-    """Delete all chat conversations and messages for a user."""
+    """Delete all of the caller's chat conversations and messages."""
 
+    user_id = current_user.public_id
     message_result = await session.execute(
         delete(ChatMessage).where(ChatMessage.user_id == user_id)
     )
@@ -105,12 +106,14 @@ async def clear_conversation_history(
 )
 async def get_messages(
     conversation_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MessageListResponse:
-    """Return the ordered messages of a conversation."""
+    """Return the ordered messages of one of the caller's conversations."""
 
     conversation = await _get_conversation(session, conversation_id)
-    if conversation is None:
+    # 404 for both "missing" and "someone else's": a 403 would confirm the id exists.
+    if conversation is None or conversation.user_id != current_user.public_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     rows = (
         await session.scalars(
