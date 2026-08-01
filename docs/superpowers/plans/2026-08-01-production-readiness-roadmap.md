@@ -128,7 +128,7 @@ is what distinguishes "production-style" from "production". Each is assigned to 
 | Concern | Phase | Why it matters here |
 |---|---|---|
 | Backups with tested restore | 8 | An untested backup is not a backup. |
-| Rate limiting (per tenant, per IP) | 3 | |
+| Rate limiting (per tenant, per IP) | ~~3~~ **done in Phase 1 Task 8** | In-process; Redis-backed version still belongs in Phase 3 for multi-replica correctness. |
 | Per-tenant LLM budget caps | 3 | Enrichment cost scales with articles × tenants. One runaway ingestion loop is a five-figure surprise. Hard caps, not just monitoring. |
 | Secrets management | 3 | `.env` does not scale past one host. (Hygiene is currently clean — `.env` was never committed.) |
 | Alert rules, not just metrics | 3 | `/metrics` with no alerts is a dashboard nobody watches. **Pipeline freshness is the critical alert**: the classic failure is ingestion returning zero articles for days while every health check stays green. |
@@ -149,7 +149,7 @@ are sequenced by dependency fan-out rather than by product value.
 | **0** | Finish and merge bounded sanctions streaming | — |
 | **1** | Auth, tenancy, RBAC, audit log, token revocation | — |
 | **2** | Supplier master data + entity resolution | 1 |
-| **3** | Platform hardening: `/metrics` + alert rules, frontend CI, CORS, rate limiting, DLQ, budget caps, dependency scanning | 1 |
+| **3** | Platform hardening: `/metrics` + alert rules, frontend CI, DLQ, budget caps, dependency scanning, secrets, preference re-resolution job | 1 |
 | **4** | Watchlists, alert rules, saved searches, notification engine, email digest, supplier profiles | 1, 2 |
 | **5** | pgvector semantic search, feedback capture, impact scoring, evaluation framework | 2 |
 | **6** | Agent loop with human approval and audit trail | 2, 4 |
