@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fs:export xmlns:fs="http://eu.europa.ec/fpi/fsd/export">
+  <fs:sanctionEntity euReferenceNumber="EU.001" logicalId="100" designationDate="2024-01-02" unitedNationId="UN-9">
+    <fs:regulation numberTitle="Council Regulation (EU) 2024/1" publicationDate="2024-01-03" />
+    <fs:nameAlias wholeName="José Álvarez" nameLanguage="EN" strong="true" />
+    <fs:nameAlias wholeName="J. Alvarez" nameLanguage="EN" />
+    <fs:nameAlias wholeName="J. Alvarez" nameLanguage="EN" />
+    <fs:remark>Listed person.</fs:remark>
+  </fs:sanctionEntity>
+  <fs:sanctionEntity euReferenceNumber="EU.001" logicalId="100" designationDate="2025-02-04">
+    <fs:nameAlias wholeName="José Álvarez" strong="true" />
+    <fs:regulation numberTitle="Council Implementing Regulation (EU) 2025/2" publicationDate="2025-02-05" />
+    <fs:remark>Designation updated.</fs:remark>
+  </fs:sanctionEntity>
+  <fs:sanctionEntity euReferenceNumber="EU.002" logicalId="200" designationDate="2023-06-01">
+    <fs:nameAlias wholeName="Example Trading GmbH" strong="true" />
+    <fs:subjectType code="E" classificationCode="enterprise" />
+    <fs:regulation numberTitle="Council Regulation (EU) 2023/7" publicationDate="2023-06-02" />
+  </fs:sanctionEntity>
+</fs:export>

@@ -1,6 +1,6 @@
 {
   "registry_version": "sources-v1",
-  "enabled_source_ids": ["dw_business", "ecb_press", "eu_commission_press", "eurostat_updates", "mining_com", "oilprice", "supply_chain_dive"],
+  "enabled_source_ids": ["dw_business", "ecb_press", "eu_commission_press", "eu_financial_sanctions", "eurostat_updates", "mining_com", "oilprice", "supply_chain_dive"],
   "candidates": [
     {
       "source_id": "eu_commission_press",
@@ -105,17 +105,19 @@
       "expected_content_types": ["application/xml", "text/xml"],
       "allowed_hosts": ["webgate.ec.europa.eu"],
       "trust_seed": 1.0,
-      "license_note": "2026-07-13 verification observed HTTP 403 without credentials; disabled until Task 5 verifies a supported official access path.",
+      "license_note": "Official DG FISMA XML 1.1 distribution; authenticated access uses the deployment secret EU_FISMA_SANCTIONS_TOKEN and retains Commission provenance.",
       "parser_hint": "eu_fsf_1_1",
       "planned_fixture": "eu_financial_sanctions.xml",
-      "enabled": false,
+      "enabled": true,
       "verification": {
-        "checked_at": "2026-07-13",
-        "http_status": 403,
-        "observed_content_type": "application/json",
+        "checked_at": "2026-07-17",
+        "http_status": 200,
+        "observed_content_type": "application/xml",
         "ownership_url": "https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions?locale=en",
-        "ownership_evidence": "The EU Data Portal identifies DG FISMA as publisher and lists XML distributions, but the candidate URL was not anonymously accessible.",
-        "outcome": "disabled"
+        "ownership_evidence": "The EU Data Portal identifies DG FISMA as publisher and documents the XML 1.1 distribution; authenticated retrieval requires the deployment-supplied token.",
+        "authentication_requirement": "token query parameter supplied from EU_FISMA_SANCTIONS_TOKEN",
+        "supported_endpoint": "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
+        "outcome": "enabled"
       }
     },
     {

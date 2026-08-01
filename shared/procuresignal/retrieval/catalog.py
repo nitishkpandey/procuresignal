@@ -124,9 +124,9 @@ _SOURCES = (
         item_limit=100,
         expected_content_types=("application/xml", "text/xml"),
         trust_seed=1.0,
-        license_note="2026-07-13 verification observed HTTP 403 without credentials; disabled until Task 5 verifies a supported official access path.",
+        license_note="Official DG FISMA XML 1.1 distribution; authenticated access uses the deployment secret EU_FISMA_SANCTIONS_TOKEN and retains Commission provenance.",
         adapter=AdapterType.STRUCTURED_SANCTIONS,
-        enabled_by_default=False,
+        enabled_by_default=True,
         parser_hint="eu_fsf_1_1",
     ),
     _source(

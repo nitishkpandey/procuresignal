@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import NewsArticleRaw
 from procuresignal.retrieval.base import RawArticle
+from procuresignal.retrieval.deduplication import has_stable_provider_id
 
 
 class ArticlePersistence:
@@ -41,6 +42,8 @@ class ArticlePersistence:
                     article.title,
                     article.source_name,
                     article.published_at,
+                    provider=article.provider,
+                    provider_article_id=article.provider_article_id,
                 )
 
                 # Use INSERT ... ON CONFLICT DO NOTHING for upsert
@@ -100,10 +103,20 @@ class ArticlePersistence:
         return inserted, duplicates, errors
 
     @staticmethod
-    def _create_ingest_hash(title: str, source: str, published_at: datetime) -> str:
+    def _create_ingest_hash(
+        title: str,
+        source: str,
+        published_at: datetime,
+        *,
+        provider: str | None = None,
+        provider_article_id: str | None = None,
+    ) -> str:
         """Create deterministic hash for deduplication.
 
         Combines title + source + publication date for uniqueness.
         """
-        combined = f"{title}|{source}|{published_at.isoformat()}"
+        if has_stable_provider_id(provider, provider_article_id):
+            combined = f"provider|{provider}|{provider_article_id}"
+        else:
+            combined = f"{title}|{source}|{published_at.isoformat()}"
         return hashlib.sha256(combined.encode()).hexdigest()

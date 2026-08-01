@@ -29,6 +29,7 @@ from procuresignal.retrieval.persistence import ArticlePersistence
 from procuresignal.retrieval.providers.gdelt import GDELTProvider
 from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
 from procuresignal.retrieval.providers.rss import RSSProvider
+from procuresignal.retrieval.providers.sanctions import EUSanctionsProvider
 from procuresignal.retrieval.registry import (
     AdapterType,
     ProcurementDomain,
@@ -290,6 +291,11 @@ class RetrievalOrchestrator:
                 policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner, defer_success=True
             )
             return GDELTProvider(source=definition, fetcher=fetcher)
+        if definition.adapter is AdapterType.STRUCTURED_SANCTIONS:
+            fetcher = SafeFetcher(
+                policy=URLSafetyPolicy(), circuit_store=repo, owner=self.owner, defer_success=True
+            )
+            return EUSanctionsProvider(source=definition, fetcher=fetcher)
         raise ValueError("unsupported_adapter")
 
     @staticmethod

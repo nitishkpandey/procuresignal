@@ -5,6 +5,7 @@ from .base import FetchFailureCode, FetchResult, NewsProvider, RawArticle
 from .catalog import REGISTRY_VERSION, SOURCE_REGISTRY
 from .deduplication import DeduplicationResult, article_fingerprint, deduplicate_within_run
 from .fetching import SafeFetcher
+from .large_object import LargeObjectFetcher, TemporaryFetchArtifact
 from .orchestrator import (
     RetrievalOrchestrator,
     RetrievalRunResult,
@@ -12,7 +13,7 @@ from .orchestrator import (
     configured_registry,
 )
 from .persistence import ArticlePersistence
-from .providers import GDELTProvider, NewsAPIProvider, RSSProvider
+from .providers import EUSanctionsProvider, GDELTProvider, NewsAPIProvider, RSSProvider
 from .registry import (
     AdapterType,
     CoverageReport,
@@ -27,6 +28,8 @@ __all__ = [
     "FetchFailureCode",
     "FetchResult",
     "SafeFetcher",
+    "LargeObjectFetcher",
+    "TemporaryFetchArtifact",
     "DeduplicationResult",
     "article_fingerprint",
     "deduplicate_within_run",
@@ -35,6 +38,7 @@ __all__ = [
     "NewsAPIProvider",
     "GDELTProvider",
     "RSSProvider",
+    "EUSanctionsProvider",
     "ArticlePersistence",
     "RetrievalOrchestrator",
     "RetrievalRunResult",

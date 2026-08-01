@@ -49,20 +49,36 @@ def canonicalize_url(url: str) -> str:
     return urlunsplit((parsed.scheme.lower(), hostname, parsed.path or "/", query, ""))
 
 
+# ponytail: one entry today; move onto the registry if structured providers multiply.
+_STABLE_ID_PROVIDERS = frozenset({"eu_sanctions"})
+
+
+def has_stable_provider_id(provider: str | None, provider_article_id: str | None) -> bool:
+    """Whether the provider publishes an authoritative per-record identifier.
+
+    Structured sources serve every record from one endpoint URL, so URL- and
+    title-based identity collapses all of them into a single article.
+    """
+    return bool(provider_article_id) and provider in _STABLE_ID_PROVIDERS
+
+
 def article_fingerprint(article: RawArticle) -> str:
     """Return a stable identity without collapsing distinct paths or content selectors."""
-    url = canonicalize_url(article.canonical_url or article.article_url)
-    if url:
-        material = f"url\0{url}"
+    if has_stable_provider_id(article.provider, article.provider_article_id):
+        material = f"provider\0{article.provider}\0{article.provider_article_id}"
     else:
-        material = "\0".join(
-            (
-                "content",
-                article.title.casefold().strip(),
-                (article.description or "").casefold().strip(),
-                article.published_at.isoformat(),
+        url = canonicalize_url(article.canonical_url or article.article_url)
+        if url:
+            material = f"url\0{url}"
+        else:
+            material = "\0".join(
+                (
+                    "content",
+                    article.title.casefold().strip(),
+                    (article.description or "").casefold().strip(),
+                    article.published_at.isoformat(),
+                )
             )
-        )
     return sha256(material.encode("utf-8")).hexdigest()
 
 
