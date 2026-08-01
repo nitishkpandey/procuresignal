@@ -11,9 +11,11 @@ import * as api from "@/lib/api";
 import { RiskEventsView } from "@/components/risk-events-view";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getRiskEvents).mockResolvedValue({
     user_id: "buyer@example.com",
     total_count: 87,
@@ -68,7 +70,7 @@ describe("RiskEventsView", () => {
       "https://example.com/risk",
     );
     expect(screen.queryByText(/match/i)).not.toBeInTheDocument();
-    expect(api.getRiskEvents).toHaveBeenCalledWith("buyer@example.com", {
+    expect(api.getRiskEvents).toHaveBeenCalledWith({
       language: "en",
       limit: 50,
     });

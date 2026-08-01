@@ -6,9 +6,11 @@ import * as api from "@/lib/api";
 import { ArticleDetailView } from "@/components/article-detail-view";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getArticle).mockResolvedValue({
     id: 5,
     title: "Tariff news",
@@ -46,7 +48,7 @@ describe("ArticleDetailView", () => {
   });
 
   it("requests article details in the selected platform language", async () => {
-    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "de" });
     render(<ArticleDetailView id={5} />);
     await waitFor(() => expect(screen.getByText("Tariff news")).toBeInTheDocument());
 

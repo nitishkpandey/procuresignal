@@ -10,7 +10,14 @@ const { mockedGet, mockedPost, mockedPatch, mockedDelete } = vi.hoisted(() => ({
 
 vi.mock("axios", () => ({
   default: {
-    create: () => ({ get: mockedGet, post: mockedPost, patch: mockedPatch, delete: mockedDelete }),
+    create: () => ({
+      get: mockedGet,
+      post: mockedPost,
+      patch: mockedPatch,
+      delete: mockedDelete,
+      // lib/api installs auth interceptors on the client at import time.
+      interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+    }),
   },
 }));
 
@@ -24,11 +31,11 @@ afterEach(() => {
 });
 
 describe("api client", () => {
-  it("getFeed calls /api/feed with user_id and options", async () => {
+  it("getFeed calls /api/feed with options", async () => {
     mockedGet.mockResolvedValue({ data: { user_id: "u1", articles: [], total_count: 0 } });
-    const res = await api.getFeed("u1", { limit: 10, days: 5, language: "de" });
+    const res = await api.getFeed({ limit: 10, days: 5, language: "de" });
     expect(mockedGet).toHaveBeenCalledWith("/api/feed", {
-      params: { user_id: "u1", limit: 10, days: 5, language: "de" },
+      params: { limit: 10, days: 5, language: "de" },
     });
     expect(res.user_id).toBe("u1");
   });
@@ -52,26 +59,23 @@ describe("api client", () => {
 
   it("getPreferences returns null on 404", async () => {
     mockedGet.mockRejectedValue({ response: { status: 404 } });
-    const res = await api.getPreferences("nobody");
+    const res = await api.getPreferences();
     expect(res).toBeNull();
   });
 
   it("updatePlatformLanguage patches only language preferences", async () => {
     mockedPatch.mockResolvedValue({ data: { user_id: "u1", platform_language: "de" } });
-    const res = await api.updatePlatformLanguage("u1", "de");
+    const res = await api.updatePlatformLanguage("de");
     expect(mockedPatch).toHaveBeenCalledWith("/api/preferences/language", {
-      user_id: "u1",
       platform_language: "de",
     });
     expect(res.platform_language).toBe("de");
   });
 
-  it("createConversation posts with user_id", async () => {
+  it("createConversation posts without an identity", async () => {
     mockedPost.mockResolvedValue({ data: { conversation_id: "c1", message_count: 0 } });
-    const res = await api.createConversation("u1");
-    expect(mockedPost).toHaveBeenCalledWith("/api/conversations", null, {
-      params: { user_id: "u1" },
-    });
+    const res = await api.createConversation();
+    expect(mockedPost).toHaveBeenCalledWith("/api/conversations");
     expect(res.conversation_id).toBe("c1");
   });
 
@@ -92,11 +96,11 @@ describe("api client", () => {
     });
   });
 
-  it("getRiskEvents calls /api/risk-events with user_id and language", async () => {
+  it("getRiskEvents calls /api/risk-events with language", async () => {
     mockedGet.mockResolvedValue({ data: { user_id: "u1", events: [], total_count: 0 } });
-    const res = await api.getRiskEvents("u1", { limit: 25, language: "de" });
+    const res = await api.getRiskEvents({ limit: 25, language: "de" });
     expect(mockedGet).toHaveBeenCalledWith("/api/risk-events", {
-      params: { user_id: "u1", limit: 25, language: "de" },
+      params: { limit: 25, language: "de" },
     });
     expect(res.user_id).toBe("u1");
   });

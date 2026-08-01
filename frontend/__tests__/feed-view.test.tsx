@@ -11,9 +11,11 @@ import * as api from "@/lib/api";
 import { FeedView } from "@/components/feed-view";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getFeed).mockResolvedValue({
     user_id: "u1",
     total_count: 1,
@@ -70,14 +72,14 @@ describe("FeedView", () => {
   it("renders the feed by default", async () => {
     render(<FeedView />);
     await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
-    expect(api.getFeed).toHaveBeenCalledWith("u1", { language: "en" });
+    expect(api.getFeed).toHaveBeenCalledWith({ language: "en" });
   });
 
   it("requests translated feed content for the selected platform language", async () => {
-    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "de" });
     render(<FeedView />);
     await waitFor(() => expect(screen.getByText("Feed article")).toBeInTheDocument());
-    expect(api.getFeed).toHaveBeenCalledWith("u1", { language: "de" });
+    expect(api.getFeed).toHaveBeenCalledWith({ language: "de" });
   });
 
   it("shows the EUR timing rail beside the feed", async () => {

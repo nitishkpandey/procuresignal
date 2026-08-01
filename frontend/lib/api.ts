@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { installAuthInterceptors } from "@/lib/auth";
+
 import type {
   ArticleDetail,
   ClearHistoryResponse,
@@ -19,15 +21,15 @@ export function apiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 }
 
-const client = axios.create({ baseURL: apiBaseUrl() });
+// withCredentials so the httpOnly refresh cookie rides along on /api/auth calls.
+const client = axios.create({ baseURL: apiBaseUrl(), withCredentials: true });
+installAuthInterceptors(client);
 
 export async function getFeed(
-  userId: string,
   opts: { limit?: number; days?: number; language?: string } = {},
 ): Promise<FeedResponse> {
   const { data } = await client.get("/api/feed", {
     params: {
-      user_id: userId,
       limit: opts.limit ?? 50,
       days: opts.days ?? 7,
       language: opts.language ?? "en",
@@ -76,12 +78,10 @@ export async function getCurrencyMonitor(
 }
 
 export async function getRiskEvents(
-  userId: string,
   opts: { limit?: number; language?: string } = {},
 ): Promise<RiskEventResponse> {
   const { data } = await client.get("/api/risk-events", {
     params: {
-      user_id: userId,
       limit: opts.limit ?? 50,
       language: opts.language ?? "en",
     },
@@ -97,13 +97,13 @@ export async function updateRiskEventStatus(
   return data;
 }
 
-export async function markRead(id: number, userId: string): Promise<void> {
-  await client.post(`/api/articles/${id}/read`, null, { params: { user_id: userId } });
+export async function markRead(id: number): Promise<void> {
+  await client.post(`/api/articles/${id}/read`);
 }
 
-export async function getPreferences(userId: string): Promise<Preferences | null> {
+export async function getPreferences(): Promise<Preferences | null> {
   try {
-    const { data } = await client.get("/api/preferences", { params: { user_id: userId } });
+    const { data } = await client.get("/api/preferences");
     return data;
   } catch (err: unknown) {
     if (typeof err === "object" && err && "response" in err) {
@@ -119,33 +119,25 @@ export async function savePreferences(prefs: Preferences): Promise<Preferences> 
   return data;
 }
 
-export async function updatePlatformLanguage(
-  userId: string,
-  platformLanguage: string,
-): Promise<Preferences> {
+export async function updatePlatformLanguage(platformLanguage: string): Promise<Preferences> {
   const { data } = await client.patch("/api/preferences/language", {
-    user_id: userId,
     platform_language: platformLanguage,
   });
   return data;
 }
 
-export async function listConversations(userId: string): Promise<ConversationListResponse> {
-  const { data } = await client.get("/api/conversations", { params: { user_id: userId } });
+export async function listConversations(): Promise<ConversationListResponse> {
+  const { data } = await client.get("/api/conversations");
   return data;
 }
 
-export async function createConversation(userId: string): Promise<Conversation> {
-  const { data } = await client.post("/api/conversations", null, {
-    params: { user_id: userId },
-  });
+export async function createConversation(): Promise<Conversation> {
+  const { data } = await client.post("/api/conversations");
   return data;
 }
 
-export async function clearConversationHistory(userId: string): Promise<ClearHistoryResponse> {
-  const { data } = await client.delete("/api/conversations", {
-    params: { user_id: userId },
-  });
+export async function clearConversationHistory(): Promise<ClearHistoryResponse> {
+  const { data } = await client.delete("/api/conversations");
   return data;
 }
 

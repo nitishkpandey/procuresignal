@@ -5,6 +5,8 @@ import { ArticleCard } from "@/components/article-card";
 import type { FeedArticle } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 const article: FeedArticle = {
   id: 7,
   title: "Bosch strike in Poland",
@@ -24,7 +26,7 @@ const article: FeedArticle = {
 describe("ArticleCard", () => {
   beforeEach(() => {
     localStorage.clear();
-    useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   });
 
   it("renders title, summary, and signals and links to detail", () => {

@@ -65,7 +65,7 @@ export function emptyPreferences(userId: string, platformLanguage = "en"): Prefe
 }
 
 export function PreferenceForm() {
-  const userId = useUserStore((s) => s.userId);
+  const user = useUserStore((s) => s.user);
   const language = useUserStore((s) => s.platformLanguage);
   const setPlatformLanguage = useUserStore((s) => s.setPlatformLanguage);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
@@ -76,10 +76,10 @@ export function PreferenceForm() {
     let active = true;
     setPrefs(null);
     setLoadError(null);
-    getPreferences(userId)
+    getPreferences()
       .then((p) => {
         if (!active) return;
-        const next = p ?? emptyPreferences(userId, useUserStore.getState().platformLanguage);
+        const next = p ?? emptyPreferences(user?.user_id ?? "", useUserStore.getState().platformLanguage);
         setPrefs(next);
         setPlatformLanguage(next.platform_language || "en");
       })
@@ -94,15 +94,15 @@ export function PreferenceForm() {
     return () => {
       active = false;
     };
-  }, [setPlatformLanguage, userId]);
+  }, [setPlatformLanguage, user]);
 
   const reload = async () => {
     setPrefs(null);
     setLoadError(null);
     setStatus(null);
     try {
-      const next = await getPreferences(userId);
-      const loaded = next ?? emptyPreferences(userId, useUserStore.getState().platformLanguage);
+      const next = await getPreferences();
+      const loaded = next ?? emptyPreferences(user?.user_id ?? "", useUserStore.getState().platformLanguage);
       setPrefs(loaded);
       setPlatformLanguage(loaded.platform_language || "en");
     } catch (err) {
@@ -152,7 +152,7 @@ export function PreferenceForm() {
   const onSave = async () => {
     setStatus(null);
     try {
-      await savePreferences({ ...prefs, user_id: userId, platform_language: language });
+      await savePreferences({ ...prefs, platform_language: language });
       setStatus(t(language, "preferences.saved"));
     } catch (err) {
       setStatus(err instanceof Error ? `Save failed: ${err.message}` : "Save failed.");

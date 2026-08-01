@@ -1,30 +1,64 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/app-shell";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
+const restoreSession = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth", () => ({
+  restoreSession,
+  getAccessToken: () => null,
+  login: vi.fn(),
+  register: vi.fn(),
+  logout: vi.fn(),
+  installAuthInterceptors: vi.fn(),
+}));
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "", platformLanguage: "en" });
+  useUserStore.setState({ user: null, platformLanguage: "en" });
+  restoreSession.mockReset();
 });
 
 describe("AppShell", () => {
-  it("requires a company email before showing the app", async () => {
+  it("hides the app until a session is restored", async () => {
+    restoreSession.mockResolvedValue(authUser());
+
     render(
       <AppShell>
         <p>Private app</p>
       </AppShell>,
     );
 
-    expect(screen.getByLabelText("Company email")).toBeInTheDocument();
+    // No sign-in form flashes while the refresh cookie is still being checked.
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Private app")).toBeInTheDocument());
+  });
+
+  it("asks for credentials when there is no session", async () => {
+    restoreSession.mockResolvedValue(null);
+
+    render(
+      <AppShell>
+        <p>Private app</p>
+      </AppShell>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Password")).toBeInTheDocument());
     expect(screen.queryByText("Private app")).not.toBeInTheDocument();
+  });
 
-    await userEvent.type(screen.getByLabelText("Company email"), "buyer@example.com");
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  it("does not strand the user on the loading state when restore fails", async () => {
+    restoreSession.mockRejectedValue(new Error("network down"));
 
-    expect(useUserStore.getState().userId).toBe("buyer@example.com");
-    expect(screen.getByText("Private app")).toBeInTheDocument();
+    render(
+      <AppShell>
+        <p>Private app</p>
+      </AppShell>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Password")).toBeInTheDocument());
   });
 });

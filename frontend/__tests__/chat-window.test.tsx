@@ -8,9 +8,11 @@ import { ChatWindow } from "@/components/chat-window";
 import type { ChatFrame } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getMessages).mockResolvedValue({
     conversation_id: "c1",
     total_count: 0,
@@ -26,7 +28,7 @@ describe("ChatWindow", () => {
       return { send: vi.fn(), close: vi.fn() };
     };
 
-    render(<ChatWindow userId="u1" conversationId="c1" socketFactory={fakeFactory as never} />);
+    render(<ChatWindow conversationId="c1" socketFactory={fakeFactory as never} />);
     await waitFor(() => expect(api.getMessages).toHaveBeenCalled());
 
     const input = screen.getByLabelText("Message");
@@ -44,10 +46,10 @@ describe("ChatWindow", () => {
   });
 
   it("uses the selected platform language for chat controls", async () => {
-    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "de" });
     const fakeFactory = () => ({ send: vi.fn(), close: vi.fn() });
 
-    render(<ChatWindow userId="u1" conversationId="c1" socketFactory={fakeFactory as never} />);
+    render(<ChatWindow conversationId="c1" socketFactory={fakeFactory as never} />);
     await waitFor(() => expect(api.getMessages).toHaveBeenCalled());
 
     expect(screen.getByRole("heading", { name: "Beschaffungsassistent" })).toBeInTheDocument();

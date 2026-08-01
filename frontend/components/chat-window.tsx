@@ -12,12 +12,13 @@ import {
   type ChatState,
 } from "@/lib/chatReducer";
 import { t, type TranslationKey } from "@/lib/i18n";
+import { getAccessToken } from "@/lib/auth";
 import { openChatSocket, type ChatSocketHandlers } from "@/lib/ws";
 import type { ChatFrame } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
 type SocketFactory = (
-  userId: string,
+  accessToken: string,
   conversationId: string,
   handlers: ChatSocketHandlers,
 ) => { send: (message: string) => void; close: () => void };
@@ -29,11 +30,9 @@ const EXAMPLE_PROMPT_KEYS = [
 ] satisfies TranslationKey[];
 
 export function ChatWindow({
-  userId,
   conversationId,
   socketFactory = openChatSocket,
 }: {
-  userId: string;
   conversationId: string;
   socketFactory?: SocketFactory;
 }) {
@@ -63,9 +62,7 @@ export function ChatWindow({
       if (active) dispatch({ kind: "reset", next: initialChatState(res.messages) });
     });
 
-    // BROKEN until the auth store lands: the socket now expects an access token here,
-    // and both arguments are strings so the compiler cannot catch the mismatch.
-    const socket = socketFactory(userId, conversationId, {
+    const socket = socketFactory(getAccessToken() ?? "", conversationId, {
       onFrame: (frame) => dispatch({ kind: "frame", frame }),
       onOpen: () => setConnected(true),
       onClose: () => setConnected(false),
@@ -77,7 +74,7 @@ export function ChatWindow({
       active = false;
       socket.close();
     };
-  }, [userId, conversationId, socketFactory]);
+  }, [conversationId, socketFactory]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: "smooth" });

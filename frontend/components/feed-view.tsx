@@ -21,14 +21,13 @@ import Link from "next/link";
 type SortKey = "relevance" | "newest";
 
 export function FeedView() {
-  const userId = useUserStore((s) => s.userId);
   const language = useUserStore((s) => s.platformLanguage);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("relevance");
   const [category, setCategory] = useState<string | null>(null);
 
-  const feed = useApi(() => getFeed(userId, { language }), [userId, language]);
+  const feed = useApi(() => getFeed({ language }), [language]);
   const results = useApi(
     () => (query ? search(query, { language }) : Promise.resolve(null)),
     [query, language],

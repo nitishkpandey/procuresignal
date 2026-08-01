@@ -13,7 +13,6 @@ import type { Conversation } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
 export function ChatView() {
-  const userId = useUserStore((s) => s.userId);
   const language = useUserStore((s) => s.platformLanguage);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -25,7 +24,7 @@ export function ChatView() {
     let active = true;
     setLoading(true);
     setError(null);
-    listConversations(userId)
+    listConversations()
       .then((res) => {
         if (!active) return;
         setConversations(res.conversations);
@@ -43,13 +42,13 @@ export function ChatView() {
     return () => {
       active = false;
     };
-  }, [language, userId]);
+  }, [language]);
 
   const reload = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listConversations(userId);
+      const res = await listConversations();
       setConversations(res.conversations);
       setActiveId(res.conversations[0]?.conversation_id ?? null);
     } catch (err) {
@@ -64,7 +63,7 @@ export function ChatView() {
   const onNew = async () => {
     setError(null);
     try {
-      const conv = await createConversation(userId);
+      const conv = await createConversation();
       setConversations((prev) => [conv, ...prev]);
       setActiveId(conv.conversation_id);
     } catch (err) {
@@ -79,7 +78,7 @@ export function ChatView() {
     setClearing(true);
     setError(null);
     try {
-      await clearConversationHistory(userId);
+      await clearConversationHistory();
       setConversations([]);
       setActiveId(null);
     } catch (err) {
@@ -108,7 +107,7 @@ export function ChatView() {
                 {error}
               </p>
             ) : null}
-            <ChatWindow key={activeId} userId={userId} conversationId={activeId} />
+            <ChatWindow key={activeId} conversationId={activeId} />
           </div>
         ) : loading ? (
           <AssistantShell language={language}>

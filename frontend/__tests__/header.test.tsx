@@ -7,9 +7,11 @@ import * as api from "@/lib/api";
 import { Header } from "@/components/header";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.updatePlatformLanguage).mockResolvedValue({
     user_id: "buyer@example.com",
     interested_categories: [],
@@ -39,11 +41,11 @@ describe("Header", () => {
     expect(screen.queryByText("Viewing as")).not.toBeInTheDocument();
     expect(screen.getByText("buyer@example.com")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(useUserStore.getState().userId).toBe("");
+    expect(useUserStore.getState().user).toBeNull();
   });
 
   it("uses the selected platform language for shell labels", () => {
-    useUserStore.setState({ userId: "buyer@example.com", platformLanguage: "de" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "de" });
     render(<Header />);
 
     expect(screen.getByRole("link", { name: "Signale" })).toBeInTheDocument();
@@ -62,6 +64,6 @@ describe("Header", () => {
     await userEvent.selectOptions(language, "de");
 
     expect(useUserStore.getState().platformLanguage).toBe("de");
-    expect(api.updatePlatformLanguage).toHaveBeenCalledWith("buyer@example.com", "de");
+    expect(api.updatePlatformLanguage).toHaveBeenCalledWith("de");
   });
 });

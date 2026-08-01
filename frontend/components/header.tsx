@@ -17,7 +17,7 @@ const NAV = [
 
 export function Header() {
   const pathname = usePathname() ?? "/";
-  const userId = useUserStore((s) => s.userId);
+  const user = useUserStore((s) => s.user);
   const language = useUserStore((s) => s.platformLanguage);
   const setPlatformLanguage = useUserStore((s) => s.setPlatformLanguage);
   const clearUser = useUserStore((s) => s.clearUser);
@@ -25,10 +25,10 @@ export function Header() {
 
   const onLanguageChange = async (nextLanguage: string) => {
     setPlatformLanguage(nextLanguage);
-    if (!userId) return;
+    if (!user) return;
     setSavingLanguage(true);
     try {
-      await updatePlatformLanguage(userId, nextLanguage);
+      await updatePlatformLanguage(nextLanguage);
     } catch {
       // Keep the local language responsive; the next full preference load can reconcile persistence.
     } finally {
@@ -80,7 +80,7 @@ export function Header() {
               </option>
             ))}
           </select>
-          <span className="max-w-[220px] truncate font-medium text-slate-800">{userId}</span>
+          <span className="max-w-[220px] truncate font-medium text-slate-800">{user?.email}</span>
           <button
             type="button"
             onClick={clearUser}

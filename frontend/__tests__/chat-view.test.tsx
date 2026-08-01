@@ -17,10 +17,12 @@ import * as api from "@/lib/api";
 import { ChatView } from "@/components/chat-view";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.listConversations).mockResolvedValue({
     user_id: "u1",
     conversations: [],
@@ -42,7 +44,7 @@ describe("ChatView", () => {
   });
 
   it("uses the selected platform language on the chat workspace", async () => {
-    useUserStore.setState({ userId: "u1", platformLanguage: "de" });
+    useUserStore.setState({ user: authUser(), platformLanguage: "de" });
     render(<ChatView />);
     await waitFor(() => expect(api.listConversations).toHaveBeenCalled());
 
@@ -78,7 +80,7 @@ describe("ChatView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Clear history" }));
 
     expect(window.confirm).toHaveBeenCalledWith("Clear all chat history for this email?");
-    expect(api.clearConversationHistory).toHaveBeenCalledWith("u1");
+    expect(api.clearConversationHistory).toHaveBeenCalledWith();
     await waitFor(() => expect(screen.getByText("No conversation selected")).toBeInTheDocument());
     expect(screen.queryByText("Supplier question")).not.toBeInTheDocument();
   });

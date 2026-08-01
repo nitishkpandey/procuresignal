@@ -156,3 +156,12 @@ export interface RiskEventResponse {
   total_count: number;
   generated_at: string;
 }
+
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  full_name?: string | null;
+  organization_id: string;
+  organization_name: string;
+  role: string;
+}

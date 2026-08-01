@@ -7,9 +7,11 @@ import { CurrencyView } from "@/components/currency-view";
 import * as api from "@/lib/api";
 import { useUserStore } from "@/store/user";
 
+import { authUser } from "./helpers";
+
 beforeEach(() => {
   localStorage.clear();
-  useUserStore.setState({ userId: "u1", platformLanguage: "en" });
+  useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getCurrencyMonitor).mockResolvedValue({
     base: "EUR",
     as_of: "2026-07-09",
