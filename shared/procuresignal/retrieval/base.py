@@ -16,6 +16,7 @@ from tenacity import (
 
 
 class FetchFailureCode(StrEnum):
+    CONFIGURATION_ERROR = "configuration_error"
     UNSAFE_URL = "unsafe_url"
     NETWORK_ERROR = "network_error"
     HTTP_STATUS = "http_status"

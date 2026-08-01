@@ -13,6 +13,8 @@ from procuresignal.retrieval.large_object import LargeObjectFetcher
 from procuresignal.retrieval.registry import AdapterType, SourceClass, SourceDefinition
 
 _DECLARATION = re.compile(rb"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+_ENCODING = re.compile(rb"encoding\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+_UNSUPPORTED_BOMS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00")
 _TEXT_LIMIT = 2_000
 
 
@@ -30,6 +32,18 @@ def _clean(value: str | None, limit: int = _TEXT_LIMIT) -> str:
 
 def _check_xml(path: Path) -> None:
     with path.open("rb") as stream:
+        prefix = stream.read(256)
+        if prefix.startswith(_UNSUPPORTED_BOMS):
+            raise UnsafeSanctionsXML("unsupported XML BOM or encoding")
+        # expat auto-detects UTF-16/32 with no BOM, which would slip past the byte-oriented
+        # DTD scan below. UTF-8 and ASCII XML never contain NUL, so its presence means a
+        # wide encoding we do not accept.
+        if b"\x00" in prefix:
+            raise UnsafeSanctionsXML("unsupported XML BOM or encoding")
+        encoding = _ENCODING.search(prefix)
+        if encoding and encoding.group(1).lower() not in {b"utf-8", b"us-ascii", b"ascii"}:
+            raise UnsafeSanctionsXML("unsupported XML BOM or encoding")
+        stream.seek(0)
         overlap = b""
         while chunk := stream.read(64 * 1024):
             candidate = overlap + chunk
@@ -38,21 +52,35 @@ def _check_xml(path: Path) -> None:
             overlap = candidate[-32:]
 
 
+def _designation_identity(element: object) -> tuple[str, str]:
+    attributes = getattr(element, "attrib")
+    reference = _clean(attributes.get("euReferenceNumber") or attributes.get("logicalId"), 100)
+    revision = _clean(
+        attributes.get("designationDate")
+        or attributes.get("lastUpdated")
+        or attributes.get("logicalId"),
+        40,
+    )
+    return reference, revision
+
+
+def _earliest_revisions(path: Path) -> dict[str, str]:
+    earliest: dict[str, str] = {}
+    for _, element in iterparse(path, events=("end",)):
+        if _local(element.tag) == "sanctionEntity":
+            reference, revision = _designation_identity(element)
+            earliest[reference] = min(revision, earliest.get(reference, revision))
+            element.clear()
+    return earliest
+
+
 def _records(path: Path) -> Iterator[tuple[str, str, bool, str, datetime]]:
     _check_xml(path)
-    seen_revisions: set[str] = set()
+    earliest = _earliest_revisions(path)
     for _, element in iterparse(path, events=("end",)):
         if _local(element.tag) != "sanctionEntity":
             continue
-        reference = _clean(
-            element.attrib.get("euReferenceNumber") or element.attrib.get("logicalId"), 100
-        )
-        revision = _clean(
-            element.attrib.get("designationDate")
-            or element.attrib.get("lastUpdated")
-            or element.attrib.get("logicalId"),
-            40,
-        )
+        reference, revision = _designation_identity(element)
         aliases: list[str] = []
         primary = ""
         regulations: list[str] = []
@@ -79,8 +107,7 @@ def _records(path: Path) -> Iterator[tuple[str, str, bool, str, datetime]]:
                 entity = code.startswith("e") or "enterprise" in code or "entity" in code
         primary = primary or (aliases[0] if aliases else reference)
         identity = f"eu-sanctions:{reference}:{revision}"
-        is_update = reference in seen_revisions
-        seen_revisions.add(reference)
+        is_update = revision != earliest[reference]
         facts = ["Entity" if entity else "Person", f"EU reference {reference}"]
         secondary = [name for name in aliases if name != primary]
         if secondary:
@@ -110,18 +137,21 @@ class EUSanctionsProvider(NewsProvider):
         self.name = "eu_sanctions"
         self.source = source
         self.fetcher = LargeObjectFetcher(source, fetcher)
+        self.last_response_bytes = 0
 
     async def close(self) -> None:
-        pass
+        await self.fetcher.aclose()
 
     async def health_check(self) -> bool:
         artifact = await self.fetcher.fetch()
+        self.last_response_bytes = artifact.response_bytes
         async with artifact:
             return True
 
     async def fetch_articles(self, query_groups: list[str]) -> list[RawArticle]:
         del query_groups
         artifact = await self.fetcher.fetch()
+        self.last_response_bytes = artifact.response_bytes
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         async with artifact:
             articles: list[RawArticle] = []

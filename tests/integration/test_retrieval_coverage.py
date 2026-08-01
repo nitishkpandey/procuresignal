@@ -1,17 +1,60 @@
 """Offline, deterministic Phase 3 retrieval coverage gate."""
 
+import ipaddress
 from pathlib import Path
 
+import httpx
 from procuresignal.models import Base, NewsArticleRaw
 from procuresignal.retrieval.base import FetchFailureCode, FetchResult
 from procuresignal.retrieval.catalog import REGISTRY_VERSION, SOURCE_REGISTRY
+from procuresignal.retrieval.fetching import SafeFetcher
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
 from procuresignal.retrieval.providers.rss import RSSProvider
+from procuresignal.retrieval.providers.sanctions import EUSanctionsProvider
+from procuresignal.retrieval.registry import AdapterType
+from procuresignal.retrieval.security import URLSafetyPolicy
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 FIXTURES = Path("tests/fixtures/retrieval")
-RECORDED_FEEDS = tuple(sorted(FIXTURES.glob("*.xml")))
+RSS_FIXTURES = tuple(
+    FIXTURES / name
+    for name in (
+        "ecb_press.xml",
+        "eu_commission_press.xml",
+        "europe_commodities.xml",
+        "europe_logistics.xml",
+    )
+)
+SANCTIONS_FIXTURE = FIXTURES / "eu_financial_sanctions.xml"
+RECORDED_FEEDS = (*RSS_FIXTURES, SANCTIONS_FIXTURE)
+
+
+class MemoryCircuit:
+    async def allow_circuit_request(self, _source_id, _owner, _now):
+        return True
+
+    async def record_circuit_failure(self, _source_id, _now):
+        return None
+
+    async def record_circuit_success(self, _source_id, _owner):
+        return True
+
+
+class FixtureTransport(httpx.AsyncBaseTransport):
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+
+    async def handle_async_request(self, _request):
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/xml"},
+            content=self.content,
+        )
+
+
+async def public_resolver(_host, _port):
+    return (ipaddress.ip_address("93.184.216.34"),)
 
 
 def test_per_source_enable_overrides_are_explicit(monkeypatch):
@@ -26,6 +69,7 @@ def test_per_source_enable_overrides_are_explicit(monkeypatch):
 
 async def test_production_registry_offline_coverage_and_idempotency(tmp_path, monkeypatch):
     """Exercise every enabled production source without network or LLM access."""
+    monkeypatch.setenv("EU_FISMA_SANCTIONS_TOKEN", "offline-fixture-token")
 
     def forbidden_llm(*_args, **_kwargs):
         raise AssertionError("retrieval coverage attempted to construct an OpenAI client")
@@ -49,9 +93,10 @@ async def test_production_registry_offline_coverage_and_idempotency(tmp_path, mo
 
     enabled = SOURCE_REGISTRY.enabled()
     assert RECORDED_FEEDS
+    rss_enabled = [definition for definition in enabled if definition.adapter is AdapterType.RSS]
     fixture_by_source = {
-        definition.source_id: RECORDED_FEEDS[index % len(RECORDED_FEEDS)]
-        for index, definition in enumerate(enabled)
+        definition.source_id: RSS_FIXTURES[index % len(RSS_FIXTURES)]
+        for index, definition in enumerate(rss_enabled)
     }
     exercised_fixtures: set[Path] = set()
     failing_source_id = enabled[-1].source_id
@@ -81,6 +126,15 @@ async def test_production_registry_offline_coverage_and_idempotency(tmp_path, mo
             return articles
 
     def provider_factory(definition):
+        if definition.adapter is AdapterType.STRUCTURED_SANCTIONS:
+            exercised_fixtures.add(SANCTIONS_FIXTURE)
+            fetcher = SafeFetcher(
+                policy=URLSafetyPolicy(resolver=public_resolver),
+                circuit_store=MemoryCircuit(),
+                owner="offline-coverage",
+            )
+            fetcher._client._transport = FixtureTransport(SANCTIONS_FIXTURE.read_bytes())
+            return EUSanctionsProvider(definition, fetcher)
         return RecordedProvider(
             definition,
             FixtureFetcher(definition.source_id),
@@ -119,17 +173,17 @@ async def test_production_registry_offline_coverage_and_idempotency(tmp_path, mo
     assert result.llm_calls == 0
     assert result.sources_succeeded >= 1
     assert result.sources_failed >= 1
-    assert (
-        result.articles_fetched,
-        result.articles_inserted,
-        result.within_run_duplicates,
-        result.database_duplicates,
-    ) == (
-        9,
-        8,
-        1,
-        0,
-    )
+    assert result.articles_fetched == 12
+    assert result.articles_inserted == 11
+    assert result.within_run_duplicates == 1
+    assert result.database_duplicates == 0
     assert rerun.articles_inserted == 0
     assert all(row.source_id and row.registry_version for row in persisted_rows)
     assert exercised_fixtures == set(RECORDED_FEEDS)
+    assert {
+        row.provider_article_id for row in persisted_rows if row.provider == "eu_sanctions"
+    } == {
+        "eu-sanctions:EU.001:2024-01-02",
+        "eu-sanctions:EU.001:2025-02-04",
+        "eu-sanctions:EU.002:2023-06-01",
+    }

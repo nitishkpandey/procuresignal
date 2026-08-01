@@ -16,11 +16,13 @@ from procuresignal.retrieval.base import (
     RawArticle,
     RetrievalFetchError,
 )
+from procuresignal.retrieval.catalog import SOURCE_REGISTRY
 from procuresignal.retrieval.fetching import SafeFetcher
 from procuresignal.retrieval.orchestrator import RetrievalOrchestrator, configured_registry
 from procuresignal.retrieval.providers.gdelt import GDELTProvider
 from procuresignal.retrieval.providers.newsapi import NewsAPIProvider
 from procuresignal.retrieval.providers.rss import RSSProvider
+from procuresignal.retrieval.providers.sanctions import EUSanctionsProvider
 from procuresignal.retrieval.registry import (
     AdapterType,
     ProcurementDomain,
@@ -259,6 +261,56 @@ async def test_provider_construction_and_close_failures_do_not_strand_run(maker)
         "construct": "failed",
         "close": "completed",
     }
+
+
+async def test_production_structured_provider_closes_its_safe_fetcher(maker):
+    definition = next(
+        item for item in SOURCE_REGISTRY.sources if item.source_id == "eu_financial_sanctions"
+    )
+    orchestrator = RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="test-v1",
+    )
+    async with maker() as session:
+        provider = orchestrator._provider(definition, RetrievalAuditRepository(session))
+
+    assert isinstance(provider, EUSanctionsProvider)
+    safe_fetcher = provider.fetcher.fetcher
+    assert not safe_fetcher._closed
+    await provider.close()
+    assert safe_fetcher._closed
+
+
+async def test_missing_sanctions_token_is_non_retryable_configuration_audit(maker, monkeypatch):
+    monkeypatch.delenv("EU_FISMA_SANCTIONS_TOKEN", raising=False)
+    definition = next(
+        item for item in SOURCE_REGISTRY.sources if item.source_id == "eu_financial_sanctions"
+    )
+
+    result = await RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="test-v1",
+    ).run("missing-sanctions-token")
+
+    assert result.status == "completed"
+    assert result.rejection_reasons == {"configuration_error": 1}
+    assert result.source_results[0].failure_code == "configuration_error"
+    async with maker() as session:
+        outcome = await session.scalar(
+            select(NewsRetrievalSourceOutcome).where(
+                NewsRetrievalSourceOutcome.run_id == result.run_id
+            )
+        )
+        circuit = await session.scalar(
+            select(NewsRetrievalCircuit).where(
+                NewsRetrievalCircuit.source_id == definition.source_id
+            )
+        )
+    assert outcome is not None
+    assert outcome.failure_code == "configuration_error"
+    assert circuit is None or circuit.failure_count == 0
 
 
 def test_legacy_providers_are_registry_configuration(monkeypatch):
