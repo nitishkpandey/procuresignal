@@ -3,7 +3,6 @@
 import pytest
 from procuresignal.models import (
     AuditLog,
-    Base,
     Membership,
     Organization,
     RefreshToken,
@@ -11,21 +10,7 @@ from procuresignal.models import (
     User,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-
-@pytest.fixture
-async def async_session():
-    """Create an in-memory SQLite database for testing."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    async with async_session_maker() as session:
-        yield session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _org_and_user(session: AsyncSession) -> tuple[Organization, User]:

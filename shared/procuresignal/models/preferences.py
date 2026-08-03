@@ -28,6 +28,11 @@ class UserNewsPreference(BaseModel):
 
     excluded_topics: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
+    # Resolved at save time. The text columns above keep what the user typed, so a
+    # preference can be re-resolved once the registry gains a matching alias.
+    preferred_supplier_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    excluded_supplier_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     platform_language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
 

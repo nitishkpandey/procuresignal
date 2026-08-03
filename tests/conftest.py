@@ -1,7 +1,10 @@
 """Pytest configuration and fixtures."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
-from procuresignal.models import Role
+from procuresignal.models import Base, Role
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from api.dependencies import AuthenticatedUser
 from api.main import app
@@ -59,6 +62,21 @@ def _reset_dependency_overrides():
 
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def async_session() -> AsyncGenerator[AsyncSession, None]:
+    """A fresh in-memory database per test, with the full schema created."""
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        yield session
+
+    await engine.dispose()
 
 
 @pytest.fixture

@@ -11,6 +11,7 @@ from .preferences import UserNewsFeed, UserNewsPreference
 from .retrieval import NewsRetrievalCircuit, NewsRetrievalRun, NewsRetrievalSourceOutcome
 from .risk_events import RiskEvent
 from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
+from .suppliers import ArticleSupplierMention, Supplier, SupplierAlias
 
 __all__ = [
     "Base",
@@ -21,6 +22,9 @@ __all__ = [
     "RefreshToken",
     "Role",
     "AuditLog",
+    "Supplier",
+    "SupplierAlias",
+    "ArticleSupplierMention",
     "NewsArticleRaw",
     "NewsArticleProcessed",
     "ChatConversation",
