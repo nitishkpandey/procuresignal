@@ -7,6 +7,16 @@ from .normalization import (
     normalize,
     strip_legal_form,
 )
+from .registry import (
+    AmbiguousAliasError,
+    DuplicateSupplierError,
+    SupplierRegistryError,
+    add_alias,
+    merge_suppliers,
+    register_supplier,
+    seed_suppliers,
+)
+from .resolver import Resolution, resolve, resolve_many
 
 __all__ = [
     "LEGAL_FORMS",
@@ -14,4 +24,14 @@ __all__ = [
     "normalize",
     "strip_legal_form",
     "alias_forms",
+    "Resolution",
+    "resolve",
+    "resolve_many",
+    "register_supplier",
+    "add_alias",
+    "merge_suppliers",
+    "seed_suppliers",
+    "SupplierRegistryError",
+    "DuplicateSupplierError",
+    "AmbiguousAliasError",
 ]
