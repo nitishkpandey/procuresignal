@@ -1,5 +1,7 @@
 """Supplier master data: normalization, resolution, and registry operations."""
 
+from .backfill import BackfillSummary, backfill_supplier_identity
+from .mentions import record_mentions
 from .normalization import (
     LEGAL_FORMS,
     MINIMUM_DERIVED_ALIAS_LENGTH,
@@ -17,6 +19,7 @@ from .registry import (
     seed_suppliers,
 )
 from .resolver import Resolution, resolve, resolve_many
+from .screening import ScreeningHit, ScreeningResult, screen_designation
 
 __all__ = [
     "LEGAL_FORMS",
@@ -34,4 +37,10 @@ __all__ = [
     "SupplierRegistryError",
     "DuplicateSupplierError",
     "AmbiguousAliasError",
+    "record_mentions",
+    "screen_designation",
+    "ScreeningHit",
+    "ScreeningResult",
+    "backfill_supplier_identity",
+    "BackfillSummary",
 ]
