@@ -1,5 +1,6 @@
 """Authentication request/response schemas."""
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -15,6 +16,23 @@ class RegisterRequest(BaseModel):
         ..., min_length=MINIMUM_PASSWORD_LENGTH, max_length=MAXIMUM_PASSWORD_LENGTH
     )
     full_name: Optional[str] = Field(None, max_length=200)
+    # Without one, registration creates a new organization. It never joins an existing
+    # tenant on the strength of a matching email domain.
+    invitation_token: Optional[str] = Field(None, max_length=128)
+
+
+class InvitationRequest(BaseModel):
+    email: EmailStr
+    role: str = Field("member", max_length=20)
+
+
+class InvitationResponse(BaseModel):
+    email: str
+    role: str
+    expires_at: datetime
+    # Returned once, at creation. Phase 4 delivers it by email instead; until there is
+    # a mail transport, the inviting admin passes it on.
+    token: str
 
 
 class LoginRequest(BaseModel):

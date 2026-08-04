@@ -18,17 +18,22 @@ reinterpreted for production rather than demo delivery.
 These decisions are locked. Changing one requires updating this section and re-checking every
 phase that depends on it.
 
-### D1 — Authentication: self-hosted, SSO-shaped
+### D1 — Authentication: self-hosted, tenant-ready
 
 **Decision:** Email + password with argon2 hashing, JWT access tokens with refresh and
 server-side revocation. Schema is `organizations` / `users` / `memberships` with role on
-membership, designed so SSO and SCIM attach as adapters.
+membership: a tenant-ready identity foundation designed to accommodate SSO and SCIM.
+
+**Not overstated:** there is no `AuthProvider` abstraction and no external-identity
+mapping — provider, issuer, subject, SCIM lifecycle state. A real SSO integration will
+need another migration to add them. What exists is the tenancy model those columns hang
+off, which is the expensive part to get wrong.
 
 **Rejected:** Starting with a hosted IdP (Auth0/Okta/Entra).
 
 **Why:** Enterprise procurement RFPs require SSO, so the *schema* must be SSO-shaped from day
 one — retrofitting identity onto a live tenant model is the most expensive migration available.
-But the IdP itself is an adapter behind `AuthProvider`. Building tenancy correctly is the design
+But the IdP attaches to this schema later. Building tenancy correctly is the design
 problem; the IdP is a configuration problem, and it needs vendor accounts that do not yet exist.
 
 ### D2 — Notifications: one engine, pluggable transports
@@ -120,7 +125,7 @@ is what distinguishes "production-style" from "production". Each is assigned to 
 | Concern | Phase | Note |
 |---|---|---|
 | Content licensing | **Blocked — owner decision** | NewsAPI's free tier is developer/non-commercial with delayed articles. Commercial production use requires a paid plan. Storing and redisplaying full RSS content has copyright limits. Architecture mitigates (snippet-only storage, attribution, link-out, per-source license metadata in the registry) but cannot grant rights. |
-| GDPR | 7 | EU users, stored emails, retained third-party content. Requires processing records, enforced retention, DSAR export, right to erasure, documented lawful basis. |
+| GDPR | 7 (code) + owner | Processing records and lawful-basis decisions are legal and operational work, not only code. |
 | Data residency | Deferred to hosting | Must remain EU-capable; constrains hosting choice, which the owner has deferred. |
 
 ### Operational
@@ -130,8 +135,8 @@ is what distinguishes "production-style" from "production". Each is assigned to 
 | Backups with tested restore | 8 | An untested backup is not a backup. |
 | Rate limiting (per tenant, per IP) | ~~3~~ **done in Phase 1 Task 8** | In-process; Redis-backed version still belongs in Phase 3 for multi-replica correctness. |
 | Per-tenant LLM budget caps | 3 | Enrichment cost scales with articles × tenants. One runaway ingestion loop is a five-figure surprise. Hard caps, not just monitoring. |
-| Secrets management | 3 | `.env` does not scale past one host. (Hygiene is currently clean — `.env` was never committed.) |
-| Alert rules, not just metrics | 3 | `/metrics` with no alerts is a dashboard nobody watches. **Pipeline freshness is the critical alert**: the classic failure is ingestion returning zero articles for days while every health check stays green. |
+| Secrets management | 3 (partial) | A provider-neutral secret resolver and Docker secrets support is all that can land before hosting is chosen. (Hygiene is clean — `.env` was never committed.) |
+| Operational alert rules (Prometheus), distinct from the customer-configured alert rules in Phase 4 | 3 | `/metrics` with no alerts is a dashboard nobody watches. **Pipeline freshness is the critical alert**: the classic failure is ingestion returning zero articles for days while every health check stays green. |
 | Celery dead-letter queue | 3 | A poison message currently retries forever. |
 | Token revocation | 1 | Logout that does not revoke is not logout. |
 | Zero-downtime migrations | 3 | Expand/contract discipline; no destructive migration in a single deploy. |
@@ -155,7 +160,10 @@ are sequenced by dependency fan-out rather than by product value.
 | **6** | Agent loop with human approval and audit trail | 2, 4 |
 | **7** | GDPR: retention enforcement, DSAR export, erasure, processing records | 1 |
 | **8** | Backup/restore runbook with tested restore, dashboards, SLOs | 3 |
-| **9** | Dead code, DRY, stale comment sweep, unified `verify.sh` | all |
+| **9** | Final comprehensive sweep, unified `verify.sh` | all |
+
+Dead-code and DRY checks run continuously alongside each phase; Phase 9 is the final
+pass, not the only one.
 
 ### Rationale for the two foundation phases
 

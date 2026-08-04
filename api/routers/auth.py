@@ -17,6 +17,7 @@ from api.dependencies import (
     get_client_context,
     get_current_user,
     get_session,
+    require_role,
 )
 from api.rate_limit import (
     login_key,
@@ -26,6 +27,8 @@ from api.rate_limit import (
 )
 from api.schemas.auth import (
     AccessTokenResponse,
+    InvitationRequest,
+    InvitationResponse,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
@@ -117,9 +120,14 @@ async def register(
             email=payload.email,
             password=payload.password,
             full_name=payload.full_name,
+            invitation_token=payload.invitation_token,
             user_agent=context.user_agent,
             client_ip=context.client_ip,
         )
+    except service.InvitationAlreadyUsedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+    except service.InvalidInvitationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
     except service.EmailAlreadyRegisteredError:
         registration_limiter.record(throttle_key)
         await record_audit(
@@ -313,4 +321,50 @@ async def me(
         organization_id=organization.public_id,
         organization_name=organization.name,
         role=str(Role(current_user.role)),
+    )
+
+
+@router.post(
+    "/invitations",
+    response_model=InvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(Role.ADMIN))],
+)
+async def invite(
+    payload: InvitationRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    context: ClientContext = Depends(get_client_context),
+) -> InvitationResponse:
+    """Offer one address a place in the caller's organization.
+
+    This is the only way into an existing tenant. Registration alone creates a new one,
+    because a matching email domain proves nothing about who is typing.
+    """
+
+    invitation, token = await service.create_invitation(
+        session,
+        organization_id=current_user.organization_id,
+        email=payload.email,
+        role=Role(payload.role),
+        invited_by_user_id=current_user.id,
+    )
+    await record_audit(
+        session,
+        action="organization.invite",
+        outcome="success",
+        actor=current_user,
+        resource_type="organization",
+        resource_id=current_user.organization_public_id,
+        detail={"email": invitation.email, "role": invitation.role},
+        client_ip=context.client_ip,
+        user_agent=context.user_agent,
+    )
+    await session.commit()
+
+    return InvitationResponse(
+        email=invitation.email,
+        role=invitation.role,
+        expires_at=invitation.expires_at,
+        token=token,
     )

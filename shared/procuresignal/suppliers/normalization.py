@@ -1,6 +1,7 @@
 """Name normalization for supplier resolution."""
 
 import re
+import unicodedata
 
 # Legal forms, normalized, stripped only from the end of a name.
 #
@@ -71,17 +72,67 @@ _MAXIMUM_FORM_TOKENS = 3
 # only what is generated without anyone asking for it.
 MINIMUM_DERIVED_ALIAS_LENGTH = 3
 
-_NON_WORD = re.compile(r"[^a-z0-9]+")
+# Anything that is not a letter or digit in any script becomes a separator. An
+# ASCII-only class would delete the accented and non-Latin characters that European
+# and sanctioned entity names are full of: "Škoda" became "koda", "Ørsted" became
+# "rsted", and every one of those was a silently corrupted identity.
+_NON_ALPHANUMERIC = re.compile(r"[\W_]+", re.UNICODE)
+
+# Latin letters that carry no combining accent to strip, so NFD leaves them alone.
+_UNDECOMPOSABLE = str.maketrans(
+    {
+        "ø": "o",
+        "Ø": "o",
+        "æ": "ae",
+        "Æ": "ae",
+        "œ": "oe",
+        "Œ": "oe",
+        "đ": "d",
+        "Đ": "d",
+        "ð": "d",
+        "Ð": "d",
+        "ł": "l",
+        "Ł": "l",
+        "þ": "th",
+        "Þ": "th",
+        "ħ": "h",
+        "ı": "i",
+        "ŋ": "n",
+        "ĸ": "k",
+    }
+)
 
 
 def normalize(name: str | None) -> str:
-    """Lower-case, turn punctuation into spaces, collapse whitespace.
+    """Case-fold, turn punctuation into spaces, collapse whitespace.
 
-    Deliberately keeps the legal form: this produces `Supplier.normalized_name`, where
-    the legal form is exactly what distinguishes one entity from another.
+    NFKC first, so a full-width or ligature spelling does not become a second identity.
+    Then case-folding rather than lower-casing, which is what handles "ß" against "ss".
+
+    Accents are preserved: this produces `Supplier.normalized_name`, the precise
+    identity. The accent-folded spelling becomes an alias instead.
+
+    Deliberately keeps the legal form, which is what distinguishes one entity from
+    another.
     """
 
-    return _NON_WORD.sub(" ", (name or "").lower()).strip()
+    text = unicodedata.normalize("NFKC", name or "").casefold()
+    return " ".join(_NON_ALPHANUMERIC.sub(" ", text).split())
+
+
+def fold_accents(normalized: str) -> str:
+    """Strip diacritics, so "Société" also answers to "Societe".
+
+    News copy routinely drops them, and a buyer typing without the key should still
+    reach their supplier. Used only to generate an extra alias, never for the canonical
+    name, so it widens matching without merging companies that differ by more than an
+    accent.
+    """
+
+    translated = normalized.translate(_UNDECOMPOSABLE)
+    decomposed = unicodedata.normalize("NFD", translated)
+    stripped = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(unicodedata.normalize("NFC", stripped).split())
 
 
 def strip_legal_form(normalized: str) -> str:
@@ -125,5 +176,11 @@ def alias_forms(canonical_name: str) -> list[str]:
     stripped = strip_legal_form(canonical)
     if stripped != canonical and len(stripped) >= MINIMUM_DERIVED_ALIAS_LENGTH:
         forms.append(stripped)
+
+    # Accent-folded spellings, added only when they differ from what is already there.
+    for form in list(forms):
+        folded = fold_accents(form)
+        if folded != form and len(folded) >= MINIMUM_DERIVED_ALIAS_LENGTH:
+            forms.append(folded)
 
     return forms

@@ -6,12 +6,23 @@ screening control reports a false negative, which in the EU is a compliance fail
 rather than a poor feed. Every name is resolved.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
+
+from .mentions import record_mentions
 from .resolver import resolve_many
+
+logger = logging.getLogger(__name__)
+
+# Written by the structured sanctions adapter into the raw payload it carries
+# through enrichment. Its presence is what marks an article as a designation.
+DESIGNATION_NAMES_KEY = "designation_names"
 
 
 @dataclass(frozen=True)
@@ -73,3 +84,75 @@ async def screen_designation(
         )
 
     return ScreeningResult(hits=hits, unmatched_names=unmatched)
+
+
+@dataclass(frozen=True)
+class ScreeningRunSummary:
+    """What one screening pass covered.
+
+    The unmatched count is the compliance-relevant number. Screening that quietly
+    matches nothing is indistinguishable from screening that works, so coverage has to
+    be reported rather than inferred.
+    """
+
+    designations_screened: int = 0
+    suppliers_flagged: int = 0
+    unmatched_names: int = 0
+
+
+async def screen_processed_articles(
+    session: AsyncSession, *, limit: int = 1000
+) -> ScreeningRunSummary:
+    """Screen every ingested sanctions designation against the registry.
+
+    This is the production entry point. `screen_designation` on its own resolves names;
+    without this, nothing called it and no designation was ever actually screened.
+
+    Matches and misses are both written as article supplier mentions, which puts them
+    on the same footing as any other supplier reference: the misses surface in the
+    unresolved queue, and the matches carry into risk events and exposure scoring.
+    Idempotent, because the mention writer will not duplicate a name already recorded.
+    """
+
+    # The payload lives on the raw article, so screening joins rather than relying on
+    # a denormalized copy that could fall out of step with what was ingested.
+    rows = (
+        await session.execute(
+            select(NewsArticleProcessed.id, NewsArticleRaw.raw_payload_json)
+            .join(NewsArticleRaw, NewsArticleRaw.id == NewsArticleProcessed.raw_article_id)
+            .where(NewsArticleRaw.raw_payload_json.is_not(None))
+            .order_by(NewsArticleProcessed.id)
+            .limit(limit)
+        )
+    ).all()
+
+    screened = 0
+    flagged = 0
+    unmatched = 0
+
+    for article_id, payload in rows:
+        names = (payload or {}).get(DESIGNATION_NAMES_KEY) or []
+        if not names:
+            continue
+
+        screened += 1
+        result = await screen_designation(session, primary_name=names[0], aliases=names[1:])
+        flagged += len(result.hits)
+        unmatched += len(result.unmatched_names)
+
+        await record_mentions(session, processed_article_id=article_id, surface_forms=names)
+
+    await session.commit()
+
+    summary = ScreeningRunSummary(
+        designations_screened=screened,
+        suppliers_flagged=flagged,
+        unmatched_names=unmatched,
+    )
+    logger.info(
+        "sanctions screening: %s designations, %s suppliers flagged, %s names unplaced",
+        summary.designations_screened,
+        summary.suppliers_flagged,
+        summary.unmatched_names,
+    )
+    return summary

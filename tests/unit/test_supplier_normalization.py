@@ -144,3 +144,75 @@ def test_stripping_stops_before_erasing_the_name() -> None:
     assert strip_legal_form("company co") == "company"
     assert strip_legal_form("holding ag") == "holding"
     assert strip_legal_form("ltd") == "ltd"
+
+
+# --- Unicode ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Müller GmbH", "müller gmbh"),
+        ("Škoda Auto a.s.", "škoda auto a s"),
+        ("Ørsted A/S", "ørsted a s"),
+        ("Société Générale", "société générale"),
+        ("Hüttenwerke Krupp Mannesmann", "hüttenwerke krupp mannesmann"),
+        ("Nokian Renkaat Oyj", "nokian renkaat oyj"),
+    ],
+)
+def test_european_names_survive_normalization(raw: str, expected: str) -> None:
+    """This is a product for European procurement; ASCII-only would shred half the names."""
+    assert normalize(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["Газпром", "中国石油天然气集团", "شركة أرامكو السعودية"],
+)
+def test_non_latin_scripts_are_not_deleted(raw: str) -> None:
+    """Sanctions designations routinely carry Cyrillic and Arabic names."""
+    assert normalize(raw).strip() != ""
+    assert len(normalize(raw)) >= len(raw) - 2
+
+
+def test_normalization_unifies_compatibility_forms() -> None:
+    """Full-width and ligature characters must not create a second identity."""
+    assert normalize("ＳＩＥＭＥＮＳ　ＡＧ") == normalize("SIEMENS AG")
+    assert normalize("ﬁnance co") == normalize("finance co")
+
+
+def test_casefolding_handles_the_german_sharp_s() -> None:
+    assert normalize("STRAßE AG") == normalize("Strasse AG")
+
+
+def test_accented_and_unaccented_spellings_both_resolve() -> None:
+    """News copy routinely drops diacritics, so both spellings need to reach the supplier."""
+    forms = alias_forms("Müller GmbH")
+
+    assert "müller" in forms
+    assert "muller" in forms
+
+
+@pytest.mark.parametrize(
+    ("name", "folded"),
+    [
+        ("Ørsted A/S", "orsted"),
+        ("Škoda Auto", "skoda auto"),
+        ("Société Générale", "societe generale"),
+        ("Æthelred Ltd", "aethelred"),
+    ],
+)
+def test_accent_folded_aliases_are_generated(name: str, folded: str) -> None:
+    assert folded in alias_forms(name)
+
+
+def test_folding_does_not_merge_genuinely_different_names() -> None:
+    """Accent folding widens matching; it must not collapse separate companies."""
+    assert set(alias_forms("Müller GmbH")) & set(alias_forms("Möller GmbH")) == set()
+
+
+def test_names_needing_no_folding_do_not_gain_a_duplicate_alias() -> None:
+    forms = alias_forms("Siemens AG")
+
+    assert forms == ["siemens ag", "siemens"]
+    assert len(forms) == len(set(forms))

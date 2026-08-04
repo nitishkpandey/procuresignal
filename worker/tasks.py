@@ -22,6 +22,7 @@ from procuresignal.retrieval import (
     configured_registry,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
+from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -514,6 +515,35 @@ def generate_risk_events_task(self: Any) -> dict[str, Any]:
                 "updated": result.updated,
                 "scanned": result.scanned,
                 "errors": result.errors,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.screen_sanctions_task",
+    bind=True,
+    max_retries=2,
+    queue="personalization",
+    time_limit=1800,
+)
+def screen_sanctions_task(self: Any) -> dict[str, Any]:
+    """Screen ingested sanctions designations against the supplier registry.
+
+    Scheduled after enrichment, since it reads designations that have been processed.
+    The unplaced count is the compliance-relevant figure: screening that quietly
+    matches nothing looks exactly like screening that works.
+    """
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            summary = await screen_processed_articles(session)
+            return {
+                "status": "success",
+                "designations_screened": summary.designations_screened,
+                "suppliers_flagged": summary.suppliers_flagged,
+                "unmatched_names": summary.unmatched_names,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

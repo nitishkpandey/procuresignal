@@ -42,6 +42,10 @@ CELERY_TASK_ROUTES = {
         "queue": "personalization",
         "routing_key": "personalization",
     },
+    "worker.tasks.screen_sanctions_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
     "worker.tasks.personalize_feeds_task": {
         "queue": "personalization",
         "routing_key": "personalization",
@@ -65,6 +69,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "worker.tasks.enrich_articles_task",
         "schedule": crontab(minute=45, hour="*/2"),
         "options": {"queue": "enrichment"},
+    },
+    "screen-sanctions-hourly": {
+        # After enrichment has processed the designations, before risk events read them.
+        "task": "worker.tasks.screen_sanctions_task",
+        "schedule": crontab(minute=48, hour="*"),
+        "options": {"queue": "personalization"},
     },
     "generate-risk-events-hourly": {
         "task": "worker.tasks.generate_risk_events_task",

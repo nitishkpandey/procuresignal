@@ -711,3 +711,13 @@ def test_stale_lease_is_reclaimed_and_failure_release_is_durable(tmp_path) -> No
     import asyncio
 
     asyncio.run(run())
+
+
+def test_sanctions_screening_is_routed_and_scheduled() -> None:
+    """The screening function existed for a phase without anything calling it."""
+    from worker.celery_config import CELERY_BEAT_SCHEDULE, CELERY_TASK_ROUTES
+
+    assert "worker.tasks.screen_sanctions_task" in CELERY_TASK_ROUTES
+
+    scheduled = {entry["task"] for entry in CELERY_BEAT_SCHEDULE.values()}
+    assert "worker.tasks.screen_sanctions_task" in scheduled

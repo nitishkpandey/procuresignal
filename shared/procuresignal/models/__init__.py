@@ -2,7 +2,14 @@
 
 from .articles import NewsArticleProcessed, NewsArticleRaw
 from .audit import AuditLog
-from .auth import Membership, Organization, RefreshToken, Role, User
+from .auth import (
+    Membership,
+    Organization,
+    OrganizationInvitation,
+    RefreshToken,
+    Role,
+    User,
+)
 from .base import Base, BaseModel
 from .chat import ChatConversation, ChatMessage
 from .enrichment import EnrichmentCacheEntry
@@ -17,6 +24,7 @@ __all__ = [
     "Base",
     "BaseModel",
     "Organization",
+    "OrganizationInvitation",
     "User",
     "Membership",
     "RefreshToken",

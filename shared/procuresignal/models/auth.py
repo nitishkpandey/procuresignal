@@ -82,3 +82,33 @@ class RefreshToken(BaseModel):
         Index("idx_refresh_user", "user_id"),
         Index("idx_refresh_family", "family_id"),
     )
+
+
+class OrganizationInvitation(BaseModel):
+    """An admin's offer to let one address join their organization.
+
+    Registration no longer joins a tenant on the strength of a matching email domain,
+    because nothing at that point proves the registrant owns the mailbox. An invitation
+    is the evidence: somebody already inside the organization named this address.
+    """
+
+    __tablename__ = "organization_invitations"
+
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    invited_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default=Role.MEMBER, nullable=False)
+    # Only the hash is stored, as with refresh tokens: a database leak must not yield
+    # usable invitations into a customer's tenant.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_invitation_email", "email"),
+        Index("idx_invitation_organization", "organization_id"),
+    )

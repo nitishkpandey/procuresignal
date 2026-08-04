@@ -1,13 +1,20 @@
 """Registration, sign-in, and session lifecycle."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from procuresignal.models import Membership, Organization, RefreshToken, Role, User
+from procuresignal.models import (
+    Membership,
+    Organization,
+    OrganizationInvitation,
+    RefreshToken,
+    Role,
+    User,
+)
 
 from .passwords import hash_password, verify_password
 from .tokens import (
@@ -21,6 +28,10 @@ from .tokens import (
 # Mailboxes here belong to individuals, not companies. Grouping by domain would otherwise
 # drop every consumer-mailbox signup into one shared tenant, which is a data breach rather
 # than a convenience.
+# Long enough for somebody to act on it, short enough that a forgotten invitation
+# does not stay a way into the tenant indefinitely.
+INVITATION_TTL = timedelta(days=7)
+
 PUBLIC_EMAIL_DOMAINS = frozenset(
     {
         "gmail.com",
@@ -59,6 +70,14 @@ class InvalidCredentialsError(Exception):
     """Raised for every failed sign-in, whatever the underlying reason."""
 
 
+class InvalidInvitationError(Exception):
+    """Raised when an invitation is missing, expired, or for a different address."""
+
+
+class InvitationAlreadyUsedError(Exception):
+    """Raised when an invitation has already been redeemed."""
+
+
 @dataclass(frozen=True)
 class IssuedSession:
     """What a successful sign-in hands back."""
@@ -83,33 +102,87 @@ def _organization_name(domain: str) -> str:
     return label.replace("-", " ").replace(".", " ").title() or domain
 
 
-async def _organization_for(session: AsyncSession, email: str) -> tuple[Organization, Role]:
-    """Find or create the organization this address should join.
+async def _new_organization_for(session: AsyncSession, email: str) -> tuple[Organization, Role]:
+    """Create a fresh organization owned by this address.
 
-    A company domain groups colleagues together, and the first of them owns the tenant.
-    A public mailbox provider always gets a fresh single-person organization.
+    Registration never joins an existing tenant. A matching email domain proves nothing
+    about who is typing: anybody could enter colleague@acme.com and, on domain alone,
+    receive Acme's feed, preferences and — once Phase 4 lands — its shared watchlists.
+    Joining an existing organization goes through an invitation, which is somebody
+    inside it naming the address.
+
+    The slug stays unique per organization rather than per domain, so two unrelated
+    signups from one company do not collide before either has been invited.
     """
 
     domain = _domain(email)
+    public_id = uuid4().hex
+
     if domain and domain not in PUBLIC_EMAIL_DOMAINS:
-        existing = (
-            await session.execute(select(Organization).where(Organization.slug == domain))
-        ).scalar_one_or_none()
-        if existing is not None:
-            return existing, Role.MEMBER
-
-        organization = Organization(
-            public_id=uuid4().hex, name=_organization_name(domain), slug=domain
-        )
+        name = _organization_name(domain)
+        slug = f"{domain}-{public_id[:8]}"
     else:
-        public_id = uuid4().hex
-        organization = Organization(
-            public_id=public_id, name=email, slug=f"{public_id[:12]}.personal"
-        )
+        name = email
+        slug = f"{public_id[:12]}.personal"
 
+    organization = Organization(public_id=public_id, name=name, slug=slug)
     session.add(organization)
     await session.flush()
     return organization, Role.OWNER
+
+
+async def create_invitation(
+    session: AsyncSession,
+    *,
+    organization_id: int,
+    email: str,
+    role: Role = Role.MEMBER,
+    invited_by_user_id: int | None = None,
+) -> tuple[OrganizationInvitation, str]:
+    """Offer one address a place in an organization. Returns (record, plaintext token)."""
+
+    plaintext, digest = mint_refresh_token()
+    invitation = OrganizationInvitation(
+        organization_id=organization_id,
+        invited_by_user_id=invited_by_user_id,
+        email=normalize_email(email),
+        role=str(role),
+        token_hash=digest,
+        expires_at=datetime.utcnow() + INVITATION_TTL,
+    )
+    session.add(invitation)
+    await session.flush()
+    return invitation, plaintext
+
+
+async def _redeem_invitation(
+    session: AsyncSession, *, token: str, email: str
+) -> tuple[Organization, Role]:
+    """Consume an invitation, or refuse for any reason at all."""
+
+    invitation = (
+        await session.execute(
+            select(OrganizationInvitation).where(
+                OrganizationInvitation.token_hash == hash_refresh_token(token)
+            )
+        )
+    ).scalar_one_or_none()
+
+    if invitation is None or invitation.expires_at <= datetime.utcnow():
+        raise InvalidInvitationError("that invitation is not valid")
+    if invitation.accepted_at is not None:
+        raise InvitationAlreadyUsedError("that invitation has already been used")
+    # Bound to the address it was sent to, so a leaked token cannot let a different
+    # person walk into the tenant.
+    if invitation.email != normalize_email(email):
+        raise InvalidInvitationError("that invitation was issued for another address")
+
+    organization = await session.get(Organization, invitation.organization_id)
+    if organization is None:
+        raise InvalidInvitationError("that invitation is not valid")
+
+    invitation.accepted_at = datetime.utcnow()
+    return organization, Role(invitation.role)
 
 
 async def _issue(
@@ -157,6 +230,7 @@ async def register(
     email: str,
     password: str,
     full_name: str | None = None,
+    invitation_token: str | None = None,
     user_agent: str | None = None,
     client_ip: str | None = None,
 ) -> IssuedSession:
@@ -176,7 +250,12 @@ async def register(
     if existing is not None:
         raise EmailAlreadyRegisteredError(address)
 
-    organization, role = await _organization_for(session, address)
+    if invitation_token:
+        organization, role = await _redeem_invitation(
+            session, token=invitation_token, email=address
+        )
+    else:
+        organization, role = await _new_organization_for(session, address)
     user = User(
         public_id=uuid4().hex,
         email=address,

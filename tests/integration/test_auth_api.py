@@ -94,14 +94,6 @@ def test_first_user_of_a_domain_owns_the_organization(client: TestClient) -> Non
     assert body["user"]["role"] == Role.OWNER
 
 
-def test_second_user_of_a_company_domain_joins_as_a_member(client: TestClient) -> None:
-    first = register(client, "first@acme.com")
-    second = register(client, "second@acme.com")
-
-    assert second["user"]["role"] == Role.MEMBER
-    assert second["user"]["organization_id"] == first["user"]["organization_id"]
-
-
 def test_public_email_providers_never_share_an_organization(client: TestClient) -> None:
     """Domain grouping must not put every consumer-mailbox signup in one tenant."""
     first = register(client, "alice@gmail.com")
@@ -351,3 +343,124 @@ def test_repeated_duplicate_registrations_are_throttled(client: TestClient) -> N
 
     assert 409 in statuses
     assert statuses[-1] == 429
+
+
+# --- tenant enrolment ------------------------------------------------------------
+
+
+def test_registering_a_company_domain_does_not_join_an_existing_tenant(
+    client: TestClient,
+) -> None:
+    """Owning the mailbox is unproven at registration.
+
+    Anyone could type colleague@acme.com. Joining Acme on that alone would hand them
+    the organization's data the moment shared watchlists and dashboards exist.
+    """
+    first = register(client, "cfo@acme.com")
+    second = register(client, "attacker@acme.com")
+
+    assert second["user"]["organization_id"] != first["user"]["organization_id"]
+    assert second["user"]["role"] == Role.OWNER
+
+
+def test_joining_an_existing_organization_needs_an_invitation(client: TestClient) -> None:
+    """The supported path in: an admin invites, the invitee accepts."""
+    owner = register(client, "cfo@acme.com")
+    headers = {"Authorization": f"Bearer {owner['access_token']}"}
+
+    invitation = client.post(
+        "/api/auth/invitations",
+        headers=headers,
+        json={"email": "colleague@acme.com", "role": Role.MEMBER},
+    )
+    assert invitation.status_code == 201
+    token = invitation.json()["token"]
+
+    accepted = client.post(
+        "/api/auth/register",
+        json={"email": "colleague@acme.com", "password": PASSWORD, "invitation_token": token},
+    )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["user"]["organization_id"] == owner["user"]["organization_id"]
+    assert accepted.json()["user"]["role"] == Role.MEMBER
+
+
+def test_only_admins_may_invite(client: TestClient) -> None:
+    owner = register(client, "cfo@acme.com")
+    headers = {"Authorization": f"Bearer {owner['access_token']}"}
+
+    invitation = client.post(
+        "/api/auth/invitations", headers=headers, json={"email": "colleague@acme.com"}
+    ).json()
+
+    joined = client.post(
+        "/api/auth/register",
+        json={
+            "email": "colleague@acme.com",
+            "password": PASSWORD,
+            "invitation_token": invitation["token"],
+        },
+    ).json()
+    member_headers = {"Authorization": f"Bearer {joined['access_token']}"}
+
+    refused = client.post(
+        "/api/auth/invitations", headers=member_headers, json={"email": "another@acme.com"}
+    )
+    assert refused.status_code == 403
+
+
+def test_an_invitation_cannot_be_redeemed_by_a_different_address(client: TestClient) -> None:
+    owner = register(client, "cfo@acme.com")
+    headers = {"Authorization": f"Bearer {owner['access_token']}"}
+    invitation = client.post(
+        "/api/auth/invitations", headers=headers, json={"email": "colleague@acme.com"}
+    ).json()
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "someone.else@acme.com",
+            "password": PASSWORD,
+            "invitation_token": invitation["token"],
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_an_invitation_is_single_use(client: TestClient) -> None:
+    owner = register(client, "cfo@acme.com")
+    headers = {"Authorization": f"Bearer {owner['access_token']}"}
+    invitation = client.post(
+        "/api/auth/invitations", headers=headers, json={"email": "colleague@acme.com"}
+    ).json()
+    body = {
+        "email": "colleague@acme.com",
+        "password": PASSWORD,
+        "invitation_token": invitation["token"],
+    }
+
+    assert client.post("/api/auth/register", json=body).status_code == 201
+    assert client.post("/api/auth/register", json=body).status_code == 409
+
+
+def test_an_unknown_invitation_token_is_refused(client: TestClient) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={"email": "nobody@acme.com", "password": PASSWORD, "invitation_token": "made-up"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_invitations_are_audited(client: TestClient) -> None:
+    owner = register(client, "cfo@acme.com")
+    client.post(
+        "/api/auth/invitations",
+        headers={"Authorization": f"Bearer {owner['access_token']}"},
+        json={"email": "colleague@acme.com"},
+    )
+
+    rows = run(_rows(client, AuditLog))
+    assert ("organization.invite", "success") in {(r.action, r.outcome) for r in rows}
