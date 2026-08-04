@@ -20,6 +20,7 @@ from api.routers import (
     preferences,
     risk_events,
     signals,
+    suppliers,
 )
 from api.scheduler import create_scheduler, scheduler_enabled
 
@@ -102,6 +103,7 @@ app.include_router(chat.router)
 app.include_router(articles.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
+app.include_router(suppliers.router)
 
 
 @app.get("/health")
