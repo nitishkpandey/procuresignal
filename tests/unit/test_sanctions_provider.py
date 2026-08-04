@@ -453,3 +453,31 @@ def test_large_fetcher_rejects_non_exact_source() -> None:
     other = SOURCE_REGISTRY.sources[0]
     with pytest.raises(ValueError, match="sealed"):
         LargeObjectFetcher(other, safe_fetcher(lambda request: httpx.Response(500)))
+
+
+async def test_designation_names_are_carried_for_screening(monkeypatch) -> None:
+    """Screening must compare every spelling the authority recorded.
+
+    Parsing them back out of the human-readable description would break the moment
+    that wording changed.
+    """
+    monkeypatch.setenv("EU_FISMA_SANCTIONS_TOKEN", "secret")
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<export>"
+        '<sanctionEntity euReferenceNumber="EU.99" designationDate="2026-01-01">'
+        '<nameAlias wholeName="Primary Trading Co" strong="true" />'
+        '<nameAlias wholeName="Primary Trading Company" />'
+        '<nameAlias wholeName="PTC Holdings" />'
+        "</sanctionEntity>"
+        "</export>"
+    ).encode()
+
+    def handler(_request):
+        return httpx.Response(200, headers={"content-type": "application/xml"}, content=xml)
+
+    articles = await EUSanctionsProvider(SOURCE, safe_fetcher(handler)).fetch_articles([])
+
+    names = articles[0].raw_payload_json["designation_names"]
+    assert names[0] == "Primary Trading Co"
+    assert set(names) == {"Primary Trading Co", "Primary Trading Company", "PTC Holdings"}

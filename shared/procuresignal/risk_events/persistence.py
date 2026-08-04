@@ -11,6 +11,7 @@ from sqlalchemy import asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, RiskEvent
+from procuresignal.suppliers.resolver import resolve_many
 
 from .detector import RiskEventCandidate, detect_risk_events
 
@@ -100,6 +101,17 @@ async def generate_risk_events(
     )
 
 
+async def _resolved_supplier_ids(session: AsyncSession, names: list[str]) -> list[str]:
+    """Canonical suppliers the affected names resolve to.
+
+    Stored beside the free-text names rather than replacing them, so a supplier nobody
+    has registered is still visible on the event.
+    """
+
+    resolutions = await resolve_many(session, names or [])
+    return sorted({r.public_id for r in resolutions if r.public_id})
+
+
 async def _upsert_event(
     session: AsyncSession,
     processed: NewsArticleProcessed,
@@ -112,11 +124,14 @@ async def _upsert_event(
         candidate.affected_suppliers,
         candidate.affected_locations,
     )
+    supplier_ids = await _resolved_supplier_ids(session, candidate.affected_suppliers)
+
     existing = await session.scalar(select(RiskEvent).where(RiskEvent.event_key == event_key))
     if existing:
         existing.severity = candidate.severity
         existing.confidence = candidate.confidence
         existing.affected_suppliers = candidate.affected_suppliers
+        existing.affected_supplier_ids = supplier_ids
         existing.affected_locations = candidate.affected_locations
         existing.affected_categories = candidate.affected_categories
         existing.evidence_snippet = candidate.evidence_snippet
@@ -134,6 +149,7 @@ async def _upsert_event(
             severity=candidate.severity,
             confidence=candidate.confidence,
             affected_suppliers=candidate.affected_suppliers,
+            affected_supplier_ids=supplier_ids,
             affected_locations=candidate.affected_locations,
             affected_categories=candidate.affected_categories,
             evidence_snippet=candidate.evidence_snippet,

@@ -74,7 +74,7 @@ def _earliest_revisions(path: Path) -> dict[str, str]:
     return earliest
 
 
-def _records(path: Path) -> Iterator[tuple[str, str, bool, str, datetime]]:
+def _records(path: Path) -> Iterator[tuple[str, str, bool, str, datetime, list[str]]]:
     _check_xml(path)
     earliest = _earliest_revisions(path)
     for _, element in iterparse(path, events=("end",)):
@@ -121,7 +121,8 @@ def _records(path: Path) -> Iterator[tuple[str, str, bool, str, datetime]]:
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", revision)
             else datetime.now(timezone.utc)
         )
-        yield identity, primary, is_update, "; ".join(facts)[:_TEXT_LIMIT], date
+        screening_names = [primary, *secondary]
+        yield identity, primary, is_update, "; ".join(facts)[:_TEXT_LIMIT], date, screening_names
         element.clear()
 
 
@@ -155,7 +156,14 @@ class EUSanctionsProvider(NewsProvider):
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         async with artifact:
             articles: list[RawArticle] = []
-            for identity, name, update, description, published in _records(artifact.path):
+            for (
+                identity,
+                name,
+                update,
+                description,
+                published,
+                screening_names,
+            ) in _records(artifact.path):
                 if len(articles) >= self.source.item_limit:
                     break
                 published_naive = published.astimezone(timezone.utc).replace(tzinfo=None)
@@ -173,7 +181,12 @@ class EUSanctionsProvider(NewsProvider):
                         source_url=self.source.homepage_url,
                         published_at=published_naive,
                         language="en",
-                        raw_payload_json={"designation_id": identity},
+                        raw_payload_json={
+                            "designation_id": identity,
+                            # Consumed by sanctions screening, which must compare
+                            # every recorded spelling rather than just the primary.
+                            "designation_names": screening_names,
+                        },
                         source_id=self.source.source_id,
                         source_class="official",
                         source_domains=tuple(sorted(d.value for d in self.source.domains)),

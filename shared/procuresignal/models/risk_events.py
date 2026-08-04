@@ -22,6 +22,9 @@ class RiskEvent(BaseModel):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
     affected_suppliers: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # Canonical suppliers the free-text names above resolved to. Kept alongside
+    # rather than replacing them, so a name nobody has registered is still visible.
+    affected_supplier_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     affected_locations: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     affected_categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
