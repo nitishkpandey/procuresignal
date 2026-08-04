@@ -19,6 +19,7 @@ from procuresignal.enrichment.policy import EnrichmentBudget, EnrichmentPolicy
 from procuresignal.enrichment.router import EnrichmentRoute, EnrichmentRouter
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
 from procuresignal.retrieval import RawArticle
+from procuresignal.suppliers.mentions import record_mentions
 
 
 @dataclass(slots=True)
@@ -392,6 +393,15 @@ class EnrichmentPipeline:
                 await session.flush()
         except IntegrityError:
             return False
+
+        # Resolve the supplier names to canonical entities. detected_suppliers keeps its
+        # own contents; this records the same names against the registry so exposure can
+        # be counted across articles that spell a company differently.
+        await record_mentions(
+            session,
+            processed_article_id=processed.id,
+            surface_forms=processed.detected_suppliers or [],
+        )
         return True
 
     @staticmethod

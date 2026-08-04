@@ -26,6 +26,7 @@ from sqlalchemy.pool import StaticPool
 
 from api.dependencies import get_session
 from api.main import app
+from api.routers import currency as currency_router
 
 PASSWORD = "a-sufficiently-long-password"
 
@@ -57,6 +58,19 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     async def _session():
         async with maker() as session:
             yield session
+
+    class _StubCurrencyMonitor:
+        async def get_eur_monitor(self, **kwargs):
+            from procuresignal.currency.service import CurrencyMonitorResponse
+
+            return CurrencyMonitorResponse(
+                base="EUR",
+                as_of="2026-08-01",
+                lookback_days=kwargs.get("days", 30),
+                currencies=[],
+            )
+
+    monkeypatch.setattr(currency_router, "CurrencyMonitor", lambda: _StubCurrencyMonitor())
 
     app.dependency_overrides[get_session] = _session
     with TestClient(app, base_url="https://testserver") as test_client:
