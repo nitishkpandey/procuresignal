@@ -1,5 +1,6 @@
 """Personalization matching engine."""
 
+import re
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
@@ -7,6 +8,7 @@ from procuresignal.enrichment.entities import canonical_region_name, extract_reg
 from procuresignal.models import NewsArticleProcessed, UserNewsPreference
 from procuresignal.personalization.categories import canonical_category, canonical_category_set
 from procuresignal.signals.taxonomy import expand_signal_terms, text_matches_signal_terms
+from procuresignal.suppliers.normalization import MINIMUM_DERIVED_ALIAS_LENGTH
 
 
 @dataclass
@@ -21,6 +23,10 @@ class MatchScore:
 
     def __hash__(self) -> int:
         return hash(self.overall_score)
+
+
+# Below this, a name is matched only through the registry, never in free text.
+MINIMUM_TEXT_MATCH_LENGTH = MINIMUM_DERIVED_ALIAS_LENGTH
 
 
 class PreferenceMatcher:
@@ -49,6 +55,15 @@ class PreferenceMatcher:
         if not excluded:
             excluded = getattr(preference, "excluded_topics", [])
         return canonical_category_set(excluded)
+
+    @staticmethod
+    def _preferred_supplier_ids(preference: UserNewsPreference) -> set[str]:
+        """Canonical suppliers the user watches, resolved when they saved them."""
+        return PreferenceMatcher._normalized(getattr(preference, "preferred_supplier_ids", []))
+
+    @staticmethod
+    def _excluded_supplier_ids(preference: UserNewsPreference) -> set[str]:
+        return PreferenceMatcher._normalized(getattr(preference, "excluded_supplier_ids", []))
 
     @staticmethod
     def _preferred_suppliers(preference: UserNewsPreference) -> set[str]:
@@ -89,12 +104,37 @@ class PreferenceMatcher:
         )
 
     @staticmethod
+    def text_mentions_supplier(text: str, supplier: str) -> bool:
+        """Whether the text names this supplier as a whole word.
+
+        Plain containment matched "ABB" inside "cabbage" and "3M" inside "3m-long",
+        which is how unrelated articles reached a buyer's feed. Word boundaries are
+        built from the name so punctuation around it still matches.
+        """
+
+        name = (supplier or "").strip()
+        # Very short names cannot be matched safely in free text: "3M" appears inside
+        # "3m-long delay", and refusing to treat a trailing hyphen as a boundary would
+        # break legitimate forms like "Bosch-owned". Names this short have to go
+        # through the registry, where matching is exact on the whole name. This mirrors
+        # the registry declining to derive aliases below the same length.
+        if len(name) < MINIMUM_TEXT_MATCH_LENGTH:
+            return False
+
+        pattern = r"(?<![0-9a-z])" + re.escape(name.lower()) + r"(?![0-9a-z])"
+        return re.search(pattern, (text or "").lower()) is not None
+
+    @staticmethod
     def _supplier_text_matches(
         article: NewsArticleProcessed,
         preferred_suppliers: set[str],
     ) -> set[str]:
         text = PreferenceMatcher._article_text(article)
-        return {supplier for supplier in preferred_suppliers if supplier in text}
+        return {
+            supplier
+            for supplier in preferred_suppliers
+            if PreferenceMatcher.text_mentions_supplier(text, supplier)
+        }
 
     @staticmethod
     def _region_tokens(values: Iterable[str] | None) -> set[str]:
@@ -158,8 +198,18 @@ class PreferenceMatcher:
     def has_excluded_match(
         article: NewsArticleProcessed,
         preference: UserNewsPreference,
+        *,
+        article_supplier_ids: set[str] | None = None,
     ) -> bool:
-        """Return True when an article hits any explicit exclusion."""
+        """Return True when an article hits any explicit exclusion.
+
+        `article_supplier_ids` holds the canonical suppliers this article was resolved
+        to. Excluding "Siemens" then also excludes an article that wrote "Siemens AG",
+        which spelling comparison alone could not do.
+        """
+        excluded_by_identity = bool(
+            (article_supplier_ids or set()) & PreferenceMatcher._excluded_supplier_ids(preference)
+        )
         excluded_suppliers = PreferenceMatcher._normalized(
             getattr(preference, "excluded_suppliers", [])
         )
@@ -170,7 +220,8 @@ class PreferenceMatcher:
         excluded_signals = PreferenceMatcher._excluded_signals(preference)
 
         return bool(
-            (
+            excluded_by_identity
+            or (
                 PreferenceMatcher._article_categories(article)
                 & PreferenceMatcher._excluded_categories(preference)
             )
@@ -180,9 +231,40 @@ class PreferenceMatcher:
         )
 
     @staticmethod
+    def _supplier_matches(
+        article: NewsArticleProcessed,
+        preference: UserNewsPreference,
+        preferred_suppliers: set[str],
+        article_supplier_ids: set[str] | None,
+    ) -> bool:
+        """Whether this article is about a supplier the user watches.
+
+        When the article resolved to canonical suppliers, identity decides and the text
+        comparisons are skipped. Otherwise a watch on "Siemens" also matches an article
+        about Siemens Energy, simply because the parent's name is a prefix of the
+        spinoff's, which is the confusion this whole layer exists to remove.
+
+        # ponytail: an article naming both a registered supplier and an unregistered one
+        # is judged on identity alone, so a watch on the unregistered name is missed
+        # there. That shrinks as the registry grows, and the alternative mismatches
+        # every parent/spinoff pair, which is both more common and worse.
+        """
+
+        resolved = article_supplier_ids or set()
+        if resolved:
+            return bool(resolved & PreferenceMatcher._preferred_supplier_ids(preference))
+
+        return bool(
+            (PreferenceMatcher._article_suppliers(article) & preferred_suppliers)
+            or PreferenceMatcher._supplier_text_matches(article, preferred_suppliers)
+        )
+
+    @staticmethod
     def should_include_article(
         article: NewsArticleProcessed,
         preference: UserNewsPreference,
+        *,
+        article_supplier_ids: set[str] | None = None,
     ) -> bool:
         """Decide whether an article is eligible for the user's feed.
 
@@ -190,7 +272,9 @@ class PreferenceMatcher:
         and signal preferences refine the feed, but should not allow generic
         articles through when primary focus preferences are present.
         """
-        if PreferenceMatcher.has_excluded_match(article, preference):
+        if PreferenceMatcher.has_excluded_match(
+            article, preference, article_supplier_ids=article_supplier_ids
+        ):
             return False
 
         preferred_categories = PreferenceMatcher._preferred_categories(preference)
@@ -199,9 +283,8 @@ class PreferenceMatcher:
         preferred_signals = PreferenceMatcher._preferred_signals(preference)
 
         category_match = bool(PreferenceMatcher._article_categories(article) & preferred_categories)
-        supplier_match = bool(
-            (PreferenceMatcher._article_suppliers(article) & preferred_suppliers)
-            or PreferenceMatcher._supplier_text_matches(article, preferred_suppliers)
+        supplier_match = PreferenceMatcher._supplier_matches(
+            article, preference, preferred_suppliers, article_supplier_ids
         )
         region_match = bool(
             PreferenceMatcher._article_regions_for_matching(article) & preferred_regions
@@ -249,6 +332,8 @@ class PreferenceMatcher:
     def calculate_supplier_match(
         article_suppliers: List[str],
         preference: UserNewsPreference,
+        *,
+        article_supplier_ids: set[str] | None = None,
     ) -> float:
         """Calculate supplier match score.
 
@@ -265,14 +350,20 @@ class PreferenceMatcher:
         )
         article_suppliers_lower = PreferenceMatcher._normalized(article_suppliers)
 
+        resolved = article_supplier_ids or set()
+        if resolved & PreferenceMatcher._excluded_supplier_ids(preference):
+            return 0.0
         if article_suppliers_lower & excluded_suppliers:
             return 0.0
 
         if not article_suppliers or not preferred_suppliers:
             return 0.5  # Neutral if no data
 
-        # Check for matches
-        matches = len(article_suppliers_lower & preferred_suppliers)
+        # Identity matches count alongside spelling ones, so an article writing
+        # "Siemens AG" scores for a user who watches "Siemens".
+        matches = len(article_suppliers_lower & preferred_suppliers) + len(
+            resolved & PreferenceMatcher._preferred_supplier_ids(preference)
+        )
 
         if matches > 0:
             # More matches = higher score
@@ -363,6 +454,8 @@ class PreferenceMatcher:
     async def score_article(
         article: NewsArticleProcessed,
         preference: UserNewsPreference,
+        *,
+        article_supplier_ids: set[str] | None = None,
     ) -> MatchScore:
         """Score article against user preference.
 
@@ -387,7 +480,7 @@ class PreferenceMatcher:
             )
         )
         supplier_score = PreferenceMatcher.calculate_supplier_match(
-            list(supplier_tokens), preference
+            list(supplier_tokens), preference, article_supplier_ids=article_supplier_ids
         )
 
         region_score = PreferenceMatcher.calculate_region_match(

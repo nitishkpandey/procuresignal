@@ -7,7 +7,9 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import (
+    ArticleSupplierMention,
     NewsArticleProcessed,
+    Supplier,
     UserNewsFeed,
     UserNewsPreference,
 )
@@ -35,21 +37,55 @@ class PersonalizationPipeline:
         )
 
     @staticmethod
+    async def _supplier_ids_by_article(
+        session: AsyncSession, article_ids: list[int]
+    ) -> dict[int, set[str]]:
+        """Canonical suppliers each article was resolved to.
+
+        Loaded in one query for the whole candidate set. Asking per article would turn
+        a feed rebuild into a query per row.
+        """
+
+        if not article_ids:
+            return {}
+
+        rows = (
+            await session.execute(
+                select(ArticleSupplierMention.processed_article_id, Supplier.public_id)
+                .join(Supplier, Supplier.id == ArticleSupplierMention.supplier_id)
+                .where(ArticleSupplierMention.processed_article_id.in_(article_ids))
+                .where(Supplier.is_active.is_(True))
+            )
+        ).all()
+
+        mapped: dict[int, set[str]] = {}
+        for article_id, public_id in rows:
+            mapped.setdefault(article_id, set()).add(public_id)
+        return mapped
+
+    @staticmethod
     async def _score_articles(
         articles: list[NewsArticleProcessed],
         preference: UserNewsPreference,
         existing_article_ids: set[int],
+        supplier_ids_by_article: dict[int, set[str]] | None = None,
     ) -> list[tuple[NewsArticleProcessed, MatchScore]]:
         scored_articles = []
+        resolved = supplier_ids_by_article or {}
 
         for article in articles:
             if article.id in existing_article_ids:
                 continue
 
-            if not PreferenceMatcher.should_include_article(article, preference):
+            article_supplier_ids = resolved.get(article.id, set())
+            if not PreferenceMatcher.should_include_article(
+                article, preference, article_supplier_ids=article_supplier_ids
+            ):
                 continue
 
-            score = await PreferenceMatcher.score_article(article, preference)
+            score = await PreferenceMatcher.score_article(
+                article, preference, article_supplier_ids=article_supplier_ids
+            )
 
             # Only include if score > threshold (0.3)
             if score.overall_score >= 0.3:
@@ -111,17 +147,24 @@ class PersonalizationPipeline:
         )
         articles = articles_query.scalars().all()
 
+        # One query for the whole candidate set, reused by both scoring passes.
+        supplier_ids_by_article = await PersonalizationPipeline._supplier_ids_by_article(
+            session, [article.id for article in articles]
+        )
+
         # Score and rank articles
         scored_articles = await PersonalizationPipeline._score_articles(
             list(articles),
             pref,
             existing_article_ids,
+            supplier_ids_by_article,
         )
         if not scored_articles:
             scored_articles = await PersonalizationPipeline._score_articles(
                 list(articles),
                 PersonalizationPipeline._fallback_preference(user_id, pref),
                 existing_article_ids,
+                supplier_ids_by_article,
             )
 
         # Sort by score (descending)

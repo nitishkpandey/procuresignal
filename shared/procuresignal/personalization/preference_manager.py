@@ -7,6 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import UserNewsFeed, UserNewsPreference
 from procuresignal.personalization.categories import canonical_category_list
+from procuresignal.suppliers.resolver import resolve_many
+
+
+async def _resolve_supplier_ids(session: AsyncSession, names: Optional[List[str]]) -> list[str]:
+    """Canonical supplier public ids for the names a user typed, in one query."""
+
+    resolutions = await resolve_many(session, names or [])
+    return sorted({r.public_id for r in resolutions if r.public_id})
 
 
 class PreferenceManager:
@@ -98,6 +106,12 @@ class PreferenceManager:
                 excluded_topics=excluded_topics or excluded_categories or [],
                 platform_language=platform_language,
             )
+
+        # Resolve the watched names to canonical suppliers once, here, rather than on
+        # every article comparison. The text the user typed is kept as-is so the UI can
+        # show it back to them and so an unregistered supplier still matches on text.
+        pref.preferred_supplier_ids = await _resolve_supplier_ids(session, pref.preferred_suppliers)
+        pref.excluded_supplier_ids = await _resolve_supplier_ids(session, pref.excluded_suppliers)
 
         session.add(pref)
         await session.execute(delete(UserNewsFeed).where(UserNewsFeed.user_id == user_id))
