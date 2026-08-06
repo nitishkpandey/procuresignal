@@ -1,6 +1,6 @@
 """add risk event scan tracking
 
-Revision ID: e5f6a7_add_risk_event_scan_tracking
+Revision ID: e5f6a7_risk_scan_tracking
 Revises: d4e5f6_add_risk_events
 Create Date: 2026-07-12 16:00:00.000000
 """
@@ -8,7 +8,7 @@ Create Date: 2026-07-12 16:00:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-revision = "e5f6a7_add_risk_event_scan_tracking"
+revision = "e5f6a7_risk_scan_tracking"
 down_revision = "d4e5f6_add_risk_events"
 branch_labels = None
 depends_on = None

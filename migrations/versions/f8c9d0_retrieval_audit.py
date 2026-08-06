@@ -1,13 +1,13 @@
 """add retrieval provenance and source audit
 
-Revision ID: f8c9d0_add_retrieval_source_audit
+Revision ID: f8c9d0_retrieval_audit
 Revises: f7b8c9_terminal_enrichment
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "f8c9d0_add_retrieval_source_audit"
+revision = "f8c9d0_retrieval_audit"
 down_revision = "f7b8c9_terminal_enrichment"
 branch_labels = None
 depends_on = None

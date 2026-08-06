@@ -1,15 +1,15 @@
 """add enrichment routing metadata and cache
 
-Revision ID: f6a7b8_add_enrichment_routing_cache
-Revises: e5f6a7_add_risk_event_scan_tracking
+Revision ID: f6a7b8_enrichment_cache
+Revises: e5f6a7_risk_scan_tracking
 Create Date: 2026-07-13 12:00:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "f6a7b8_add_enrichment_routing_cache"
-down_revision = "e5f6a7_add_risk_event_scan_tracking"
+revision = "f6a7b8_enrichment_cache"
+down_revision = "e5f6a7_risk_scan_tracking"
 branch_labels = None
 depends_on = None
 

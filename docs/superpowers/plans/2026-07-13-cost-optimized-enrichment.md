@@ -34,7 +34,7 @@
 - Modify `shared/procuresignal/models/articles.py` — processed audit columns.
 - Create `shared/procuresignal/models/enrichment.py` — cache ORM model.
 - Modify `shared/procuresignal/models/__init__.py` — export cache model.
-- Create `migrations/versions/f6a7b8_add_enrichment_routing_cache.py` — routing metadata and cache schema.
+- Create `migrations/versions/f6a7b8_enrichment_cache.py` — routing metadata and cache schema.
 - Modify `worker/tasks.py` — policy-aware task construction and route metrics.
 - Create `tests/unit/test_enrichment_policy.py`, `test_enrichment_deterministic.py`, `test_enrichment_router.py`, `test_enrichment_cache.py`, and `test_enrichment_pipeline.py`.
 - Modify `tests/unit/test_enrichment.py`, `tests/unit/test_tasks.py`, `tests/unit/test_models.py`, and `tests/integration/test_api.py` for regressions and migration-compatible models.
@@ -220,7 +220,7 @@ git commit -m "Add deterministic enrichment routing"
 - Modify: `shared/procuresignal/models/articles.py`
 - Create: `shared/procuresignal/models/enrichment.py`
 - Modify: `shared/procuresignal/models/__init__.py`
-- Create: `migrations/versions/f6a7b8_add_enrichment_routing_cache.py`
+- Create: `migrations/versions/f6a7b8_enrichment_cache.py`
 - Create: `shared/procuresignal/enrichment/cache.py`
 - Create: `tests/unit/test_enrichment_cache.py`
 - Modify: `tests/unit/test_models.py`
@@ -260,7 +260,7 @@ Use nullable fields for historical rows and `llm_used` with Python/server defaul
 
 - [ ] **Step 4: Add the reversible Alembic migration**
 
-Set `down_revision = "e5f6a7_add_risk_event_scan_tracking"`. Add the six processed columns, create `enrichment_cache`, add its unique constraint and fingerprint lookup index. Downgrade drops the cache table/index before processed columns.
+Set `down_revision = "e5f6a7_risk_scan_tracking"`. Add the six processed columns, create `enrichment_cache`, add its unique constraint and fingerprint lookup index. Downgrade drops the cache table/index before processed columns.
 
 - [ ] **Step 5: Implement validated async cache operations**
 
@@ -273,9 +273,9 @@ Run:
 ```bash
 PYTHONPATH=shared .venv/bin/pytest tests/unit/test_models.py tests/unit/test_enrichment_cache.py -v
 DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase2-migration.db .venv/bin/alembic upgrade head
-DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase2-migration.db .venv/bin/alembic downgrade e5f6a7_add_risk_event_scan_tracking
+DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase2-migration.db .venv/bin/alembic downgrade e5f6a7_risk_scan_tracking
 .venv/bin/alembic heads
-.venv/bin/ruff check shared/procuresignal/models shared/procuresignal/enrichment/cache.py migrations/versions/f6a7b8_add_enrichment_routing_cache.py tests/unit/test_enrichment_cache.py
+.venv/bin/ruff check shared/procuresignal/models shared/procuresignal/enrichment/cache.py migrations/versions/f6a7b8_enrichment_cache.py tests/unit/test_enrichment_cache.py
 .venv/bin/mypy shared/procuresignal/models shared/procuresignal/enrichment/cache.py
 ```
 
@@ -284,7 +284,7 @@ Expected: tests pass, migration upgrades/downgrades, exactly one Alembic head, l
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shared/procuresignal/models shared/procuresignal/enrichment/cache.py migrations/versions/f6a7b8_add_enrichment_routing_cache.py tests/unit/test_models.py tests/unit/test_enrichment_cache.py
+git add shared/procuresignal/models shared/procuresignal/enrichment/cache.py migrations/versions/f6a7b8_enrichment_cache.py tests/unit/test_models.py tests/unit/test_enrichment_cache.py
 git commit -m "Add versioned enrichment cache schema"
 ```
 

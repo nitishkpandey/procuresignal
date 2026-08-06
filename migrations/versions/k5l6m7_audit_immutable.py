@@ -1,14 +1,14 @@
 """make the audit trail append-only in the database
 
-Revision ID: k5l6m7_enforce_audit_immutability
-Revises: j4k5l6_add_organization_invitations
+Revision ID: k5l6m7_audit_immutable
+Revises: j4k5l6_org_invitations
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "k5l6m7_enforce_audit_immutability"
-down_revision = "j4k5l6_add_organization_invitations"
+revision = "k5l6m7_audit_immutable"
+down_revision = "j4k5l6_org_invitations"
 branch_labels = None
 depends_on = None
 

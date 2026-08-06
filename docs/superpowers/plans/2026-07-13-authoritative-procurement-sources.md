@@ -172,7 +172,7 @@ git commit -m "Add authoritative procurement source registry"
 
 **Files:**
 - Create: `shared/procuresignal/models/retrieval.py`
-- Create: `migrations/versions/f8c9d0_add_retrieval_source_audit.py`
+- Create: `migrations/versions/f8c9d0_retrieval_audit.py`
 - Create: `tests/integration/test_retrieval_audit_migration.py`
 - Modify: `shared/procuresignal/models/articles.py`
 - Modify: `shared/procuresignal/models/__init__.py`
@@ -276,12 +276,12 @@ Expected: all pass.
 
 Run: `DATABASE_URL=sqlite+aiosqlite:////tmp/procuresignal-phase3-task2.db .venv/bin/alembic upgrade head && .venv/bin/alembic heads`
 
-Expected: upgrade succeeds and exactly `f8c9d0_add_retrieval_source_audit (head)` is printed.
+Expected: upgrade succeeds and exactly `f8c9d0_retrieval_audit (head)` is printed.
 
 - [ ] **Step 5: Commit Task 2**
 
 ```bash
-git add shared/procuresignal/models shared/procuresignal/retrieval/base.py migrations/versions/f8c9d0_add_retrieval_source_audit.py tests/unit/test_models.py tests/integration/test_retrieval_audit_migration.py
+git add shared/procuresignal/models shared/procuresignal/retrieval/base.py migrations/versions/f8c9d0_retrieval_audit.py tests/unit/test_models.py tests/integration/test_retrieval_audit_migration.py
 git commit -m "Persist retrieval provenance and audit runs"
 ```
 

@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-MIGRATION = "migrations.versions.k5l6m7_enforce_audit_immutability"
+MIGRATION = "migrations.versions.k5l6m7_audit_immutable"
 
 
 def _audit_table(engine: sa.Engine) -> sa.Table:

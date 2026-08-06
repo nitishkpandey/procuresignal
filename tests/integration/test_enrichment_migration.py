@@ -104,9 +104,7 @@ def test_populated_upgrade_repoints_all_dependents_and_downgrades(monkeypatch) -
                     row["event_key"] = f"event-{offset}"
             connection.execute(table.insert(), rows)
 
-        migration = importlib.import_module(
-            "migrations.versions.f6a7b8_add_enrichment_routing_cache"
-        )
+        migration = importlib.import_module("migrations.versions.f6a7b8_enrichment_cache")
         operations = Operations(MigrationContext.configure(connection))
         monkeypatch.setattr(migration, "op", operations)
         migration.upgrade()

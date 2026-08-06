@@ -1,14 +1,14 @@
 """add organization invitations
 
-Revision ID: j4k5l6_add_organization_invitations
-Revises: i3j4k5_add_risk_event_supplier_ids
+Revision ID: j4k5l6_org_invitations
+Revises: i3j4k5_risk_supplier_ids
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "j4k5l6_add_organization_invitations"
-down_revision = "i3j4k5_add_risk_event_supplier_ids"
+revision = "j4k5l6_org_invitations"
+down_revision = "i3j4k5_risk_supplier_ids"
 branch_labels = None
 depends_on = None
 

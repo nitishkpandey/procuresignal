@@ -1,14 +1,14 @@
 """add enrichment candidate lifecycle
 
 Revision ID: f7b8c9_terminal_enrichment
-Revises: f6a7b8_add_enrichment_routing_cache
+Revises: f6a7b8_enrichment_cache
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "f7b8c9_terminal_enrichment"
-down_revision = "f6a7b8_add_enrichment_routing_cache"
+down_revision = "f6a7b8_enrichment_cache"
 branch_labels = None
 depends_on = None
 

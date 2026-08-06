@@ -99,7 +99,7 @@ metadata, and no duplicate processed row.
 
 ## Database Migration
 
-Alembic revision `f6a7b8_add_enrichment_routing_cache` adds processed-article
+Alembic revision `f6a7b8_enrichment_cache` adds processed-article
 audit columns, the versioned enrichment cache, and one-processed-row-per-raw-row
 uniqueness. Historical duplicates are ranked by completed status, populated audit
 evidence, processing time, and ID. References from article matches, priority

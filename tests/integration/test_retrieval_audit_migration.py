@@ -20,7 +20,7 @@ def test_populated_retrieval_audit_upgrade_and_downgrade(monkeypatch) -> None:
     metadata.create_all(engine)
     with engine.begin() as connection:
         connection.execute(raw.insert(), {"id": 7, "title": "legacy"})
-        migration = importlib.import_module("migrations.versions.f8c9d0_add_retrieval_source_audit")
+        migration = importlib.import_module("migrations.versions.f8c9d0_retrieval_audit")
         monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
         migration.upgrade()
         row = connection.execute(

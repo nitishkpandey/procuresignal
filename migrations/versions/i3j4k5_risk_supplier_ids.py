@@ -1,13 +1,13 @@
 """record which canonical suppliers a risk event affects
 
-Revision ID: i3j4k5_add_risk_event_supplier_ids
+Revision ID: i3j4k5_risk_supplier_ids
 Revises: h2i3j4_add_supplier_registry
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "i3j4k5_add_risk_event_supplier_ids"
+revision = "i3j4k5_risk_supplier_ids"
 down_revision = "h2i3j4_add_supplier_registry"
 branch_labels = None
 depends_on = None

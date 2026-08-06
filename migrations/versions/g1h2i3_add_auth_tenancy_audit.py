@@ -1,7 +1,7 @@
 """add identity, tenancy, sessions, and audit trail
 
 Revision ID: g1h2i3_add_auth_tenancy_audit
-Revises: f8c9d0_add_retrieval_source_audit
+Revises: f8c9d0_retrieval_audit
 """
 
 from datetime import datetime
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "g1h2i3_add_auth_tenancy_audit"
-down_revision = "f8c9d0_add_retrieval_source_audit"
+down_revision = "f8c9d0_retrieval_audit"
 branch_labels = None
 depends_on = None
 
