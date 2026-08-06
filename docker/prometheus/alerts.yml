@@ -117,3 +117,25 @@ groups:
             {{ $value }} enrichment calls were refused for {{ $labels.tenant }} in the
             last hour. Articles are being stored without summaries until the cap resets
             at midnight.
+
+  - name: compliance
+    rules:
+      # Screening that runs and places nothing is indistinguishable from screening that
+      # is switched off, and for EU sanctions the difference is a compliance failure
+      # rather than a poor feed.
+      - alert: SanctionsScreeningUnplaced
+        expr: |
+          sum(increase(procuresignal_sanctions_screening_total{outcome="unmatched"}[24h]))
+            /
+          clamp_min(sum(increase(procuresignal_sanctions_screening_total[24h])), 1)
+            > 0.5
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Over half of sanctions designations match no known supplier"
+          description: >
+            {{ $value | humanizePercentage }} of designation names could not be placed
+            against the registry in the last day. Screening is running but covering
+            little, which reads as clean. GET /api/suppliers/unresolved lists what it
+            could not place.

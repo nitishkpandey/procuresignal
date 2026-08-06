@@ -13,6 +13,8 @@ from typing import Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import record_screening
+from procuresignal.auth.audit import record_audit
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
 
 from .mentions import record_mentions
@@ -142,6 +144,36 @@ async def screen_processed_articles(
 
         await record_mentions(session, processed_article_id=article_id, surface_forms=names)
 
+        # Audited per match, not only per run. A summary says how many were flagged;
+        # a compliance control has to be able to say which, and when.
+        for hit in result.hits:
+            await record_audit(
+                session,
+                action="sanctions.supplier_flagged",
+                outcome="success",
+                resource_type="supplier",
+                resource_id=hit.public_id,
+                detail={
+                    "matched_name": hit.matched_name,
+                    "designation_article_id": article_id,
+                },
+            )
+
+    record_screening("matched", flagged)
+    record_screening("unmatched", unmatched)
+
+    await record_audit(
+        session,
+        action="sanctions.screening_run",
+        outcome="success",
+        detail={
+            "designations_screened": screened,
+            "suppliers_flagged": flagged,
+            # The number that matters: names the registry could not place are the
+            # gap between screening running and screening working.
+            "unmatched_names": unmatched,
+        },
+    )
     await session.commit()
 
     summary = ScreeningRunSummary(

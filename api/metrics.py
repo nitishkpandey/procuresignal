@@ -74,6 +74,14 @@ RATE_LIMIT_BACKEND_ERRORS = Counter(
     "Times the shared rate-limit backend was unreachable and the limiter fell open.",
 )
 
+# Screening coverage is the compliance-relevant number. A control that quietly
+# places nothing looks exactly like one that is working.
+SANCTIONS_SCREENING = Counter(
+    f"{NAMESPACE}_sanctions_screening_total",
+    "Sanctions designation names screened, by whether they matched a supplier.",
+    ["outcome"],
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -114,6 +122,11 @@ def record_budget_refusal(tenant: str) -> None:
 
 def record_rate_limit_backend_error() -> None:
     RATE_LIMIT_BACKEND_ERRORS.inc()
+
+
+def record_screening(outcome: str, count: int = 1) -> None:
+    if count:
+        SANCTIONS_SCREENING.labels(outcome=outcome).inc(count)
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:
