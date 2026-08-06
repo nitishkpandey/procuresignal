@@ -14,6 +14,8 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
 
+from procuresignal.config.secrets import get_secret
+
 from .base import FetchFailureCode, FetchResult, RetrievalFetchError
 from .fetching import SafeFetcher, parse_retry_after
 from .registry import AdapterType, SourceDefinition
@@ -108,7 +110,7 @@ class LargeObjectFetcher:
         self,
         source: SourceDefinition,
         fetcher: SafeFetcher,
-        secret_resolver: Callable[[str], str | None] = os.environ.get,
+        secret_resolver: Callable[[str], str | None] = get_secret,
     ) -> None:
         if not (
             source.source_id == _SOURCE_ID

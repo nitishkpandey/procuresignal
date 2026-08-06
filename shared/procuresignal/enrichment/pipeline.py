@@ -8,7 +8,6 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import record_budget_refusal
 from procuresignal.enrichment.budget import (
     GLOBAL_BUCKET,
     BudgetExceededError,
@@ -26,6 +25,7 @@ from procuresignal.enrichment.output_parser import EnrichmentOutput
 from procuresignal.enrichment.policy import EnrichmentBudget, EnrichmentPolicy
 from procuresignal.enrichment.router import EnrichmentRoute, EnrichmentRouter
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
+from procuresignal.observability.metrics import record_budget_refusal
 from procuresignal.retrieval import RawArticle
 from procuresignal.suppliers.mentions import record_mentions
 

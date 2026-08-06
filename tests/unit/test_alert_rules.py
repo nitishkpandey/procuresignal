@@ -13,9 +13,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+from procuresignal.observability import metrics as metrics_module
 from prometheus_client import REGISTRY
-
-from api import metrics as metrics_module
 
 ROOT = Path(__file__).resolve().parents[2]
 RULES_FILE = ROOT / "docker" / "prometheus" / "alerts.yml"

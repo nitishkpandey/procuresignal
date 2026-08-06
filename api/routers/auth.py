@@ -157,6 +157,10 @@ async def register(
         user_agent=context.user_agent,
     )
     await session.commit()
+    # Successes count too. Limiting only failures meant an attacker using a fresh
+    # address each time never approached the cap, which is the shape of the abuse
+    # worth stopping: unlimited account and organization creation.
+    await record_registration_failure(throttle_key)
     return _token_response(issued, response)
 
 

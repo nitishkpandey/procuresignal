@@ -8,9 +8,9 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from procuresignal.auth.tokens import require_auth_secret
 from procuresignal.config.database import close_db, init_db
+from procuresignal.observability.metrics import METRICS_PATH, MetricsMiddleware, metrics_response
 from starlette.middleware.gzip import GZipMiddleware
 
-from api.metrics import METRICS_PATH, MetricsMiddleware, metrics_response
 from api.routers import (
     articles,
     auth,

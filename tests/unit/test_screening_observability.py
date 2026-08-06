@@ -99,7 +99,7 @@ async def test_the_audit_records_what_could_not_be_placed(
 
 
 async def test_screening_publishes_metrics(async_session: AsyncSession, designation) -> None:
-    from api.metrics import SANCTIONS_SCREENING
+    from procuresignal.observability.metrics import SANCTIONS_SCREENING
 
     before = SANCTIONS_SCREENING.labels(outcome="matched")._value.get()
     await screen_processed_articles(async_session)

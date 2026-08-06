@@ -10,3 +10,14 @@ scrape_configs:
     static_configs:
       - targets: ['api:8000']
     metrics_path: '/metrics'
+
+  # The workers publish most of what is worth alerting on: retrieval outcomes,
+  # enrichment spend, dead letters and sanctions screening. Scraping only the API
+  # left every one of those at zero.
+  - job_name: 'procuresignal-worker'
+    static_configs:
+      # beat only schedules; it executes no tasks and so publishes nothing. Listing
+      # it would leave a permanently down target, which teaches people to ignore
+      # target health.
+      - targets: ['worker:9101']
+    metrics_path: '/metrics'

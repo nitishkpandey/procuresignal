@@ -13,9 +13,9 @@ from typing import Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import record_screening
 from procuresignal.auth.audit import record_audit
-from procuresignal.models import NewsArticleProcessed, NewsArticleRaw
+from procuresignal.models import ArticleSupplierMention, NewsArticleProcessed, NewsArticleRaw
+from procuresignal.observability.metrics import record_screening
 
 from .mentions import record_mentions
 from .resolver import resolve_many
@@ -118,11 +118,18 @@ async def screen_processed_articles(
 
     # The payload lives on the raw article, so screening joins rather than relying on
     # a denormalized copy that could fall out of step with what was ingested.
+    # Only designations with no mention recorded yet. Taking the earliest N by id
+    # every run meant the same first batch was rescreened hourly — re-auditing the same
+    # matches each time — while anything past the limit was never reached at all. The
+    # mentions table is the progress cursor; nothing extra to keep in step.
+    already_screened = select(ArticleSupplierMention.processed_article_id).distinct()
+
     rows = (
         await session.execute(
             select(NewsArticleProcessed.id, NewsArticleRaw.raw_payload_json)
             .join(NewsArticleRaw, NewsArticleRaw.id == NewsArticleProcessed.raw_article_id)
             .where(NewsArticleRaw.raw_payload_json.is_not(None))
+            .where(NewsArticleProcessed.id.not_in(already_screened))
             .order_by(NewsArticleProcessed.id)
             .limit(limit)
         )

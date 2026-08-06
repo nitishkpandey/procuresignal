@@ -137,7 +137,7 @@ async def test_a_redis_outage_does_not_refuse_every_login(window: RedisWindow) -
 
 
 async def test_an_outage_is_visible_rather_than_silent(window: RedisWindow) -> None:
-    from api.metrics import RATE_LIMIT_BACKEND_ERRORS
+    from procuresignal.observability.metrics import RATE_LIMIT_BACKEND_ERRORS
 
     window.client.fail = True
     before = RATE_LIMIT_BACKEND_ERRORS._value.get()

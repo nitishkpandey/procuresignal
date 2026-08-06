@@ -59,15 +59,15 @@ groups:
       # an individual feed returns nothing every time.
       - alert: RetrievalSourceFailing
         expr: |
-          sum by (source_id) (rate(procuresignal_retrieval_articles_total{outcome!="success"}[30m]))
+          sum by (source_id) (increase(procuresignal_retrieval_articles_total{outcome!="success"}[8h]))
             > 0
-        for: 1h
+        for: 15m
         labels:
           severity: warning
         annotations:
           summary: "Retrieval source {{ $labels.source_id }} is failing"
           description: >
-            {{ $labels.source_id }} has not succeeded for an hour while other sources
+            {{ $labels.source_id }} failed within the last eight hours while other sources
             have. A source stuck on configuration_error usually means a missing
             credential rather than an outage.
 

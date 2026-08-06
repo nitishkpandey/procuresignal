@@ -84,3 +84,34 @@ def test_an_unreadable_file_does_not_crash(monkeypatch: pytest.MonkeyPatch, tmp_
 
 def test_the_conventional_directory_is_the_docker_one() -> None:
     assert str(DOCKER_SECRETS_DIR) == "/run/secrets"
+
+
+def test_every_real_secret_consumer_uses_the_resolver() -> None:
+    """The resolver existed with no callers, so _FILE and /run/secrets did nothing."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    consumers = {
+        "shared/procuresignal/auth/tokens.py": "AUTH_SECRET_KEY",
+        "shared/procuresignal/enrichment/openai_client.py": "OPENAI_API_KEY",
+    }
+
+    for relative, name in consumers.items():
+        source = (root / relative).read_text()
+        assert f'os.getenv("{name}")' not in source, f"{relative} still bypasses the resolver"
+        assert "get_secret" in source, f"{relative} does not use the resolver"
+
+
+def test_the_auth_secret_can_come_from_a_file(monkeypatch, tmp_path) -> None:
+    """End to end through the code that actually signs tokens."""
+    from procuresignal.auth.tokens import AccessClaims, encode_access_token
+
+    secret = tmp_path / "auth"
+    secret.write_text("a-secret-key-long-enough-for-hs256\n")
+    monkeypatch.delenv("AUTH_SECRET_KEY", raising=False)
+    monkeypatch.setenv("AUTH_SECRET_KEY_FILE", str(secret))
+
+    token = encode_access_token(
+        AccessClaims(subject="u", organization="o", role="member", token_version=0, jti="j")
+    )
+    assert token

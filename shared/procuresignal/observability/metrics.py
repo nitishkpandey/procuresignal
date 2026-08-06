@@ -1,17 +1,44 @@
 """Prometheus metrics and the middleware that populates them.
 
+Shared by the API and the workers. It previously lived under `api`, which the worker
+image does not copy, so importing it from a task made the worker container fail to
+start — and no test caught it because tests import from the source tree.
+
 `prometheus.yml` has scraped `api:8000/metrics` since before any of this existed, so the
 scrape has been failing the whole time. Monitoring configured against nothing looks the
 same from the outside as monitoring that works, which is exactly the class of failure
 this is meant to reveal.
 """
 
+import logging
 import time
 
 from fastapi import Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match, Route
+
+logger = logging.getLogger(__name__)
+
+
+def _ensure_multiprocess_dir() -> None:
+    """Create the multiprocess directory before any metric is defined.
+
+    prometheus_client writes its per-process files the moment a metric is constructed,
+    and raises if the directory is missing. Setting the variable without creating the
+    path made every process that imports this module fail at import — which is how the
+    worker container died on start.
+    """
+
+    import os
+    from pathlib import Path
+
+    directory = os.getenv("PROMETHEUS_MULTIPROC_DIR")
+    if directory:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+
+
+_ensure_multiprocess_dir()
 
 NAMESPACE = "procuresignal"
 
@@ -49,6 +76,9 @@ PIPELINE_LAST_SUCCESS = Gauge(
     f"{NAMESPACE}_pipeline_last_success_timestamp",
     "Unix time of the last successful run of a pipeline stage.",
     ["stage"],
+    # Whichever child process ran the stage most recently is the answer. Without this
+    # the collector would sum timestamps across processes, which is meaningless.
+    multiprocess_mode="max",
 )
 
 # A queue quietly filling with poison is worth paging on: the work is lost and the
@@ -170,3 +200,67 @@ def metrics_response() -> Response:
     """
 
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+__all__ = [
+    "NAMESPACE",
+    "METRICS_PATH",
+    "UNMATCHED_PATH",
+    "HTTP_REQUESTS",
+    "HTTP_LATENCY",
+    "RETRIEVAL_ARTICLES",
+    "ENRICHMENT_LLM_CALLS",
+    "PIPELINE_LAST_SUCCESS",
+    "DEAD_LETTERS",
+    "LLM_BUDGET_REFUSALS",
+    "RATE_LIMIT_BACKEND_ERRORS",
+    "SANCTIONS_SCREENING",
+    "MetricsMiddleware",
+    "metrics_response",
+    "route_template",
+    "record_pipeline_success",
+    "record_retrieval",
+    "record_llm_call",
+    "record_dead_letter_metric",
+    "record_budget_refusal",
+    "record_rate_limit_backend_error",
+    "record_screening",
+    "start_worker_metrics_server",
+]
+
+
+def start_worker_metrics_server(port: int | None = None) -> None:
+    """Expose this process's metrics over HTTP.
+
+    Celery workers serve no HTTP of their own, so every counter they publish —
+    retrieval outcomes, enrichment spend, dead letters, sanctions screening — was
+    invisible: Prometheus only ever scraped the API. Most of what is worth alerting on
+    is produced here.
+
+    Prefork means task bodies run in child processes, so PROMETHEUS_MULTIPROC_DIR must
+    be set for their counters to reach the parent that serves this endpoint. Without it
+    only the parent's own metrics appear, which is quietly wrong rather than loudly
+    broken, so it is checked.
+    """
+
+    import os
+
+    from prometheus_client import CollectorRegistry, multiprocess, start_http_server
+
+    listen_on = port or int(os.getenv("WORKER_METRICS_PORT", "9101"))
+
+    if not os.getenv("PROMETHEUS_MULTIPROC_DIR"):
+        logger.warning(
+            "PROMETHEUS_MULTIPROC_DIR is unset; child-process metrics will not be "
+            "collected and worker counters will read as zero"
+        )
+        start_http_server(listen_on)
+        return
+
+    # Prefork runs task bodies in child processes, each writing its own files. The
+    # default registry only sees this process, so serving it would report near-zero
+    # while the work happened elsewhere — which reads as a quiet system rather than a
+    # misconfigured one. The multiprocess collector aggregates across all of them.
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
+    start_http_server(listen_on, registry=registry)

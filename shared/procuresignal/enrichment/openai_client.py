@@ -11,6 +11,8 @@ from tenacity import (
     wait_exponential,
 )
 
+from procuresignal.config.secrets import get_secret
+
 
 class OpenAILLMClient:
     """Small async client for OpenAI text responses."""
@@ -26,7 +28,8 @@ class OpenAILLMClient:
         max_tokens: int | None = None,
         timeout: float = 60.0,
     ):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
+        # Through the resolver so OPENAI_API_KEY_FILE and /run/secrets work.
+        self.api_key = api_key or get_secret("OPENAI_API_KEY", default="")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set")
 

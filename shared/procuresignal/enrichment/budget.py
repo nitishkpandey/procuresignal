@@ -13,6 +13,8 @@ import os
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import LlmSpend
@@ -44,8 +46,42 @@ async def _row(session: AsyncSession, tenant: str | None, on: date | None) -> Ll
             select(LlmSpend)
             .where(LlmSpend.tenant == _bucket(tenant))
             .where(LlmSpend.spend_date == (on or date.today()))
+            # The upsert changed the row behind the session's back, so the cached
+            # instance would otherwise report a stale total.
+            .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
+
+
+async def _increment(
+    session: AsyncSession, *, tenant: str | None, tokens: int, calls: int, on: date | None
+) -> None:
+    """Add to a tenant's usage in one statement.
+
+    Read-modify-write loses updates: several workers enrich concurrently, each reads the
+    same total, and the last write wins while the others' spend disappears. The cap then
+    silently permits several times what it says. An upsert that increments in the
+    database is the only version that holds under concurrency.
+    """
+
+    values = {
+        "tenant": _bucket(tenant),
+        "spend_date": on or date.today(),
+        "tokens_used": tokens,
+        "calls_made": calls,
+    }
+
+    dialect = session.bind.dialect.name if session.bind else ""
+    insert = postgresql_insert if dialect == "postgresql" else sqlite_insert
+    statement = insert(LlmSpend).values(**values)
+    statement = statement.on_conflict_do_update(
+        index_elements=["tenant", "spend_date"],
+        set_={
+            "tokens_used": LlmSpend.__table__.c.tokens_used + tokens,
+            "calls_made": LlmSpend.__table__.c.calls_made + calls,
+        },
+    )
+    await session.execute(statement)
 
 
 async def remaining_tokens(
@@ -84,19 +120,7 @@ async def consume(
             f"{_bucket(tenant)} has no daily LLM budget left for {tokens} tokens"
         )
 
-    row = await _row(session, tenant, on)
-    if row is None:
-        row = LlmSpend(
-            tenant=_bucket(tenant),
-            spend_date=on or date.today(),
-            tokens_used=0,
-            calls_made=0,
-        )
-        session.add(row)
-
-    row.tokens_used += tokens
-    row.calls_made += calls
-    await session.flush()
+    await _increment(session, tenant=tenant, tokens=tokens, calls=calls, on=on)
 
 
 async def consume_overage(
@@ -108,13 +132,4 @@ async def consume_overage(
     understate what the tenant actually cost and let the next run overspend again.
     """
 
-    row = await _row(session, tenant, on)
-    if row is None:
-        row = LlmSpend(
-            tenant=_bucket(tenant), spend_date=on or date.today(), tokens_used=0, calls_made=0
-        )
-        session.add(row)
-
-    row.tokens_used += tokens
-    row.calls_made += 1
-    await session.flush()
+    await _increment(session, tenant=tenant, tokens=tokens, calls=1, on=on)

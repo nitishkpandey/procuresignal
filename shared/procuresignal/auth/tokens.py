@@ -1,12 +1,13 @@
 """Access-token encoding and refresh-token minting."""
 
-import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 
 import jwt
+
+from procuresignal.config.secrets import get_secret
 
 _ALGORITHM = "HS256"
 _MINIMUM_SECRET_LENGTH = 32
@@ -29,7 +30,9 @@ class AccessClaims:
 
 
 def _secret() -> str:
-    secret = os.getenv("AUTH_SECRET_KEY")
+    # Through the resolver, so AUTH_SECRET_KEY_FILE and /run/secrets work. Reading
+    # the environment directly meant the resolver existed and did nothing.
+    secret = get_secret("AUTH_SECRET_KEY")
     if not secret or len(secret) < _MINIMUM_SECRET_LENGTH:
         raise RuntimeError(
             f"AUTH_SECRET_KEY must be set to at least {_MINIMUM_SECRET_LENGTH} characters"

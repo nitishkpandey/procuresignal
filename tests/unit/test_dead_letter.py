@@ -103,7 +103,7 @@ async def test_several_failures_are_separate_records(async_session: AsyncSession
 
 def test_dead_letters_are_counted_for_alerting() -> None:
     """A queue silently filling with poison is the failure worth paging on."""
-    from api.metrics import DEAD_LETTERS
+    from procuresignal.observability.metrics import DEAD_LETTERS
 
     assert DEAD_LETTERS is not None
     assert DEAD_LETTERS._labelnames == ("task",)
@@ -141,3 +141,71 @@ async def test_every_sensitive_key_shape_is_scrubbed(async_session: AsyncSession
     await async_session.flush()
 
     assert "leaked-value" not in str((await _rows(async_session))[-1].payload)
+
+
+class _FakeRequest:
+    def __init__(self, retries: int) -> None:
+        self.retries = retries
+        self.id = "task-1"
+        self.args: list = []
+        self.kwargs: dict = {}
+
+
+class _FakeTask:
+    """Mimics Celery closely enough to expose the bug that hid the DLQ."""
+
+    name = "worker.tasks.fake"
+    max_retries = 2
+
+    def __init__(self, retries: int) -> None:
+        self.request = _FakeRequest(retries)
+        self.retried = False
+
+    def retry(self, exc=None, countdown=None):  # noqa: ANN001, ANN201
+        self.retried = True
+        # Celery's real behaviour: with `exc` supplied it re-raises that exception
+        # once the limit is passed, rather than MaxRetriesExceededError.
+        return RuntimeError("retry scheduled")
+
+
+def test_a_task_below_its_limit_retries_rather_than_dead_letters(monkeypatch) -> None:
+    import worker.tasks as tasks
+
+    recorded: list = []
+    monkeypatch.setattr(tasks, "record_dead_letter_metric", lambda name: recorded.append(name))
+
+    task = _FakeTask(retries=0)
+
+    async def _boom():
+        raise ValueError("upstream")
+
+    with pytest.raises(Exception):
+        tasks._run_with_retry(task, _boom)
+
+    assert task.retried is True
+    assert recorded == []
+
+
+def test_a_task_at_its_limit_dead_letters(monkeypatch) -> None:
+    """This never happened: the old code waited for MaxRetriesExceededError, which
+    Celery does not raise when an exception is passed to retry()."""
+    import worker.tasks as tasks
+
+    recorded: list = []
+    monkeypatch.setattr(tasks, "record_dead_letter_metric", lambda name: recorded.append(name))
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tasks, "_dead_letter", _noop)
+
+    task = _FakeTask(retries=2)
+
+    async def _boom():
+        raise ValueError("upstream")
+
+    with pytest.raises(ValueError):
+        tasks._run_with_retry(task, _boom)
+
+    assert task.retried is False
+    assert recorded == ["worker.tasks.fake"]

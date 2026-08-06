@@ -178,7 +178,7 @@ class RedisWindow:
 
 
 def _record_backend_error() -> None:
-    from api.metrics import record_rate_limit_backend_error
+    from procuresignal.observability.metrics import record_rate_limit_backend_error
 
     logger.warning("rate limit backend unavailable; falling open for this request")
     record_rate_limit_backend_error()

@@ -9,13 +9,18 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine
 
-from celery.exceptions import MaxRetriesExceededError
 from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
 from procuresignal.jobs.dead_letter import record_dead_letter
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
+from procuresignal.observability.metrics import (
+    record_dead_letter_metric,
+    record_llm_call,
+    record_pipeline_success,
+    record_retrieval,
+)
 from procuresignal.personalization import PersonalizationPipeline
 from procuresignal.retrieval import (
     REGISTRY_VERSION,
@@ -29,12 +34,6 @@ from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import (
-    record_dead_letter_metric,
-    record_llm_call,
-    record_pipeline_success,
-    record_retrieval,
-)
 from worker.main import app
 from worker.signal_tasks import process_article_for_signals
 
@@ -109,15 +108,22 @@ def _run_with_retry(task: Any, coro_factory: Callable[[], Coroutine[Any, Any, An
     try:
         return asyncio.run(coro_factory())
     except Exception as exc:
-        try:
-            raise task.retry(exc=exc, countdown=60 * (2**task.request.retries)) from exc
-        except MaxRetriesExceededError:
+        retries = int(getattr(task.request, "retries", 0) or 0)
+        limit = task.max_retries if task.max_retries is not None else 0
+
+        # Celery re-raises the original exception once retries are exhausted whenever
+        # `exc` is passed, and only raises MaxRetriesExceededError when it is not. So
+        # catching MaxRetriesExceededError around retry() never fired, and nothing was
+        # ever dead-lettered. The count is checked here instead.
+        if retries >= limit:
             record_dead_letter_metric(task.name)
             try:
                 asyncio.run(_dead_letter(task, exc))
             except Exception:  # noqa: BLE001 - never mask the failure being recorded
                 logger.exception("could not dead-letter %s", task.name)
             raise
+
+        raise task.retry(exc=exc, countdown=60 * (2**retries)) from exc
 
 
 async def _load_recent_raw_articles(

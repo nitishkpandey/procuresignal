@@ -89,7 +89,7 @@ async def test_remaining_never_goes_negative(async_session: AsyncSession) -> Non
 
 
 def test_budget_refusals_are_counted_for_alerting() -> None:
-    from api.metrics import LLM_BUDGET_REFUSALS
+    from procuresignal.observability.metrics import LLM_BUDGET_REFUSALS
 
     assert LLM_BUDGET_REFUSALS._labelnames == ("tenant",)
 
@@ -108,3 +108,25 @@ def test_enrichment_consults_the_budget() -> None:
 
     assert "within_budget" in source
     assert "consume" in source
+
+
+async def test_concurrent_spend_does_not_lose_updates(async_session: AsyncSession) -> None:
+    """Read-modify-write let several workers read the same total and overwrite each
+    other, so the cap silently permitted several times what it said."""
+    for _ in range(10):
+        await consume(async_session, tenant="acme", tokens=1000, calls=1)
+    await async_session.flush()
+
+    assert await remaining_tokens(async_session, tenant="acme") == DAILY_TOKEN_BUDGET - 10_000
+
+
+async def test_consume_increments_in_the_database(async_session: AsyncSession) -> None:
+    """The statement itself must do the addition; anything read into Python first
+    races with every other worker."""
+    import inspect
+
+    from procuresignal.enrichment import budget
+
+    source = inspect.getsource(budget._increment)
+    assert "on_conflict_do_update" in source
+    assert "tokens_used +" in source or "c.tokens_used +" in source

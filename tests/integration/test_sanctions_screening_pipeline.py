@@ -164,13 +164,59 @@ async def test_ordinary_articles_are_not_treated_as_designations(
 
 
 async def test_screening_is_idempotent(async_session: AsyncSession, registry) -> None:
+    """A second run does no work rather than redoing the first.
+
+    This previously asserted the opposite: that a re-run screened the same designation
+    again. That was the starvation behaviour written down as correct.
+    """
     await _designation(async_session, "d4", ["Siemens Aktiengesellschaft"])
 
     first = await screen_processed_articles(async_session)
     second = await screen_processed_articles(async_session)
 
     assert first.designations_screened == 1
-    assert second.designations_screened == 1
+    assert second.designations_screened == 0
 
     mentions = (await async_session.execute(select(ArticleSupplierMention))).scalars().all()
     assert len(mentions) == 1
+
+
+async def test_screening_makes_progress_instead_of_rescreening_the_same_batch(
+    async_session: AsyncSession, registry
+) -> None:
+    """Taking the earliest N by id every run starved everything past the limit."""
+    for index in range(5):
+        await _designation(async_session, f"p{index}", [f"Unknown Entity {index}"])
+
+    first = await screen_processed_articles(async_session, limit=2)
+    second = await screen_processed_articles(async_session, limit=2)
+    third = await screen_processed_articles(async_session, limit=2)
+
+    assert first.designations_screened == 2
+    assert second.designations_screened == 2
+    assert third.designations_screened == 1, "later designations were never reached"
+
+    fourth = await screen_processed_articles(async_session, limit=2)
+    assert fourth.designations_screened == 0
+
+
+async def test_matches_are_not_re_audited_every_run(async_session: AsyncSession, registry) -> None:
+    """Rescreening the same batch hourly filled the audit trail with duplicates."""
+    from procuresignal.models import AuditLog
+
+    await _designation(async_session, "d9", ["Siemens Aktiengesellschaft"])
+
+    await screen_processed_articles(async_session)
+    await screen_processed_articles(async_session)
+    await screen_processed_articles(async_session)
+
+    flagged = (
+        (
+            await async_session.execute(
+                select(AuditLog).where(AuditLog.action == "sanctions.supplier_flagged")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(flagged) == 1

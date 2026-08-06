@@ -11,18 +11,18 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.models import Base, Role
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-from api.dependencies import get_current_user, get_session
-from api.main import app
-from api.metrics import (
+from procuresignal.observability.metrics import (
     ENRICHMENT_LLM_CALLS,
     HTTP_REQUESTS,
     PIPELINE_LAST_SUCCESS,
     RETRIEVAL_ARTICLES,
     record_pipeline_success,
 )
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from api.dependencies import get_current_user, get_session
+from api.main import app
 from tests.conftest import fixed_identity
 
 

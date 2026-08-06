@@ -464,3 +464,17 @@ def test_invitations_are_audited(client: TestClient) -> None:
 
     rows = run(_rows(client, AuditLog))
     assert ("organization.invite", "success") in {(r.action, r.outcome) for r in rows}
+
+
+def test_registering_many_new_accounts_is_throttled(client: TestClient) -> None:
+    """Limiting only failures let an attacker with fresh addresses create unlimited
+    accounts and organizations without ever approaching the cap."""
+    statuses = [
+        client.post(
+            "/api/auth/register", json={"email": f"new{index}@example.com", "password": PASSWORD}
+        ).status_code
+        for index in range(12)
+    ]
+
+    assert 201 in statuses
+    assert 429 in statuses, "unique addresses bypassed the registration limit entirely"
