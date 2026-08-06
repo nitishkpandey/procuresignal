@@ -721,3 +721,16 @@ def test_sanctions_screening_is_routed_and_scheduled() -> None:
 
     scheduled = {entry["task"] for entry in CELERY_BEAT_SCHEDULE.values()}
     assert "worker.tasks.screen_sanctions_task" in scheduled
+
+
+def test_supplier_identity_is_re_resolved_on_a_schedule() -> None:
+    """Preferences resolve when saved, so an alias added later never reached them.
+
+    Without this job a user watching a supplier registered afterwards keeps matching
+    on text alone, and nothing tells them.
+    """
+    from worker.celery_config import CELERY_BEAT_SCHEDULE, CELERY_TASK_ROUTES
+
+    assert "worker.tasks.resolve_supplier_identity_task" in CELERY_TASK_ROUTES
+    scheduled = {entry["task"] for entry in CELERY_BEAT_SCHEDULE.values()}
+    assert "worker.tasks.resolve_supplier_identity_task" in scheduled

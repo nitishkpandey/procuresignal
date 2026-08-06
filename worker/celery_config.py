@@ -46,6 +46,10 @@ CELERY_TASK_ROUTES = {
         "queue": "personalization",
         "routing_key": "personalization",
     },
+    "worker.tasks.resolve_supplier_identity_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
     "worker.tasks.personalize_feeds_task": {
         "queue": "personalization",
         "routing_key": "personalization",
@@ -69,6 +73,13 @@ CELERY_BEAT_SCHEDULE = {
         "task": "worker.tasks.enrich_articles_task",
         "schedule": crontab(minute=45, hour="*/2"),
         "options": {"queue": "enrichment"},
+    },
+    "resolve-supplier-identity-daily": {
+        # Daily rather than hourly: it walks every article, and aliases are added by
+        # hand, so there is nothing to catch up on more often than that.
+        "task": "worker.tasks.resolve_supplier_identity_task",
+        "schedule": crontab(minute=20, hour=3),
+        "options": {"queue": "personalization"},
     },
     "screen-sanctions-hourly": {
         # After enrichment has processed the designations, before risk events read them.

@@ -20,10 +20,12 @@ from api.dependencies import (
     require_role,
 )
 from api.rate_limit import (
+    check_login,
+    check_registration,
     login_key,
-    login_limiter,
+    record_login_failure,
+    record_registration_failure,
     registration_key,
-    registration_limiter,
 )
 from api.schemas.auth import (
     AccessTokenResponse,
@@ -110,7 +112,7 @@ async def register(
     """Create an account, its organization if needed, and an initial session."""
 
     throttle_key = registration_key(context.client_ip)
-    retry_after = registration_limiter.check(throttle_key)
+    retry_after = await check_registration(throttle_key)
     if retry_after is not None:
         raise _too_many_attempts(retry_after)
 
@@ -129,7 +131,7 @@ async def register(
     except service.InvalidInvitationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
     except service.EmailAlreadyRegisteredError:
-        registration_limiter.record(throttle_key)
+        await record_registration_failure(throttle_key)
         await record_audit(
             session,
             action="user.register",
@@ -168,7 +170,7 @@ async def login(
     """Exchange credentials for a session."""
 
     throttle_key = login_key(context.client_ip, payload.email)
-    retry_after = login_limiter.check(throttle_key)
+    retry_after = await check_login(throttle_key)
     if retry_after is not None:
         raise _too_many_attempts(retry_after)
 
@@ -181,7 +183,7 @@ async def login(
             client_ip=context.client_ip,
         )
     except service.InvalidCredentialsError:
-        login_limiter.record(throttle_key)
+        await record_login_failure(throttle_key)
         await record_audit(
             session,
             action="user.login",

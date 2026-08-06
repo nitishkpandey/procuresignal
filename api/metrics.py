@@ -67,6 +67,13 @@ LLM_BUDGET_REFUSALS = Counter(
     ["tenant"],
 )
 
+# Falling open is deliberate, but it must not be silent: a limiter that is quietly
+# not limiting is worse than none, because it is believed.
+RATE_LIMIT_BACKEND_ERRORS = Counter(
+    f"{NAMESPACE}_rate_limit_backend_errors_total",
+    "Times the shared rate-limit backend was unreachable and the limiter fell open.",
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -103,6 +110,10 @@ def record_dead_letter_metric(task: str) -> None:
 
 def record_budget_refusal(tenant: str) -> None:
     LLM_BUDGET_REFUSALS.labels(tenant=tenant).inc()
+
+
+def record_rate_limit_backend_error() -> None:
+    RATE_LIMIT_BACKEND_ERRORS.inc()
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:

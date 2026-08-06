@@ -24,6 +24,7 @@ from procuresignal.retrieval import (
     configured_registry,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
+from procuresignal.suppliers.backfill import backfill_supplier_identity
 from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -597,6 +598,41 @@ def screen_sanctions_task(self: Any) -> dict[str, Any]:
                 "designations_screened": summary.designations_screened,
                 "suppliers_flagged": summary.suppliers_flagged,
                 "unmatched_names": summary.unmatched_names,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.resolve_supplier_identity_task",
+    bind=True,
+    max_retries=2,
+    queue="personalization",
+    time_limit=3600,
+)
+def resolve_supplier_identity_task(self: Any) -> dict[str, Any]:
+    """Re-resolve supplier identity across articles, preferences and risk events.
+
+    Preferences resolve to canonical suppliers when they are saved, so an alias added
+    afterwards never reached them: a user watching a supplier registered later kept
+    matching on text alone. Running this on a schedule closes that gap without anyone
+    remembering to.
+
+    Idempotent, so re-running is a no-op where nothing changed.
+    """
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            summary = await backfill_supplier_identity(session)
+            record_pipeline_success("supplier_resolution")
+            return {
+                "status": "success",
+                "articles_scanned": summary.articles_scanned,
+                "mentions_created": summary.mentions_created,
+                "registry_coverage": round(summary.coverage, 4),
+                "preferences_updated": summary.preferences_updated,
+                "risk_events_updated": summary.risk_events_updated,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

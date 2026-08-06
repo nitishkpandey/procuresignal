@@ -1,14 +1,27 @@
-"""In-process throttle for repeated failed credential attempts.
+"""Throttles for repeated failed credential attempts.
 
-# ponytail: per-process and lost on restart, so N replicas allow N times the limit.
-# Redis-backed limiting lands in Phase 3 with the rest of the shared operational
-# furniture. This is still worth having now: it turns unlimited online guessing into
-# a few attempts per window, which is the difference that matters for a password.
+Two backends. The Redis one is a sliding window shared by every replica, which is what
+makes the limit mean something once there is more than one API process: an in-process
+counter lets N replicas allow N times the limit, and a rolling deploy hands everybody a
+fresh budget.
+
+The in-process one remains for single-process runs and for tests, which should not need
+a broker to exercise sign-in.
+
+Neither refuses traffic when the backend is unreachable. Rate limiting is defence in
+depth; turning a Redis blip into a total sign-in outage trades a small risk for a large
+one. Failures increment a counter instead, so degradation is visible rather than
+assumed.
 """
 
+import logging
+import os
 import time
 from collections import deque
 from collections.abc import Callable
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Failed sign-ins for one address from one address block.
 LOGIN_MAX_ATTEMPTS = 5
@@ -110,3 +123,122 @@ def login_key(client_ip: str | None, email: str) -> str:
 
 def registration_key(client_ip: str | None) -> str:
     return f"register:{client_ip or 'unknown'}"
+
+
+class RedisWindow:
+    """A sliding window held in Redis, shared by every replica.
+
+    Implemented with a sorted set per key: attempts are members scored by timestamp,
+    old ones are pruned on each touch, and the key carries a TTL so an abandoned one
+    disappears on its own rather than accumulating.
+    """
+
+    def __init__(self, client: Any, *, max_attempts: int, window_seconds: int) -> None:
+        self.client = client
+        self._max_attempts = max_attempts
+        self._window = window_seconds
+
+    def _key(self, key: str) -> str:
+        return f"ratelimit:{key}"
+
+    async def check(self, key: str) -> int | None:
+        """Seconds to wait if throttled, otherwise None."""
+
+        now = time.time()
+        try:
+            pipeline = self.client.pipeline()
+            pipeline.zremrangebyscore(self._key(key), 0, now - self._window)
+            pipeline.zcard(self._key(key))
+            pipeline.zrange(self._key(key), 0, 0, withscores=True)
+            _, count, oldest = await pipeline.execute()
+        except Exception:  # noqa: BLE001 - availability beats strictness here
+            _record_backend_error()
+            return None
+
+        if count < self._max_attempts:
+            return None
+
+        earliest = oldest[0][1] if oldest else now
+        return max(1, int(earliest + self._window - now))
+
+    async def record(self, key: str) -> None:
+        """Record one failed attempt."""
+
+        now = time.time()
+        try:
+            pipeline = self.client.pipeline()
+            pipeline.zremrangebyscore(self._key(key), 0, now - self._window)
+            pipeline.zadd(self._key(key), {f"{now}": now})
+            # TTL slightly beyond the window, so a key nobody touches again expires
+            # instead of living in Redis forever.
+            pipeline.expire(self._key(key), self._window + 60)
+            await pipeline.execute()
+        except Exception:  # noqa: BLE001 - never let accounting break sign-in
+            _record_backend_error()
+
+
+def _record_backend_error() -> None:
+    from api.metrics import record_rate_limit_backend_error
+
+    logger.warning("rate limit backend unavailable; falling open for this request")
+    record_rate_limit_backend_error()
+
+
+def resolve_backend() -> Any | None:
+    """An async Redis client when one is configured, otherwise None.
+
+    Returning None is how the in-process limiter stays the default for tests and
+    single-process runs.
+    """
+
+    url = os.getenv("REDIS_URL")
+    if not url:
+        return None
+
+    from redis.asyncio import Redis
+
+    return Redis.from_url(url, decode_responses=False)
+
+
+# Resolved once at import. A shared window when REDIS_URL is set, the in-process one
+# otherwise, so tests and single-process runs need no broker.
+_client = resolve_backend()
+
+login_window: RedisWindow | None = (
+    RedisWindow(_client, max_attempts=LOGIN_MAX_ATTEMPTS, window_seconds=LOGIN_WINDOW_SECONDS)
+    if _client is not None
+    else None
+)
+registration_window: RedisWindow | None = (
+    RedisWindow(_client, max_attempts=REGISTER_MAX_ATTEMPTS, window_seconds=REGISTER_WINDOW_SECONDS)
+    if _client is not None
+    else None
+)
+
+
+async def check_login(key: str) -> int | None:
+    """Seconds to wait before this key may attempt sign-in again."""
+
+    if login_window is not None:
+        return await login_window.check(key)
+    return login_limiter.check(key)
+
+
+async def record_login_failure(key: str) -> None:
+    if login_window is not None:
+        await login_window.record(key)
+    else:
+        login_limiter.record(key)
+
+
+async def check_registration(key: str) -> int | None:
+    if registration_window is not None:
+        return await registration_window.check(key)
+    return registration_limiter.check(key)
+
+
+async def record_registration_failure(key: str) -> None:
+    if registration_window is not None:
+        await registration_window.record(key)
+    else:
+        registration_limiter.record(key)
