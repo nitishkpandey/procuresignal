@@ -26,6 +26,7 @@ from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import record_pipeline_success
 from worker.main import app
 from worker.signal_tasks import process_article_for_signals
 
@@ -317,6 +318,10 @@ def retrieve_news_task(self: Any) -> dict[str, Any]:
             registry_version=REGISTRY_VERSION,
             owner=str(self.request.id),
         ).run(f"scheduled:{scheduled.isoformat()}Z")
+        # Only a completed run counts as fresh. Marking a partial or failed one would
+        # hide exactly the stall the staleness alert exists to catch.
+        if result.status == "completed":
+            record_pipeline_success("retrieval")
         return {
             "status": "success" if result.status == "completed" else result.status,
             "articles_fetched": result.articles_fetched,
@@ -353,6 +358,7 @@ def normalize_articles_task(self: Any) -> dict[str, Any]:
         async with session_scope() as session:
             stats = await _normalize_articles(session, hours_back=24, limit=1000)
             await session.commit()
+            record_pipeline_success("normalization")
             return {
                 "status": "success",
                 "normalized_count": stats["normalized_count"],
@@ -398,6 +404,7 @@ def enrich_articles_task(self: Any) -> dict[str, Any]:
                         "failed": 0,
                         "cache_misses": 0,
                     }
+                    record_pipeline_success("enrichment")
                     return {
                         "status": "success",
                         "enriched_count": 0,
@@ -484,6 +491,7 @@ def personalize_feeds_task(self: Any) -> dict[str, Any]:
                         "Failed to personalize feed for user %s: %s", user.user_id, exc
                     )
 
+            record_pipeline_success("personalization")
             return {
                 "status": "success",
                 "feeds_generated": feeds_generated,
@@ -509,6 +517,7 @@ def generate_risk_events_task(self: Any) -> dict[str, Any]:
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
             result = await generate_risk_events(session, days_back=7, limit=500)
+            record_pipeline_success("risk_events")
             return {
                 "status": "success",
                 "created": result.created,
@@ -539,6 +548,7 @@ def screen_sanctions_task(self: Any) -> dict[str, Any]:
     async def _run() -> dict[str, Any]:
         async with session_scope() as session:
             summary = await screen_processed_articles(session)
+            record_pipeline_success("sanctions_screening")
             return {
                 "status": "success",
                 "designations_screened": summary.designations_screened,

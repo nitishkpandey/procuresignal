@@ -4,12 +4,13 @@ from contextlib import asynccontextmanager
 from os import getenv
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from procuresignal.auth.tokens import require_auth_secret
 from procuresignal.config.database import close_db, init_db
 from starlette.middleware.gzip import GZipMiddleware
 
+from api.metrics import METRICS_PATH, MetricsMiddleware, metrics_response
 from api.routers import (
     articles,
     auth,
@@ -93,6 +94,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(MetricsMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)
@@ -104,6 +106,13 @@ app.include_router(articles.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
+
+
+@app.get(METRICS_PATH, include_in_schema=False)
+async def metrics() -> Response:
+    """Prometheus scrape target, configured in prometheus.yml since before it existed."""
+
+    return metrics_response()
 
 
 @app.get("/health")
