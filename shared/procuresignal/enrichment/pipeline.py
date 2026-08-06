@@ -8,6 +8,14 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import record_budget_refusal
+from procuresignal.enrichment.budget import (
+    GLOBAL_BUCKET,
+    BudgetExceededError,
+    consume,
+    consume_overage,
+    within_budget,
+)
 from procuresignal.enrichment.cache import EnrichmentCache
 from procuresignal.enrichment.deterministic import DeterministicEnricher
 from procuresignal.enrichment.enricher import ArticleEnricher
@@ -61,6 +69,7 @@ class EnrichmentPipeline:
         deterministic_enricher: DeterministicEnricher | None = None,
         cache: EnrichmentCache | None = None,
         llm_client_factory: Callable[[], OpenAILLMClient] | None = None,
+        tenant: str | None = None,
     ):
         """Initialize pipeline.
 
@@ -73,6 +82,10 @@ class EnrichmentPipeline:
         self.cache = cache or EnrichmentCache()
         self.llm_client = llm_client
         self.llm_client_factory = llm_client_factory
+        # Enrichment is global today, so this is normally None and spend lands in
+        # the shared bucket. Named here so per-tenant enrichment can set it without
+        # rediscovering where the cap belongs.
+        self.tenant = tenant
         self.enricher = ArticleEnricher(llm_client) if llm_client is not None else None
 
     async def process_raw_articles(
@@ -184,8 +197,14 @@ class EnrichmentPipeline:
                     article, summary_max_chars=self.policy.summary_max_chars
                 )
                 estimate = self._estimated_tokens(article)
+                # The per-run cap bounds this batch; the durable one bounds what the
+                # tenant costs across restarts. Both have to allow the call.
+                affordable = await within_budget(session, tenant=self.tenant, tokens=estimate)
+                if not affordable:
+                    record_budget_refusal(self.tenant or GLOBAL_BUCKET)
                 budget_available = (
-                    budget.calls_reserved < budget.max_calls
+                    affordable
+                    and budget.calls_reserved < budget.max_calls
                     and budget.tokens_reserved + estimate <= budget.max_tokens
                     and (self.enricher is not None or self.llm_client_factory is not None)
                 )
@@ -229,6 +248,15 @@ class EnrichmentPipeline:
                         used = max(0, self._client_tokens() - before)
                         budget.record_usage(used)
                         metrics.llm_tokens += used
+                        # Recorded against actual usage rather than the estimate, so
+                        # the cap reflects what was really spent.
+                        if used:
+                            try:
+                                await consume(session, tenant=self.tenant, tokens=used)
+                            except BudgetExceededError:
+                                # The call already happened; refuse the next one rather
+                                # than lose the accounting for this one.
+                                await consume_overage(session, tenant=self.tenant, tokens=used)
                         if output is not None:
                             llm_used = True
                             output = self._merge_deterministic_evidence(output, analysis.output)

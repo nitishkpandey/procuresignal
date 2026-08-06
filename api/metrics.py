@@ -59,6 +59,14 @@ DEAD_LETTERS = Counter(
     ["task"],
 )
 
+# A tenant hitting its cap is a product signal, not just an operational one:
+# somebody is either ingesting far more than expected or looping.
+LLM_BUDGET_REFUSALS = Counter(
+    f"{NAMESPACE}_llm_budget_refusals_total",
+    "LLM calls refused because a tenant was over its daily budget.",
+    ["tenant"],
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -91,6 +99,10 @@ def record_pipeline_success(stage: str, *, at: float | None = None) -> None:
 
 def record_dead_letter_metric(task: str) -> None:
     DEAD_LETTERS.labels(task=task).inc()
+
+
+def record_budget_refusal(tenant: str) -> None:
+    LLM_BUDGET_REFUSALS.labels(tenant=tenant).inc()
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:

@@ -101,3 +101,19 @@ groups:
           description: >
             {{ $value }} runs of {{ $labels.task }} gave up in the last hour. The work
             is lost; the dead_letters table holds the payload and traceback.
+
+  - name: cost
+    rules:
+      # Either a tenant is ingesting far more than expected, or something is looping.
+      # Either way the answer is to look, not to raise the cap.
+      - alert: LlmBudgetExhausted
+        expr: sum by (tenant) (increase(procuresignal_llm_budget_refusals_total[1h])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.tenant }} is hitting its daily LLM budget"
+          description: >
+            {{ $value }} enrichment calls were refused for {{ $labels.tenant }} in the
+            last hour. Articles are being stored without summaries until the cap resets
+            at midnight.
