@@ -20,8 +20,7 @@ _MAX_TEXT = 2_000
 
 
 class _Fetcher(Protocol):
-    async def fetch(self, source: SourceDefinition) -> FetchResult:
-        ...
+    async def fetch(self, source: SourceDefinition) -> FetchResult: ...
 
 
 class _TextExtractor(HTMLParser):

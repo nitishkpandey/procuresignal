@@ -227,18 +227,22 @@ def test_task5_verified_structured_source_closes_only_structured_gap() -> None:
     before = SOURCE_REGISTRY.validate_coverage()
     after_registry = SourceRegistry(
         tuple(
-            replace(source, enabled_by_default=True)
-            if source.source_id == sanctions.source_id
-            else source
+            (
+                replace(source, enabled_by_default=True)
+                if source.source_id == sanctions.source_id
+                else source
+            )
             for source in SOURCE_REGISTRY.sources
         )
     )
 
     disabled_registry = SourceRegistry(
         tuple(
-            replace(source, enabled_by_default=False)
-            if source.source_id == sanctions.source_id
-            else source
+            (
+                replace(source, enabled_by_default=False)
+                if source.source_id == sanctions.source_id
+                else source
+            )
             for source in SOURCE_REGISTRY.sources
         )
     )

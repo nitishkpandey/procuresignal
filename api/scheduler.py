@@ -17,8 +17,7 @@ if TYPE_CHECKING:
 class Scheduler(Protocol):
     """Scheduler surface required by job registration and its test fake."""
 
-    def add_job(self, func: Callable[..., object], trigger: str, **kwargs: object) -> object:
-        ...
+    def add_job(self, func: Callable[..., object], trigger: str, **kwargs: object) -> object: ...
 
 
 logger = logging.getLogger(__name__)

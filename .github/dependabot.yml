@@ -1,0 +1,26 @@
+# bandit scans our code; nothing scanned our dependencies, and that is where CVEs
+# arrive. Weekly rather than daily so the noise stays reviewable.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Base images age quietly: postgres, redis and python all ship security fixes.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

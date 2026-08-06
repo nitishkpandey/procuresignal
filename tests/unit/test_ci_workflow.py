@@ -58,3 +58,54 @@ def test_frontend_ci_installs_from_the_committed_lock() -> None:
 
 def test_docker_images_are_not_built_from_an_unverified_frontend() -> None:
     assert "frontend" in _ci_workflow()["jobs"]["build"]["needs"]
+
+
+def test_dependencies_are_scanned_for_known_vulnerabilities() -> None:
+    """bandit scans our code. Nothing scanned our dependencies, and that is where
+    CVEs actually arrive."""
+    jobs = _ci_workflow()["jobs"]
+
+    assert "audit" in jobs
+    commands = "\n".join(step.get("run", "") for step in jobs["audit"]["steps"])
+    assert "pip-audit" in commands
+    assert "npm audit" in commands
+
+
+def test_the_audit_job_blocks_rather_than_warns() -> None:
+    """A non-blocking security job is one everybody learns to skim past."""
+    audit = _ci_workflow()["jobs"]["audit"]
+
+    for step in audit["steps"]:
+        assert step.get("continue-on-error") is not True
+
+
+def test_dependabot_covers_every_ecosystem_we_ship() -> None:
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    ecosystems = {entry["package-ecosystem"] for entry in config["updates"]}
+
+    assert {"pip", "npm", "github-actions", "docker"} <= ecosystems
+
+
+def test_audit_exceptions_are_dated_decisions() -> None:
+    """An ignore list without dates is just a way to make the build green.
+
+    Every entry has to say why no upgrade closes it and when to look again.
+    """
+    ignore = (ROOT / ".github/pip-audit-ignore.txt").read_text()
+
+    assert "Reviewed:" in ignore
+    assert "Next review:" in ignore
+
+    entries = [
+        line.strip()
+        for line in ignore.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert entries, "empty ignore file should be deleted rather than kept"
+    assert all(entry.startswith(("PYSEC-", "GHSA-", "CVE-")) for entry in entries)
+
+
+def test_the_audit_job_uses_the_ignore_list() -> None:
+    commands = "\n".join(step.get("run", "") for step in _ci_workflow()["jobs"]["audit"]["steps"])
+
+    assert "pip-audit-ignore.txt" in commands
