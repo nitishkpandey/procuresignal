@@ -20,7 +20,7 @@ sqlalchemy = "^2.0"
 greenlet = "^3.0"
 asyncpg = "^0.28"
 alembic = "^1.13"
-aiosqlite = "^0.19"
+aiosqlite = ">=0.19,<0.23"
 
 # API
 fastapi = "^0.121"
