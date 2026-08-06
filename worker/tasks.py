@@ -9,9 +9,11 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine
 
+from celery.exceptions import MaxRetriesExceededError
 from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
+from procuresignal.jobs.dead_letter import record_dead_letter
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
 from procuresignal.personalization import PersonalizationPipeline
@@ -26,7 +28,12 @@ from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import record_llm_call, record_pipeline_success, record_retrieval
+from api.metrics import (
+    record_dead_letter_metric,
+    record_llm_call,
+    record_pipeline_success,
+    record_retrieval,
+)
 from worker.main import app
 from worker.signal_tasks import process_article_for_signals
 
@@ -75,12 +82,41 @@ def _to_raw_article(article: NewsArticleRaw) -> RawArticle:
     )
 
 
+async def _dead_letter(task: Any, exc: BaseException) -> None:
+    async with session_scope() as session:
+        await record_dead_letter(
+            session,
+            task_name=task.name,
+            task_id=str(getattr(task.request, "id", "") or ""),
+            payload={
+                "args": list(getattr(task.request, "args", []) or []),
+                "kwargs": dict(getattr(task.request, "kwargs", {}) or {}),
+            },
+            error=exc,
+            retries=int(getattr(task.request, "retries", 0) or 0),
+        )
+        await session.commit()
+
+
 def _run_with_retry(task: Any, coro_factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
-    """Run an async task body, retrying with exponential backoff on failure."""
+    """Run an async task body, retrying with exponential backoff on failure.
+
+    The only place a task gives up, so the only place worth dead-lettering from.
+    Without it an exhausted task vanishes into the logs: the work is lost, nobody is
+    told, and the system carries on reporting healthy.
+    """
     try:
         return asyncio.run(coro_factory())
     except Exception as exc:
-        raise task.retry(exc=exc, countdown=60 * (2**task.request.retries)) from exc
+        try:
+            raise task.retry(exc=exc, countdown=60 * (2**task.request.retries)) from exc
+        except MaxRetriesExceededError:
+            record_dead_letter_metric(task.name)
+            try:
+                asyncio.run(_dead_letter(task, exc))
+            except Exception:  # noqa: BLE001 - never mask the failure being recorded
+                logger.exception("could not dead-letter %s", task.name)
+            raise
 
 
 async def _load_recent_raw_articles(

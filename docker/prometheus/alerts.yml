@@ -86,3 +86,18 @@ groups:
             Enrichment is completing but most calls fail, so articles are being stored
             without summaries or tags. Usually an expired key, a rate limit, or a
             budget cap.
+
+  - name: workers
+    rules:
+      # A task that gave up has lost its work silently. One is worth looking at; a
+      # stream of them means a queue is filling with something it cannot process.
+      - alert: TasksDeadLettering
+        expr: sum by (task) (increase(procuresignal_dead_letters_total[1h])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.task }} is exhausting its retries"
+          description: >
+            {{ $value }} runs of {{ $labels.task }} gave up in the last hour. The work
+            is lost; the dead_letters table holds the payload and traceback.

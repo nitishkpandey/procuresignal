@@ -51,6 +51,14 @@ PIPELINE_LAST_SUCCESS = Gauge(
     ["stage"],
 )
 
+# A queue quietly filling with poison is worth paging on: the work is lost and the
+# system keeps reporting healthy.
+DEAD_LETTERS = Counter(
+    f"{NAMESPACE}_dead_letters_total",
+    "Tasks that exhausted their retries, by task name.",
+    ["task"],
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -79,6 +87,10 @@ def record_pipeline_success(stage: str, *, at: float | None = None) -> None:
     """Mark a pipeline stage as having just succeeded."""
 
     PIPELINE_LAST_SUCCESS.labels(stage=stage).set(at if at is not None else time.time())
+
+
+def record_dead_letter_metric(task: str) -> None:
+    DEAD_LETTERS.labels(task=task).inc()
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:

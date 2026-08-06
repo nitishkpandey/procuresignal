@@ -12,6 +12,7 @@ from .auth import (
 )
 from .base import Base, BaseModel
 from .chat import ChatConversation, ChatMessage
+from .dead_letter import DeadLetter
 from .enrichment import EnrichmentCacheEntry
 from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
@@ -30,6 +31,7 @@ __all__ = [
     "RefreshToken",
     "Role",
     "AuditLog",
+    "DeadLetter",
     "Supplier",
     "SupplierAlias",
     "ArticleSupplierMention",
