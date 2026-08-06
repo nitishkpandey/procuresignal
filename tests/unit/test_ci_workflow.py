@@ -30,3 +30,31 @@ def test_ci_quality_commands_are_locked_non_mutating_gates() -> None:
     assert "--exit-zero" not in commands
     assert "|| true" not in commands
     assert "pip install ruff black mypy" not in commands
+
+
+def test_frontend_is_verified_in_ci() -> None:
+    """The 72 frontend tests existed for months without ever running on a push.
+
+    A change breaking the UI merged silently, because CI only ever checked Python.
+    """
+    jobs = _ci_workflow()["jobs"]
+
+    assert "frontend" in jobs, "no frontend job: the UI is unverified on every push"
+
+    commands = "\n".join(step.get("run", "") for step in jobs["frontend"]["steps"])
+    for expected in ("npm ci", "test:run", "typecheck", "lint", "build"):
+        assert expected in commands, f"frontend job never runs {expected!r}"
+
+
+def test_frontend_ci_installs_from_the_committed_lock() -> None:
+    """npm install would resolve fresh versions and verify something nobody is shipping."""
+    commands = "\n".join(
+        step.get("run", "") for step in _ci_workflow()["jobs"]["frontend"]["steps"]
+    )
+
+    assert "npm ci" in commands
+    assert "npm install" not in commands
+
+
+def test_docker_images_are_not_built_from_an_unverified_frontend() -> None:
+    assert "frontend" in _ci_workflow()["jobs"]["build"]["needs"]
