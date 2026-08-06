@@ -1,5 +1,10 @@
 # ProcureSignal Production Readiness Roadmap
 
+> **CANONICAL TRACKER.** This document, numbered 0–9, is the single source of truth
+> for phase numbering and status. `.superpowers/sdd/progress.md` uses an older 0–11
+> scheme with different phase meanings and is historical only; do not count from it.
+> Two schemes in circulation produced conflicting handover counts.
+>
 > **Scope:** This is the program-level roadmap and decision record. It locks architectural
 > decisions and phase ordering. Each phase gets its own detailed executable plan in
 > `docs/superpowers/plans/` written immediately before that phase begins, using
@@ -161,6 +166,50 @@ are sequenced by dependency fan-out rather than by product value.
 | **7** | GDPR: retention enforcement, DSAR export, erasure, processing records | 1 |
 | **8** | Backup/restore runbook with tested restore, dashboards, SLOs | 3 |
 | **9** | Final comprehensive sweep, unified `verify.sh` | all |
+
+### Status and remaining estimate
+
+Phase 3 split in delivery: **3a** (deployment safety net) shipped, **3b** (shared rate
+limit, secret resolver, nightly re-resolution) shipped. 3a is **reopened** for defects
+found in review — see below.
+
+| Workstream | Est. tasks | State |
+|---|---:|---|
+| 3a corrections: screening audit, screening metrics and alert, zero-downtime migration discipline | 7–10 | **reopened** |
+| 3b hardening | 4 | done |
+| 4 product alerts and notifications | 8–10 | next |
+| 5 search, scoring, evaluation | 6–8 | |
+| 6 agent with human approval | 4–5 | |
+| 7 GDPR | 5–6 | |
+| 8 restore drill, dashboards, SLOs | 4–5 | |
+| 9 final sweep and `verify.sh` | 3–4 | |
+| **Total remaining** | **41–52** | |
+
+An earlier estimate of 33–41 omitted the 3a corrective work and migration discipline.
+
+### Blockers are narrower than first recorded
+
+Stating a phase as "blocked" when only part of it is delays work that could ship now.
+
+| Phase | Can be built now | Genuinely needs an external input |
+|---|---|---|
+| 3b | everything — Redis is already in compose | nothing |
+| 4 | watchlists, alert rules, notification outbox, in-app delivery, digest **generation** | real email **delivery** (SMTP/SendGrid) |
+| 7 | DSAR export, erasure, retention enforcement | lawful-basis and processing-record wording (legal) |
+| 8 | PostgreSQL backup/restore drill and dashboards under compose | cloud-specific recovery and monitoring (hosting) |
+
+Content licensing remains a genuine commercial-launch blocker with no engineering path
+around it.
+
+### Delivery order
+
+Phase 4 precedes Phase 5. Watchlists, alerts and a morning briefing express the
+procurement value of this product more directly than semantic search does; sequencing 5
+first optimised for what was unblocked rather than for what is worth having.
+
+1. Correct 3a. 2. 3b (done). 3. Real browser end-to-end testing. 4. Phase 4 core against
+an in-app and test transport. 5. Phase 5. 6. Phase 6 on top of a tested notification and
+evaluation layer. 7. Phases 7–9.
 
 Dead-code and DRY checks run continuously alongside each phase; Phase 9 is the final
 pass, not the only one.
