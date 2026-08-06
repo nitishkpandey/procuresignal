@@ -1,0 +1,88 @@
+# Operational alerts for whoever runs ProcureSignal.
+#
+# Distinct from the customer-configured alert rules that arrive in Phase 4: those are a
+# product feature about supplier risk, these are about whether the system is working.
+#
+# Every rule here references a metric the API actually publishes. A rule naming a metric
+# nobody emits never fires, and a monitoring system that never fires is indistinguishable
+# from a healthy one — which is precisely how prometheus.yml scraped a non-existent
+# endpoint for months without anyone noticing.
+groups:
+  - name: pipeline-freshness
+    rules:
+      # The signature failure of this system: ingestion returns nothing for days while
+      # /health answers 200 the whole time, so nobody finds out until the feed is empty.
+      - alert: PipelineStale
+        expr: time() - procuresignal_pipeline_last_success_timestamp > 21600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pipeline stage {{ $labels.stage }} has not succeeded in over 6 hours"
+          description: >
+            {{ $labels.stage }} last completed
+            {{ $value | humanizeDuration }} ago. Retrieval runs every 6 hours and the
+            later stages more often, so this means the stage is failing or not being
+            scheduled. Health checks will still be green.
+
+      - alert: PipelineNeverRan
+        expr: absent(procuresignal_pipeline_last_success_timestamp)
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No pipeline stage has ever reported success"
+          description: >
+            The API is serving metrics but no worker stage has completed. Usually the
+            worker or beat container is not running, or the broker is unreachable.
+
+  - name: api-health
+    rules:
+      - alert: ApiServerErrors
+        expr: |
+          sum(rate(procuresignal_http_requests_total{status=~"5.."}[5m]))
+            /
+          sum(rate(procuresignal_http_requests_total[5m]))
+            > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Over 5% of API requests are failing"
+          description: >
+            {{ $value | humanizePercentage }} of requests returned 5xx over the last
+            five minutes.
+
+  - name: ingestion
+    rules:
+      # Freshness alone cannot see this: the stage runs and completes on schedule while
+      # an individual feed returns nothing every time.
+      - alert: RetrievalSourceFailing
+        expr: |
+          sum by (source_id) (rate(procuresignal_retrieval_articles_total{outcome!="success"}[30m]))
+            > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Retrieval source {{ $labels.source_id }} is failing"
+          description: >
+            {{ $labels.source_id }} has not succeeded for an hour while other sources
+            have. A source stuck on configuration_error usually means a missing
+            credential rather than an outage.
+
+      - alert: EnrichmentLlmFailing
+        expr: |
+          sum(rate(procuresignal_enrichment_llm_calls_total{outcome="failed"}[30m]))
+            /
+          clamp_min(sum(rate(procuresignal_enrichment_llm_calls_total[30m])), 0.001)
+            > 0.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than half of LLM enrichment calls are failing"
+          description: >
+            Enrichment is completing but most calls fail, so articles are being stored
+            without summaries or tags. Usually an expired key, a rate limit, or a
+            budget cap.

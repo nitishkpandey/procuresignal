@@ -26,7 +26,7 @@ from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import record_pipeline_success
+from api.metrics import record_llm_call, record_pipeline_success, record_retrieval
 from worker.main import app
 from worker.signal_tasks import process_article_for_signals
 
@@ -322,6 +322,8 @@ def retrieve_news_task(self: Any) -> dict[str, Any]:
         # hide exactly the stall the staleness alert exists to catch.
         if result.status == "completed":
             record_pipeline_success("retrieval")
+        for source in result.source_results:
+            record_retrieval(source.source_id, source.status)
         return {
             "status": "success" if result.status == "completed" else result.status,
             "articles_fetched": result.articles_fetched,
@@ -430,6 +432,11 @@ def enrich_articles_task(self: Any) -> dict[str, Any]:
                 await _release_enrichment_claims_after_failure(session, owner=claim_owner)
                 raise
             metrics = run_result.metrics
+            # Counted by outcome so a run that completes while every LLM call fails is
+            # distinguishable from one that had nothing to enrich.
+            record_llm_call("succeeded", metrics.llm)
+            record_llm_call("failed", metrics.failed)
+            record_llm_call("avoided", metrics.avoided_llm_calls)
             return {
                 "status": "success",
                 "enriched_count": run_result.saved,
