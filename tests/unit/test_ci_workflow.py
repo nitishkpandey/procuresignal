@@ -122,3 +122,48 @@ def test_route_type_contracts_are_verified() -> None:
     )
 
     assert "verify:routes" in commands
+
+
+def test_ci_actions_run_on_supported_node_runtimes() -> None:
+    """Old action majors embed EOL Node versions even when the app uses a newer Node."""
+    minimum_node24_major = {
+        "actions/checkout": 5,
+        "actions/setup-python": 6,
+        "actions/setup-node": 5,
+        "codecov/codecov-action": 6,
+    }
+    observed: set[str] = set()
+
+    for job in _ci_workflow()["jobs"].values():
+        for step in job["steps"]:
+            action, separator, version = step.get("uses", "").partition("@v")
+            if action not in minimum_node24_major:
+                continue
+            assert separator, f"{action} must use a versioned major tag"
+            observed.add(action)
+            assert (
+                int(version) >= minimum_node24_major[action]
+            ), f"{action}@v{version} embeds an unsupported Node runtime"
+
+    assert observed == minimum_node24_major.keys()
+
+
+def test_frontend_uses_supported_node_and_ships_as_a_verified_image() -> None:
+    workflow = _ci_workflow()
+    frontend_setup = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/setup-node@")
+    ]
+    assert frontend_setup
+    assert all(step["with"]["node-version"] == "24" for step in frontend_setup)
+
+    dockerfile = (ROOT / "frontend" / "Dockerfile").read_text()
+    from_lines = [line for line in dockerfile.splitlines() if line.startswith("FROM node:")]
+    assert from_lines
+    assert all(line.startswith("FROM node:24-alpine") for line in from_lines)
+
+    build_commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["build"]["steps"])
+    assert "procuresignal-frontend:latest" in build_commands
+    assert "http://localhost:3000" in build_commands

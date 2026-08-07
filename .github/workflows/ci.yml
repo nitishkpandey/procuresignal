@@ -14,8 +14,8 @@ jobs:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install Poetry
@@ -58,8 +58,8 @@ jobs:
         ports:
           - 6379:6379
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install Poetry
@@ -75,7 +75,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379/0
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           files: ./coverage.xml
           flags: unittests
@@ -88,10 +88,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # ci, not install: install resolves fresh versions and would verify something
@@ -117,8 +117,8 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install Poetry
@@ -138,9 +138,9 @@ jobs:
           # Ignore flags before --requirement: pip-audit treats a trailing argument
           # after -r as a positional project path and refuses to run.
           pip-audit --strict $IGNORES --requirement requirements-audit.txt
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Audit npm dependencies
@@ -152,12 +152,30 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test, frontend]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build API image
         run: docker build -t procuresignal-api:latest -f Dockerfile.api .
       - name: Build Worker image
         run: docker build -t procuresignal-worker:latest -f Dockerfile.worker .
+      - name: Build Frontend image
+        run: docker build -t procuresignal-frontend:latest frontend
       - name: Test API image
         run: docker run --rm --entrypoint uvicorn procuresignal-api:latest --help
       - name: Test Worker image
         run: docker run --rm --entrypoint celery procuresignal-worker:latest --help
+      - name: Test Frontend image
+        run: |
+          container_id="$(docker run --detach --publish 3000:3000 procuresignal-frontend:latest)"
+          cleanup() {
+            docker logs "$container_id"
+            docker rm --force "$container_id"
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://localhost:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Frontend did not become ready within 30 seconds" >&2
+          exit 1
