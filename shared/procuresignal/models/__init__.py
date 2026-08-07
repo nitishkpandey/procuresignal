@@ -21,6 +21,7 @@ from .retrieval import NewsRetrievalCircuit, NewsRetrievalRun, NewsRetrievalSour
 from .risk_events import RiskEvent
 from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
 from .suppliers import ArticleSupplierMention, Supplier, SupplierAlias
+from .watchlists import Watchlist, WatchlistEntry
 
 __all__ = [
     "Base",
@@ -37,6 +38,8 @@ __all__ = [
     "Supplier",
     "SupplierAlias",
     "ArticleSupplierMention",
+    "Watchlist",
+    "WatchlistEntry",
     "NewsArticleRaw",
     "NewsArticleProcessed",
     "ChatConversation",
