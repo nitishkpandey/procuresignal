@@ -15,6 +15,7 @@ from .chat import ChatConversation, ChatMessage
 from .dead_letter import DeadLetter
 from .enrichment import EnrichmentCacheEntry
 from .llm_spend import LlmSpend
+from .notifications import AlertRule
 from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
 from .retrieval import NewsRetrievalCircuit, NewsRetrievalRun, NewsRetrievalSourceOutcome
@@ -38,6 +39,7 @@ __all__ = [
     "Supplier",
     "SupplierAlias",
     "ArticleSupplierMention",
+    "AlertRule",
     "Watchlist",
     "WatchlistEntry",
     "NewsArticleRaw",
