@@ -109,3 +109,16 @@ def test_the_audit_job_uses_the_ignore_list() -> None:
     commands = "\n".join(step.get("run", "") for step in _ci_workflow()["jobs"]["audit"]["steps"])
 
     assert "pip-audit-ignore.txt" in commands
+
+
+def test_route_type_contracts_are_verified() -> None:
+    """Next 16 builds with Turbopack, which emits no .next/types, so the ordinary
+    build never checks a page's props against its generated route contract.
+
+    A dynamic route declaring synchronous params passed CI and failed under webpack.
+    """
+    commands = "\n".join(
+        step.get("run", "") for step in _ci_workflow()["jobs"]["frontend"]["steps"]
+    )
+
+    assert "verify:routes" in commands

@@ -103,6 +103,12 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      # Turbopack, the default builder in Next 16, does not emit .next/types, so the
+      # build above never checks that a page's props satisfy its generated route
+      # contract. A dynamic route declaring synchronous params passed CI and failed
+      # under webpack. This step is the one that catches it.
+      - name: Verify route type contracts
+        run: npm run verify:routes
 
   audit:
     name: Dependency audit
