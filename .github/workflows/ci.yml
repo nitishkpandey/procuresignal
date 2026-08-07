@@ -89,7 +89,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -138,7 +138,7 @@ jobs:
           # Ignore flags before --requirement: pip-audit treats a trailing argument
           # after -r as a positional project path and refuses to run.
           pip-audit --strict $IGNORES --requirement requirements-audit.txt
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
