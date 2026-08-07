@@ -42,7 +42,7 @@ jobs:
           POSTGRES_PASSWORD: procuresignal
           POSTGRES_DB: procuresignal
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U procuresignal"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -67,20 +67,16 @@ jobs:
       - name: Install locked dependencies
         run: poetry install --no-interaction
       - name: Run tests
-        run: poetry run pytest tests/ -v --cov=api --cov=worker --cov=shared --cov-report=xml
+        run: >-
+          poetry run pytest tests/ -v
+          --cov=api --cov=worker --cov=shared
+          --cov-report=term --cov-report=xml --cov-fail-under=85
         env:
           DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@localhost:5432/procuresignal
       - name: Verify the shared Redis rate limit
         run: poetry run pytest tests/integration/test_redis_backend.py -v --no-cov
         env:
           REDIS_URL: redis://localhost:6379/0
-      - name: Upload coverage
-        uses: codecov/codecov-action@v6
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
-
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

@@ -1,13 +1,11 @@
 """Integration test for the chat WebSocket (LLM stubbed)."""
 
-import asyncio
-
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.config import database as database_module
 from procuresignal.models import Base
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 from starlette.websockets import WebSocketDisconnect
 
 import api.routers.chat as chat_router
@@ -25,25 +23,25 @@ class _StubChatClient:
 
 
 @pytest.fixture()
-def ws_client(monkeypatch):
+def ws_client(monkeypatch, tmp_path):
     # The app lifespan calls init_db() when DATABASE_URL is set, overwriting the
-    # in-memory SQLite db_config this fixture injects. CI sets DATABASE_URL (to an
+    # isolated SQLite db_config this fixture injects. CI sets DATABASE_URL (to an
     # unmigrated Postgres), so clear it for the duration of the test.
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    database_path = tmp_path / "chat-ws.db"
+    sync_engine = create_engine(f"sqlite:///{database_path}")
+    Base.metadata.create_all(sync_engine)
+    sync_engine.dispose()
 
-    async def prepare():
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    session_maker = asyncio.run(prepare())
+    # The runtime engine first connects inside TestClient's event loop and is closed
+    # by the application lifespan on that same loop. Reusing one in-memory aiosqlite
+    # connection across asyncio.run() and TestClient left its worker thread trying to
+    # report results to an event loop that had already closed.
+    database_url = f"sqlite+aiosqlite:///{database_path}"
+    engine = create_async_engine(database_url)
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     original = database_module.db_config
-    db_config = database_module.DatabaseConfig("sqlite+aiosqlite://")
+    db_config = database_module.DatabaseConfig(database_url)
     db_config.engine = engine
     db_config.session_maker = session_maker
     database_module.db_config = db_config
@@ -52,10 +50,11 @@ def ws_client(monkeypatch):
 
     app.dependency_overrides[get_current_user] = lambda: fixed_identity("u1")
     app.dependency_overrides[get_current_ws_user] = lambda: fixed_identity("u1")
-    with TestClient(app) as client:
-        yield client
-    database_module.db_config = original
-    asyncio.run(engine.dispose())
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        database_module.db_config = original
 
 
 def test_ws_streams_and_persists(ws_client: TestClient):

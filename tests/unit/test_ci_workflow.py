@@ -32,6 +32,23 @@ def test_ci_quality_commands_are_locked_non_mutating_gates() -> None:
     assert "pip install ruff black mypy" not in commands
 
 
+def test_backend_coverage_is_a_blocking_repository_owned_gate() -> None:
+    workflow = _ci_workflow()
+    test_commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["test"]["steps"])
+
+    assert "--cov-report=term" in test_commands
+    assert "--cov-fail-under=85" in test_commands
+    assert all(
+        not step.get("uses", "").startswith("codecov/")
+        for step in workflow["jobs"]["test"]["steps"]
+    )
+
+
+def test_postgres_healthcheck_uses_the_configured_database_user() -> None:
+    options = _ci_workflow()["jobs"]["test"]["services"]["postgres"]["options"]
+    assert "pg_isready -U procuresignal" in options
+
+
 def test_frontend_is_verified_in_ci() -> None:
     """The 72 frontend tests existed for months without ever running on a push.
 
@@ -130,7 +147,6 @@ def test_ci_actions_run_on_supported_node_runtimes() -> None:
         "actions/checkout": 5,
         "actions/setup-python": 6,
         "actions/setup-node": 5,
-        "codecov/codecov-action": 6,
     }
     observed: set[str] = set()
 
