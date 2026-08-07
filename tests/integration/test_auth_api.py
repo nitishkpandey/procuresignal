@@ -199,6 +199,7 @@ def test_refresh_issues_a_new_access_token_and_rotates_the_cookie(client: TestCl
 
     assert response.status_code == 200
     assert response.json()["access_token"]
+    assert response.json()["user"]["email"] == "buyer@acme.com"
     assert client.cookies[REFRESH_COOKIE] != original
 
 

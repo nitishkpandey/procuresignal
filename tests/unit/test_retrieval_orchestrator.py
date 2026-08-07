@@ -31,7 +31,7 @@ from procuresignal.retrieval.registry import (
     SourceRegistry,
 )
 from procuresignal.retrieval.security import URLSafetyPolicy
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
@@ -614,6 +614,39 @@ async def test_same_retry_owner_resumes_live_run_lease(maker):
     resumed, reacquired, status = await retry._claim("retry-run", datetime.utcnow())
     assert resumed.id == run.id
     assert reacquired and status == "running"
+
+
+async def test_foreign_live_lease_does_not_attempt_a_write(maker):
+    definition = source("foreign_owner")
+    first = RetrievalOrchestrator(
+        session_factory=maker,
+        registry=SourceRegistry((definition,)),
+        registry_version="lease-v1",
+        owner="first-worker",
+    )
+    run, acquired, _ = await first._claim("leased-run", datetime.utcnow())
+    assert acquired
+
+    statements: list[str] = []
+    engine = maker.kw["bind"]
+
+    def capture_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", capture_statement)
+    try:
+        observed, reacquired, status = await RetrievalOrchestrator(
+            session_factory=maker,
+            registry=SourceRegistry((definition,)),
+            registry_version="lease-v1",
+            owner="second-worker",
+        )._claim("leased-run", datetime.utcnow())
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", capture_statement)
+
+    assert observed.id == run.id
+    assert not reacquired and status == "already_running"
+    assert not any(statement.lstrip().upper().startswith("UPDATE") for statement in statements)
 
 
 async def test_retry_aggregates_completed_prior_source_once(maker):

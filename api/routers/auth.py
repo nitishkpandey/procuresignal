@@ -28,7 +28,6 @@ from api.rate_limit import (
     registration_key,
 )
 from api.schemas.auth import (
-    AccessTokenResponse,
     InvitationRequest,
     InvitationResponse,
     LoginRequest,
@@ -214,13 +213,13 @@ async def login(
     return _token_response(issued, response)
 
 
-@router.post("/refresh", response_model=AccessTokenResponse)
+@router.post("/refresh", response_model=TokenResponse)
 async def refresh(
     response: Response,
     session: AsyncSession = Depends(get_session),
     context: ClientContext = Depends(get_client_context),
     presented: Optional[str] = Cookie(None, alias=REFRESH_COOKIE_NAME),
-) -> AccessTokenResponse:
+) -> TokenResponse:
     """Rotate the refresh token and mint a new access token."""
 
     if not presented:
@@ -246,11 +245,7 @@ async def refresh(
         raise _INVALID_CREDENTIALS from None
 
     await session.commit()
-    _set_refresh_cookie(response, issued.refresh_token)
-    return AccessTokenResponse(
-        access_token=issued.access_token,
-        expires_in=int(ACCESS_TOKEN_TTL.total_seconds()),
-    )
+    return _token_response(issued, response)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

@@ -16,7 +16,7 @@ export function authBaseUrl(): string {
 let accessToken: string | null = null;
 
 /** One shared refresh, so parallel 401s do not each rotate the token. */
-let inFlightRefresh: Promise<string | null> | null = null;
+let inFlightRefresh: Promise<RefreshSession | null> | null = null;
 
 export function setAccessToken(token: string | null): void {
   accessToken = token;
@@ -46,15 +46,16 @@ function isAuthEndpoint(url: string | undefined): boolean {
  * three parallel requests would look like a replayed token to the server, which
  * revokes the entire family and signs the user out for behaving normally.
  */
-export function refreshAccessToken(): Promise<string | null> {
+function refreshSession(): Promise<RefreshSession | null> {
   if (inFlightRefresh) return inFlightRefresh;
 
   inFlightRefresh = axios
     .post(`${authBaseUrl()}/api/auth/refresh`, null, { withCredentials: true })
     .then((response) => {
-      const token = (response?.data as { access_token?: string })?.access_token ?? null;
+      const data = response?.data as Partial<RefreshSession> | undefined;
+      const token = data?.access_token ?? null;
       setAccessToken(token);
-      return token;
+      return token ? { access_token: token, user: data?.user } : null;
     })
     .catch(() => {
       clearAccessToken();
@@ -66,6 +67,10 @@ export function refreshAccessToken(): Promise<string | null> {
     });
 
   return inFlightRefresh;
+}
+
+export async function refreshAccessToken(): Promise<string | null> {
+  return (await refreshSession())?.access_token ?? null;
 }
 
 type RetriedConfig = InternalAxiosRequestConfig & { _retriedAfterRefresh?: boolean };
@@ -106,6 +111,11 @@ interface SessionResponse {
   user: AuthUser;
 }
 
+interface RefreshSession {
+  access_token: string;
+  user?: AuthUser;
+}
+
 async function startSession(path: string, body: Record<string, unknown>): Promise<AuthUser> {
   const { data } = await axios.post<SessionResponse>(`${authBaseUrl()}${path}`, body, {
     withCredentials: true,
@@ -143,16 +153,19 @@ export async function logout(): Promise<void> {
 /**
  * Restore a session on page load.
  *
- * The access token is gone after a reload, so this refreshes first and then asks who
- * the caller is. Returns null when there is no usable session.
+ * The access token is gone after a reload, so the refresh response restores both the
+ * token and its identity in one rotation. Returns null when there is no usable session.
  */
 export async function restoreSession(): Promise<AuthUser | null> {
-  const token = await refreshAccessToken();
-  if (!token) return null;
+  const refreshed = await refreshSession();
+  if (!refreshed) return null;
+  if (refreshed.user) return refreshed.user;
 
+  // Rolling deployments may briefly pair this frontend with an older API that does
+  // not yet include identity in the refresh response.
   try {
     const { data } = await axios.get<AuthUser>(`${authBaseUrl()}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${refreshed.access_token}` },
       withCredentials: true,
     });
     return data;

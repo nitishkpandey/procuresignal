@@ -12,6 +12,28 @@ const MINIMUM_PASSWORD_LENGTH = 12;
 
 type Mode = "login" | "register";
 
+interface ValidationIssue {
+  loc?: unknown[];
+}
+
+function validationField(error: unknown): string | undefined {
+  if (typeof error !== "object" || !error || !("response" in error)) return undefined;
+
+  const detail = (
+    error as { response?: { data?: { detail?: ValidationIssue[] } } }
+  ).response?.data?.detail;
+  if (!Array.isArray(detail)) return undefined;
+
+  for (const issue of detail) {
+    if (!Array.isArray(issue.loc)) continue;
+    for (let index = issue.loc.length - 1; index >= 0; index -= 1) {
+      const part = issue.loc[index];
+      if (typeof part === "string") return part;
+    }
+  }
+  return undefined;
+}
+
 function messageFor(error: unknown, mode: Mode): string {
   const status =
     typeof error === "object" && error && "response" in error
@@ -21,7 +43,14 @@ function messageFor(error: unknown, mode: Mode): string {
   if (status === 409) return "That email already has an account. Sign in instead.";
   if (status === 401) return "Email or password is incorrect.";
   if (status === 429) return "Too many attempts. Wait a moment and try again.";
-  if (status === 422) return `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters.`;
+  if (status === 422) {
+    const field = validationField(error);
+    if (field === "email") return "Enter a valid company email.";
+    if (field === "password" && mode === "register") {
+      return `Password must be between ${MINIMUM_PASSWORD_LENGTH} and 128 characters.`;
+    }
+    return mode === "login" ? "Check the sign-in details." : "Check the account details.";
+  }
   return mode === "login" ? "Could not sign in." : "Could not create the account.";
 }
 

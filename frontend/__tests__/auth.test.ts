@@ -6,9 +6,12 @@ import {
   getAccessToken,
   installAuthInterceptors,
   refreshAccessToken,
+  restoreSession,
   setAccessToken,
   __resetRefreshState,
 } from "@/lib/auth";
+
+import { authUser } from "./helpers";
 
 beforeEach(() => {
   clearAccessToken();
@@ -87,6 +90,20 @@ describe("refresh coordination", () => {
     post.mockResolvedValue({ data: { access_token: "recovered" } } as never);
 
     expect(await refreshAccessToken()).toBe("recovered");
+  });
+});
+
+describe("session restoration", () => {
+  it("restores identity from the refresh response without a second API request", async () => {
+    const user = authUser();
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: { access_token: "fresh", user },
+    } as never);
+    const get = vi.spyOn(axios, "get");
+
+    await expect(restoreSession()).resolves.toEqual(user);
+    expect(get).not.toHaveBeenCalled();
+    expect(getAccessToken()).toBe("fresh");
   });
 });
 

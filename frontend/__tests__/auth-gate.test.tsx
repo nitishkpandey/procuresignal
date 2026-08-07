@@ -80,6 +80,31 @@ describe("AuthGate", () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it("reports the field named by a server validation error", async () => {
+    register.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            {
+              loc: ["body", "email"],
+              msg: "value is not a valid email address",
+            },
+          ],
+        },
+      },
+    });
+    render(<AuthGate />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Create one/ }));
+    await userEvent.type(screen.getByLabelText("Company email"), "buyer@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "a-sufficiently-long-password");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("valid company email");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Password");
+  });
+
   it("rejects a malformed email before calling the server", async () => {
     render(<AuthGate />);
 

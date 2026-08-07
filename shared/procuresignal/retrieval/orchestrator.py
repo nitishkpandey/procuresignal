@@ -248,6 +248,15 @@ class RetrievalOrchestrator:
                     False,
                     ("already_completed" if run.status == "completed" else "already_running"),
                 )
+            if (
+                run.status == "running"
+                and run.lease_expires_at is not None
+                and run.lease_expires_at >= now
+            ):
+                # A foreign live lease cannot be reclaimed. Avoid even a conditional
+                # UPDATE: on SQLite it unnecessarily contends with the active writer,
+                # and on Postgres it still takes work and locks for a guaranteed miss.
+                return run, False, "already_running"
             result = await session.execute(
                 update(NewsRetrievalRun)
                 .where(
