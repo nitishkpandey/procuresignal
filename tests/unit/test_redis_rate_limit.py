@@ -7,7 +7,7 @@ stopgap and wrong as a control.
 
 import pytest
 
-from api.rate_limit import RateLimiter, RedisWindow, resolve_backend
+from api.rate_limit import RateLimiter, RedisWindow, close_backend, resolve_backend
 
 
 class FakeRedis:
@@ -25,6 +25,15 @@ class FakeRedis:
         if self.fail:
             raise ConnectionError("redis is down")
         return True
+
+
+class ClosableFakeRedis(FakeRedis):
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class FakePipeline:
@@ -144,6 +153,14 @@ async def test_an_outage_is_visible_rather_than_silent(window: RedisWindow) -> N
     await window.check("k")
 
     assert RATE_LIMIT_BACKEND_ERRORS._value.get() > before
+
+
+async def test_backend_client_is_closed_during_application_shutdown() -> None:
+    client = ClosableFakeRedis()
+
+    await close_backend(client)
+
+    assert client.closed
 
 
 async def test_the_in_process_limiter_still_works_without_redis() -> None:

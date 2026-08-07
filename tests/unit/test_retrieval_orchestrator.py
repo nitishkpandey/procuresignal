@@ -57,8 +57,15 @@ def source(source_id: str, host: str = "same.test") -> SourceDefinition:
 
 @pytest.fixture
 async def maker(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'orchestrator.db'}")
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'orchestrator.db'}",
+        connect_args={"timeout": 30},
+    )
     async with engine.begin() as connection:
+        # This fixture deliberately opens concurrent writers. WAL lets readers and a
+        # writer proceed together, while the busy timeout makes the second writer wait
+        # for the short claim transaction instead of failing nondeterministically.
+        await connection.exec_driver_sql("PRAGMA journal_mode=WAL")
         await connection.run_sync(Base.metadata.create_all)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()

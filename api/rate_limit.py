@@ -216,6 +216,14 @@ registration_window: RedisWindow | None = (
 )
 
 
+async def close_backend(client: Any | None = None) -> None:
+    """Close the Redis connection pool owned by this process."""
+
+    target = _client if client is None else client
+    if target is not None:
+        await target.aclose()
+
+
 async def check_login(key: str) -> int | None:
     """Seconds to wait before this key may attempt sign-in again."""
 

@@ -11,6 +11,7 @@ from procuresignal.config.database import close_db, init_db
 from procuresignal.observability.metrics import METRICS_PATH, MetricsMiddleware, metrics_response
 from starlette.middleware.gzip import GZipMiddleware
 
+from api.rate_limit import close_backend
 from api.routers import (
     articles,
     auth,
@@ -76,7 +77,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if scheduler:
             scheduler.shutdown(wait=False)
 
-        await close_db()
+        try:
+            await close_backend()
+        finally:
+            await close_db()
 
 
 app = FastAPI(

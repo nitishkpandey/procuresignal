@@ -70,6 +70,9 @@ jobs:
         run: poetry run pytest tests/ -v --cov=api --cov=worker --cov=shared --cov-report=xml
         env:
           DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@localhost:5432/procuresignal
+      - name: Verify the shared Redis rate limit
+        run: poetry run pytest tests/integration/test_redis_backend.py -v --no-cov
+        env:
           REDIS_URL: redis://localhost:6379/0
       - name: Upload coverage
         uses: codecov/codecov-action@v3

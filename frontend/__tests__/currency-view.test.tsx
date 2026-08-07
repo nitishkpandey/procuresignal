@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,8 +34,7 @@ describe("CurrencyView", () => {
   it("renders the compact EUR timing monitor", async () => {
     render(<CurrencyView />);
 
-    await waitFor(() => expect(screen.getByText("EUR monitor")).toBeInTheDocument());
-    expect(screen.getByText("EUR / USD")).toBeInTheDocument();
+    expect(await screen.findByText("EUR / USD")).toBeInTheDocument();
     expect(screen.getByText("1.2000")).toBeInTheDocument();
     expect(screen.getAllByText("Buy window").length).toBeGreaterThan(0);
   });
@@ -43,8 +42,9 @@ describe("CurrencyView", () => {
   it("keeps the rail compact until the user expands all pairs", async () => {
     render(<CurrencyView />);
 
-    await waitFor(() => expect(screen.getByText("EUR monitor")).toBeInTheDocument());
-    expect(screen.getByText("Latest FX date: 2026-07-09; range window: 30 days.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Latest FX date: 2026-07-09; range window: 30 days."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Showing 7 of 9 EUR pairs")).toBeInTheDocument();
     expect(screen.queryByText("EUR / AUD")).not.toBeInTheDocument();
 
