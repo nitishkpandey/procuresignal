@@ -24,4 +24,5 @@ __all__ = [
     "risk_events",
     "signals",
     "suppliers",
+    "watchlists",
 ]

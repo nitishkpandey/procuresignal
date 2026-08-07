@@ -23,6 +23,7 @@ from api.routers import (
     risk_events,
     signals,
     suppliers,
+    watchlists,
 )
 from api.scheduler import create_scheduler, scheduler_enabled
 
@@ -110,6 +111,7 @@ app.include_router(articles.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
+app.include_router(watchlists.router)
 
 
 @app.get(METRICS_PATH, include_in_schema=False)
