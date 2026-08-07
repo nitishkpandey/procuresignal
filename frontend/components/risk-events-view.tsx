@@ -15,7 +15,7 @@ import { useUserStore } from "@/store/user";
 
 export function RiskEventsView() {
   const language = useUserStore((s) => s.platformLanguage);
-  const risks = useApi(() => getRiskEvents({ language, limit: 50 }), [language]);
+  const risks = useApi(() => getRiskEvents({ language, limit: 50 }), `risks:${language}`);
   const events = useMemo(() => risks.data?.events ?? [], [risks.data?.events]);
   const totalCount = risks.data?.total_count ?? events.length;
 

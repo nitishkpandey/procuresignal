@@ -13,6 +13,12 @@ import type { Conversation } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 
 export function ChatView() {
+  const userId = useUserStore((s) => s.user?.user_id ?? "anonymous");
+
+  return <ChatWorkspace key={userId} />;
+}
+
+function ChatWorkspace() {
   const language = useUserStore((s) => s.platformLanguage);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -22,8 +28,6 @@ export function ChatView() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
     listConversations()
       .then((res) => {
         if (!active) return;
@@ -32,7 +36,11 @@ export function ChatView() {
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : t(language, "chat.loadFailed"));
+        setError(
+          err instanceof Error
+            ? err.message
+            : t(useUserStore.getState().platformLanguage, "chat.loadFailed"),
+        );
         setConversations([]);
         setActiveId(null);
       })
@@ -42,7 +50,7 @@ export function ChatView() {
     return () => {
       active = false;
     };
-  }, [language]);
+  }, []);
 
   const reload = async () => {
     setLoading(true);

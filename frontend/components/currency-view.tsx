@@ -35,7 +35,10 @@ export function CurrencyView() {
 export function CurrencyRail({ className = "" }: { className?: string }) {
   const language = useUserStore((s) => s.platformLanguage);
   const [expanded, setExpanded] = useState(false);
-  const { data, loading, error } = useApi(() => getCurrencyMonitor({ days: 30 }), []);
+  const { data, loading, error } = useApi(
+    () => getCurrencyMonitor({ days: 30 }),
+    "currency:30",
+  );
   const currencies = useMemo(() => data?.currencies ?? [], [data?.currencies]);
   const sortedCurrencies = useMemo(() => sortBySignalStrength(currencies), [currencies]);
   const visibleCurrencies = expanded

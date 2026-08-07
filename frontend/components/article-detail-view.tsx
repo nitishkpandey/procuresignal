@@ -16,7 +16,7 @@ export function ArticleDetailView({ id }: { id: number }) {
   const language = useUserStore((s) => s.platformLanguage);
   const { data, loading, error } = useApi(
     () => getArticle(id, { language }),
-    [id, language],
+    JSON.stringify(["article", id, language]),
   );
 
   if (loading) return <Spinner label={t(language, "article.loading")} />;

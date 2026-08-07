@@ -1,34 +1,51 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useApi<T>(fn: () => Promise<T>, deps: unknown[]) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type RequestState<T> = {
+  key: string;
+  data: T | null;
+  error: string | null;
+};
+
+export function useApi<T>(fn: () => Promise<T>, requestKey: string) {
+  const [state, setState] = useState<RequestState<T>>({ key: "", data: null, error: null });
   const [nonce, setNonce] = useState(0);
+  const request = useRef(fn);
+  const currentKey = `${requestKey}:${nonce}`;
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
+    request.current = fn;
+  }, [fn]);
+
+  useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
-    fn()
+    request
+      .current()
       .then((res) => {
-        if (active) setData(res);
+        if (active) setState({ key: currentKey, data: res, error: null });
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : "Request failed");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setState({
+            key: currentKey,
+            data: null,
+            error: err instanceof Error ? err.message : "Request failed",
+          });
+        }
       });
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
+  }, [currentKey]);
 
-  return { data, loading, error, reload };
+  const current = state.key === currentKey;
+  return {
+    data: current ? state.data : null,
+    loading: !current,
+    error: current ? state.error : null,
+    reload,
+  };
 }

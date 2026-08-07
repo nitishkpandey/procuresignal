@@ -66,6 +66,11 @@ export function emptyPreferences(userId: string, platformLanguage = "en"): Prefe
 
 export function PreferenceForm() {
   const user = useUserStore((s) => s.user);
+
+  return <PreferenceFormForUser key={user?.user_id ?? "anonymous"} userId={user?.user_id ?? ""} />;
+}
+
+function PreferenceFormForUser({ userId }: { userId: string }) {
   const language = useUserStore((s) => s.platformLanguage);
   const setPlatformLanguage = useUserStore((s) => s.setPlatformLanguage);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
@@ -74,12 +79,10 @@ export function PreferenceForm() {
 
   useEffect(() => {
     let active = true;
-    setPrefs(null);
-    setLoadError(null);
     getPreferences()
       .then((p) => {
         if (!active) return;
-        const next = p ?? emptyPreferences(user?.user_id ?? "", useUserStore.getState().platformLanguage);
+        const next = p ?? emptyPreferences(userId, useUserStore.getState().platformLanguage);
         setPrefs(next);
         setPlatformLanguage(next.platform_language || "en");
       })
@@ -94,7 +97,7 @@ export function PreferenceForm() {
     return () => {
       active = false;
     };
-  }, [setPlatformLanguage, user]);
+  }, [setPlatformLanguage, userId]);
 
   const reload = async () => {
     setPrefs(null);
@@ -102,7 +105,7 @@ export function PreferenceForm() {
     setStatus(null);
     try {
       const next = await getPreferences();
-      const loaded = next ?? emptyPreferences(user?.user_id ?? "", useUserStore.getState().platformLanguage);
+      const loaded = next ?? emptyPreferences(userId, useUserStore.getState().platformLanguage);
       setPrefs(loaded);
       setPlatformLanguage(loaded.platform_language || "en");
     } catch (err) {

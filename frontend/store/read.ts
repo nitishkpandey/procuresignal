@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { getSafeLocalStorage } from "@/lib/storage";
 
 interface ReadState {
   ids: number[];
@@ -15,6 +17,9 @@ export const useReadStore = create<ReadState>()(
       markRead: (id: number) =>
         set(get().ids.includes(id) ? {} : { ids: [...get().ids, id] }),
     }),
-    { name: "procuresignal-read" },
+    {
+      name: "procuresignal-read",
+      storage: createJSONStorage(getSafeLocalStorage),
+    },
   ),
 );
