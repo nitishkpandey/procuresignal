@@ -104,3 +104,36 @@ async def test_audit_rows_are_only_ever_inserted(async_session: AsyncSession, ac
     await async_session.flush()
 
     assert len(await _rows(async_session)) == 2
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "auth failed for password=hunter2",
+        "connect error: api_key: sk-live-abc123",
+        "rejected token=eyJhbGciOi",
+        "AUTHORIZATION = Bearer abc",
+    ],
+)
+def test_credentials_quoted_inside_a_message_are_masked(message: str) -> None:
+    """The key-based scrubber cannot see these: the secret is in the value.
+
+    Driver and transport errors echo configuration back, and those messages are read
+    by whoever is on call and stored in the outbox.
+    """
+    from procuresignal.auth.audit import redact_secrets_in_text
+
+    redacted = redact_secrets_in_text(message)
+
+    for secret in ("hunter2", "sk-live-abc123", "eyJhbGciOi", "abc"):
+        if secret in message:
+            assert secret not in redacted
+    assert "[redacted]" in redacted
+
+
+def test_ordinary_messages_are_left_alone() -> None:
+    message = "connection refused to postgres:5432 after 3 attempts"
+
+    from procuresignal.auth.audit import redact_secrets_in_text
+
+    assert redact_secrets_in_text(message) == message

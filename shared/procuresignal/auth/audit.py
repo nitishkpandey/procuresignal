@@ -1,5 +1,6 @@
 """Append-only audit writer."""
 
+import re
 from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,28 @@ _SENSITIVE_KEY_PARTS = (
     "apikey",
     "credential",
 )
+
+
+# Credentials embedded in free text, as "password=hunter2" or "api_key: sk-live-x".
+# The key-based scrubber below cannot see these: the sensitive name is inside the
+# value, not the key holding it.
+# The optional scheme matters: "Authorization: Bearer <token>" puts the secret in the
+# second word, so stopping at the first would mask the scheme and leak the token.
+_INLINE_SECRET = re.compile(
+    r"\b(" + "|".join(_SENSITIVE_KEY_PARTS) + r")\b\s*[:=]\s*"
+    r"(?:bearer|basic|token|digest)?\s*\S+",
+    re.IGNORECASE,
+)
+
+
+def redact_secrets_in_text(text: str) -> str:
+    """Mask credentials quoted inside a message.
+
+    Transport and driver errors routinely echo configuration back — "auth failed for
+    password=hunter2" — and whoever is on call reads those messages.
+    """
+
+    return _INLINE_SECRET.sub(lambda m: f"{m.group(1)}=[redacted]", text or "")
 
 
 def _is_sensitive(key: str) -> bool:
