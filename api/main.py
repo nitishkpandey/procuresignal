@@ -19,6 +19,7 @@ from api.routers import (
     currency,
     feed,
     health,
+    notifications,
     preferences,
     risk_events,
     signals,
@@ -112,6 +113,7 @@ app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
 app.include_router(watchlists.router)
+app.include_router(notifications.router)
 
 
 @app.get(METRICS_PATH, include_in_schema=False)

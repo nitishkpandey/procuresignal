@@ -20,6 +20,7 @@ __all__ = [
     "currency",
     "feed",
     "health",
+    "notifications",
     "preferences",
     "risk_events",
     "signals",

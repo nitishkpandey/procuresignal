@@ -64,9 +64,7 @@ def upgrade() -> None:
             name="uq_notification_idempotency",
         ),
     )
-    op.create_index(
-        "idx_notification_recipient", "notifications", ["recipient_user_id", "read_at"]
-    )
+    op.create_index("idx_notification_recipient", "notifications", ["recipient_user_id", "read_at"])
     op.create_index("idx_notification_status", "notifications", ["status"])
 
 
