@@ -13,11 +13,15 @@ from procuresignal.config.database import session_scope
 from procuresignal.enrichment import EnrichmentPipeline, EnrichmentPolicy, OpenAILLMClient
 from procuresignal.jobs import RetentionPolicy, prune_expired_records
 from procuresignal.jobs.dead_letter import record_dead_letter
-from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsPreference
+from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, RiskEvent, UserNewsPreference
 from procuresignal.normalization import ArticleNormalizer
+from procuresignal.notifications.outbox import enqueue_matches, pending_notifications
+from procuresignal.notifications.rules import evaluate_rules
+from procuresignal.notifications.transports.in_app import InAppTransport, deliver_pending
 from procuresignal.observability.metrics import (
     record_dead_letter_metric,
     record_llm_call,
+    record_outbox_depth,
     record_pipeline_success,
     record_retrieval,
 )
@@ -639,6 +643,85 @@ def resolve_supplier_identity_task(self: Any) -> dict[str, Any]:
                 "registry_coverage": round(summary.coverage, 4),
                 "preferences_updated": summary.preferences_updated,
                 "risk_events_updated": summary.risk_events_updated,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.evaluate_alert_rules_task",
+    bind=True,
+    max_retries=2,
+    queue="personalization",
+    time_limit=1800,
+)
+def evaluate_alert_rules_task(self: Any) -> dict[str, Any]:
+    """Match recent risk events against alert rules and queue what they owe.
+
+    Separate from delivery on purpose: a transport outage must not stop rules being
+    evaluated, and the queued alerts survive it.
+    """
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            cutoff = datetime.utcnow() - timedelta(days=1)
+            events = (
+                (
+                    await session.execute(
+                        select(RiskEvent)
+                        .where(RiskEvent.created_at >= cutoff)
+                        .order_by(RiskEvent.id)
+                        .limit(1000)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            matches = await evaluate_rules(session, events=list(events))
+            queued = await enqueue_matches(session, matches=matches)
+            await session.commit()
+
+            record_pipeline_success("alert_evaluation")
+            return {
+                "status": "success",
+                "events_considered": len(events),
+                "rules_matched": len(matches),
+                "notifications_queued": queued,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.deliver_notifications_task",
+    bind=True,
+    max_retries=2,
+    queue="personalization",
+    time_limit=1800,
+)
+def deliver_notifications_task(self: Any) -> dict[str, Any]:
+    """Drain the outbox.
+
+    Separate from evaluation so a slow rule cannot delay alerts already owed. The
+    remaining depth is published, because a drain that stalls leaves everything else
+    looking healthy.
+    """
+
+    async def _run() -> dict[str, Any]:
+        async with session_scope() as session:
+            delivered = await deliver_pending(session, transport=InAppTransport())
+            await session.commit()
+
+            still_pending = len(await pending_notifications(session))
+            record_outbox_depth(still_pending)
+            record_pipeline_success("notification_delivery")
+            return {
+                "status": "success",
+                "delivered": delivered,
+                "pending": still_pending,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

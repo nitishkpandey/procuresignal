@@ -112,6 +112,14 @@ SANCTIONS_SCREENING = Counter(
     ["outcome"],
 )
 
+# A drain that stalls leaves alerts queued while every other signal looks healthy,
+# which is the quiet version of not alerting at all.
+NOTIFICATIONS_PENDING = Gauge(
+    f"{NAMESPACE}_notifications_pending",
+    "Alerts queued in the outbox and not yet delivered.",
+    multiprocess_mode="max",
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -157,6 +165,10 @@ def record_rate_limit_backend_error() -> None:
 def record_screening(outcome: str, count: int = 1) -> None:
     if count:
         SANCTIONS_SCREENING.labels(outcome=outcome).inc(count)
+
+
+def record_outbox_depth(pending: int) -> None:
+    NOTIFICATIONS_PENDING.set(pending)
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:
@@ -225,6 +237,8 @@ __all__ = [
     "record_budget_refusal",
     "record_rate_limit_backend_error",
     "record_screening",
+    "NOTIFICATIONS_PENDING",
+    "record_outbox_depth",
     "start_worker_metrics_server",
 ]
 

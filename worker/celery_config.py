@@ -50,6 +50,14 @@ CELERY_TASK_ROUTES = {
         "queue": "personalization",
         "routing_key": "personalization",
     },
+    "worker.tasks.evaluate_alert_rules_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
+    "worker.tasks.deliver_notifications_task": {
+        "queue": "personalization",
+        "routing_key": "personalization",
+    },
     "worker.tasks.personalize_feeds_task": {
         "queue": "personalization",
         "routing_key": "personalization",
@@ -90,6 +98,19 @@ CELERY_BEAT_SCHEDULE = {
     "generate-risk-events-hourly": {
         "task": "worker.tasks.generate_risk_events_task",
         "schedule": crontab(minute=50, hour="*"),
+        "options": {"queue": "personalization"},
+    },
+    "evaluate-alert-rules-hourly": {
+        # After risk events are generated at :50, since rules read what that produces.
+        "task": "worker.tasks.evaluate_alert_rules_task",
+        "schedule": crontab(minute=55, hour="*"),
+        "options": {"queue": "personalization"},
+    },
+    "deliver-notifications-every-five-minutes": {
+        # More often than evaluation: alerts already owed should not wait an hour for
+        # the next evaluation cycle to carry them out.
+        "task": "worker.tasks.deliver_notifications_task",
+        "schedule": crontab(minute="*/5"),
         "options": {"queue": "personalization"},
     },
     "personalize-feeds-every-hour": {

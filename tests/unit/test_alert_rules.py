@@ -129,6 +129,7 @@ def test_the_alerts_cover_every_failure_this_phase_names() -> None:
         "TasksDeadLettering",
         "LlmBudgetExhausted",
         "SanctionsScreeningUnplaced",
+        "NotificationsNotDraining",
     ):
         assert expected in alerts
 
@@ -185,6 +186,7 @@ def test_every_label_selector_uses_a_label_the_metric_declares(rule: dict) -> No
             metrics_module.DEAD_LETTERS,
             metrics_module.LLM_BUDGET_REFUSALS,
             metrics_module.SANCTIONS_SCREENING,
+            metrics_module.NOTIFICATIONS_PENDING,
         )
     }
 
