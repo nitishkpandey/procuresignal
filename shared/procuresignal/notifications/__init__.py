@@ -1,5 +1,6 @@
 """Alerting: rules, and later the outbox and its transports."""
 
+from .digest import Digest, DigestItem, DigestSection, build_digest, render_text
 from .rules import (
     SEVERITY_ORDER,
     AlertRuleError,
@@ -18,4 +19,9 @@ __all__ = [
     "create_alert_rule",
     "AlertRuleError",
     "DuplicateAlertRuleError",
+    "Digest",
+    "DigestItem",
+    "DigestSection",
+    "build_digest",
+    "render_text",
 ]
