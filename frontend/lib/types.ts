@@ -165,3 +165,46 @@ export interface AuthUser {
   organization_name: string;
   role: string;
 }
+
+export interface WatchedSupplier {
+  public_id: string;
+  canonical_name: string;
+  country?: string | null;
+}
+
+export interface WatchlistSummary {
+  public_id: string;
+  name: string;
+  supplier_count: number;
+  created_at?: string;
+}
+
+export interface WatchlistDetail {
+  public_id: string;
+  name: string;
+  suppliers: WatchedSupplier[];
+  created_at?: string;
+}
+
+export interface WatchlistListResponse {
+  items: WatchlistSummary[];
+  total_count: number;
+}
+
+export interface NotificationItem {
+  public_id: string;
+  subject: string;
+  body: string;
+  rule_name?: string | null;
+  risk_type?: string | null;
+  severity?: string | null;
+  supplier_public_ids: string[];
+  delivered_at?: string | null;
+  read_at?: string | null;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  total_count: number;
+  unread_count: number;
+}

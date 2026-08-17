@@ -15,6 +15,11 @@ import type {
   RiskEventResponse,
   RiskEventStatus,
   SearchResponse,
+  NotificationListResponse,
+  WatchlistDetail,
+  WatchlistListResponse,
+  WatchlistSummary,
+  WatchedSupplier,
 } from "@/lib/types";
 
 export function apiBaseUrl(): string {
@@ -144,4 +149,41 @@ export async function clearConversationHistory(): Promise<ClearHistoryResponse> 
 export async function getMessages(conversationId: string): Promise<MessageListResponse> {
   const { data } = await client.get(`/api/conversations/${conversationId}/messages`);
   return data;
+}
+
+export async function getWatchlists(): Promise<WatchlistListResponse> {
+  const { data } = await client.get("/api/watchlists");
+  return data;
+}
+
+export async function getWatchlist(publicId: string): Promise<WatchlistDetail> {
+  const { data } = await client.get(`/api/watchlists/${publicId}`);
+  return data;
+}
+
+export async function createWatchlist(name: string): Promise<WatchlistSummary> {
+  const { data } = await client.post("/api/watchlists", { name });
+  return data;
+}
+
+export async function unwatchSupplier(publicId: string, supplierId: string): Promise<void> {
+  await client.delete(`/api/watchlists/${publicId}/suppliers/${supplierId}`);
+}
+
+export async function getNotifications(): Promise<NotificationListResponse> {
+  const { data } = await client.get("/api/notifications");
+  return data;
+}
+
+export async function markNotificationRead(publicId: string): Promise<void> {
+  await client.post(`/api/notifications/${publicId}/read`);
+}
+
+export async function searchSuppliers(q: string): Promise<{ items: WatchedSupplier[] }> {
+  const { data } = await client.get("/api/suppliers", { params: { q, limit: 10 } });
+  return data;
+}
+
+export async function watchSupplier(publicId: string, supplierId: string): Promise<void> {
+  await client.post(`/api/watchlists/${publicId}/suppliers/${supplierId}`);
 }

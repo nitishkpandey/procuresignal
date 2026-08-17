@@ -207,8 +207,9 @@ Phase 4 precedes Phase 5. Watchlists, alerts and a morning briefing express the
 procurement value of this product more directly than semantic search does; sequencing 5
 first optimised for what was unblocked rather than for what is worth having.
 
-1. Correct 3a. 2. 3b (done). 3. Real browser end-to-end testing. 4. Phase 4 core against
-an in-app and test transport. 5. Phase 5. 6. Phase 6 on top of a tested notification and
+1. Correct 3a. 2. 3b (done). 3. Real browser end-to-end testing. 4. Phase 4 (done: eight
+tasks, in-app transport, digest generation, watchlist and notification UI; email waits on
+SMTP credentials). 5. Phase 5. 6. Phase 6 on top of a tested notification and
 evaluation layer. 7. Phases 7–9.
 
 Dead-code and DRY checks run continuously alongside each phase; Phase 9 is the final

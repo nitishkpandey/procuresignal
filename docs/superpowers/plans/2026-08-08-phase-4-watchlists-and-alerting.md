@@ -212,7 +212,7 @@ the one that says something did.
 Tests synchronise on loaded content, never on an element present during loading — the race that
 turned CI red twice.
 
-- [ ] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
+- [x] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
 
 ---
 

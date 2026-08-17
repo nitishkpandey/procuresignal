@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { NotificationBell } from "@/components/notification-bell";
 import { updatePlatformLanguage } from "@/lib/api";
 import { LANGUAGE_OPTIONS, t, type TranslationKey } from "@/lib/i18n";
 import { useUserStore } from "@/store/user";
@@ -11,6 +12,7 @@ import { useUserStore } from "@/store/user";
 const NAV = [
   { href: "/", labelKey: "nav.feed" },
   { href: "/risk-events", labelKey: "nav.risks" },
+  { href: "/watchlists", labelKey: "nav.watchlists" },
   { href: "/preferences", labelKey: "nav.preferences" },
   { href: "/chat", labelKey: "nav.chat" },
 ] satisfies { href: string; labelKey: TranslationKey }[];
@@ -80,6 +82,7 @@ export function Header() {
               </option>
             ))}
           </select>
+          {user ? <NotificationBell /> : null}
           <span className="max-w-[220px] truncate font-medium text-slate-800">{user?.email}</span>
           <button
             type="button"
