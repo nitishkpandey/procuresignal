@@ -121,11 +121,11 @@ title entirely. Language configuration is per article language where known, `sim
 The SQLite path keeps the existing ILIKE behaviour so development and the non-Postgres suite work,
 and a test pins that both paths return the same *ordering* on a shared fixture where they agree.
 
-- [ ] Step 1: Failing unit tests — tsquery escaping, phrase, exclusion, empty and punctuation-only
-- [ ] Step 2: Failing Postgres tests — stemming, title weighting, proximity, index is used
+- [x] Step 1: Failing unit tests — tsquery escaping, phrase, exclusion, empty and punctuation-only
+- [x] Step 2: Failing Postgres tests — stemming, title weighting, proximity, index is used
       (`EXPLAIN` shows a bitmap index scan, not a sequential scan)
-- [ ] Step 3: Migration and implementation
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 3: Migration and implementation
+- [x] Step 4: Full gate, commit, push
 
 ---
 
