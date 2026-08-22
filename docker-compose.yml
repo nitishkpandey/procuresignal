@@ -1,7 +1,9 @@
 
 services:
   postgres:
-    image: postgres:15-alpine
+    # Must match CI: the migration chain enables the vector extension, and the stock
+    # image cannot, so a dev database on postgres:15-alpine cannot be migrated at all.
+    image: pgvector/pgvector:pg15
     container_name: procuresignal-postgres
     environment:
       POSTGRES_USER: procuresignal

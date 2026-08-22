@@ -49,6 +49,44 @@ def test_postgres_healthcheck_uses_the_configured_database_user() -> None:
     assert "pg_isready -U procuresignal" in options
 
 
+def test_ci_postgres_can_provide_pgvector() -> None:
+    """The stock image has no vector extension, so every migration run would fail at
+    q2r3s4_pgvector — after the rest of the chain had already applied."""
+
+    image = _ci_workflow()["jobs"]["test"]["services"]["postgres"]["image"]
+    assert image.startswith("pgvector/pgvector:"), image
+
+
+def test_ci_runs_the_postgres_suite_and_cannot_skip_it() -> None:
+    """CI ran a Postgres service for four phases that no test ever connected to.
+
+    Everything passed on SQLite, including six Alembic revision identifiers too long for
+    the VARCHAR(32) version column — a chain that could not be applied to the only
+    database that ships. Running the suite is not enough on its own: without
+    REQUIRE_POSTGRES the tests skip on a misconfigured runner and the job still goes
+    green, which is the same blindness with extra steps.
+    """
+
+    steps = _ci_workflow()["jobs"]["test"]["steps"]
+    postgres_steps = [step for step in steps if "tests/postgres" in step.get("run", "")]
+
+    assert postgres_steps, "nothing runs tests/postgres: the Postgres service is decorative"
+    for step in postgres_steps:
+        env = step.get("env", {})
+        assert str(env.get("REQUIRE_POSTGRES")) == "1", "a skip would pass this job"
+        assert "TEST_DATABASE_URL" in env
+
+
+def test_dev_and_ci_agree_on_the_postgres_image() -> None:
+    """A dev database that cannot run the migrations is a workstation that cannot run
+    the app, discovered at the first `alembic upgrade` rather than at review."""
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    ci_image = _ci_workflow()["jobs"]["test"]["services"]["postgres"]["image"]
+
+    assert compose["services"]["postgres"]["image"] == ci_image
+
+
 def test_frontend_is_verified_in_ci() -> None:
     """The 72 frontend tests existed for months without ever running on a push.
 
