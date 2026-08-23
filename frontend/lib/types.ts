@@ -252,3 +252,51 @@ export interface NotificationListResponse {
   total_count: number;
   unread_count: number;
 }
+
+/** Which retrievers or reasoning steps produced a run. `failed` runs carry a reason. */
+export type AnalysisStatus = "running" | "completed" | "failed";
+
+export type RecommendationStatus = "proposed" | "approved" | "rejected";
+
+export interface AnalysisRecommendation {
+  ordinal: number;
+  title: string;
+  rationale: string;
+  /** Risk event keys that survived verification against what the tools actually
+   * returned. A recommendation is never shown without them. */
+  evidence_event_keys: string[];
+  status: RecommendationStatus;
+  decided_at: string | null;
+  decision_note: string | null;
+}
+
+export interface AnalysisStep {
+  ordinal: number;
+  kind: string;
+  tool_name: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface AnalysisSummary {
+  public_id: string;
+  supplier_public_id: string;
+  status: AnalysisStatus;
+  model: string;
+  step_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  started_at: string;
+  finished_at: string | null;
+  failure_reason: string | null;
+  recommendation_count: number;
+}
+
+export interface AnalysisDetail extends AnalysisSummary {
+  steps: AnalysisStep[];
+  recommendations: AnalysisRecommendation[];
+}
+
+export interface AnalysisListResponse {
+  items: AnalysisSummary[];
+  total: number;
+}

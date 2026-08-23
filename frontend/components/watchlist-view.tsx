@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { ImpactBadge } from "@/components/impact-badge";
@@ -11,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   createWatchlist,
   getImpact,
+  runAnalysis,
   getWatchlist,
   getWatchlists,
   searchSuppliers,
@@ -52,6 +54,23 @@ export function WatchlistView() {
   // already scores every watched supplier, and a request per row would be N+1 over a
   // list a buyer scrolls.
   const impact = useApi(() => getImpact(), "impact");
+  // Which supplier is mid-analysis, so the row can say so. Runs are synchronous and
+  // take several seconds; a button that looks idle invites a second click and a second
+  // bill.
+  const [analysing, setAnalysing] = useState<string | null>(null);
+  const [analysed, setAnalysed] = useState<Set<string>>(new Set());
+
+  // A link rather than a redirect: the buyer asked about one supplier on a list they
+  // were working through, and moving them off the page mid-task is not a kindness.
+  const analyse = async (supplierId: string) => {
+    setAnalysing(supplierId);
+    try {
+      await runAnalysis(supplierId);
+      setAnalysed((current) => new Set(current).add(supplierId));
+    } finally {
+      setAnalysing(null);
+    }
+  };
   const impactBySupplier = useMemo(
     () => new Map((impact.data?.items ?? []).map((item) => [item.supplier_public_id, item])),
     [impact.data?.items],
@@ -246,6 +265,23 @@ export function WatchlistView() {
                           ) : null}
                           {supplier.country ? (
                             <span className="text-xs text-slate-500">{supplier.country}</span>
+                          ) : null}
+                          <button
+                            type="button"
+                            aria-label={`Analyse ${supplier.canonical_name}`}
+                            disabled={analysing !== null}
+                            onClick={() => void analyse(supplier.public_id)}
+                            className="text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-slate-900 disabled:opacity-50"
+                          >
+                            {analysing === supplier.public_id ? "Analysing…" : "Analyse"}
+                          </button>
+                          {analysed.has(supplier.public_id) ? (
+                            <Link
+                              href="/analyses"
+                              className="text-xs font-medium text-slate-900 underline underline-offset-2"
+                            >
+                              View analysis
+                            </Link>
                           ) : null}
                           <button
                             type="button"

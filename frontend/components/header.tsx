@@ -14,6 +14,7 @@ const NAV = [
   { href: "/search", labelKey: "nav.search" },
   { href: "/risk-events", labelKey: "nav.risks" },
   { href: "/watchlists", labelKey: "nav.watchlists" },
+  { href: "/analyses", labelKey: "nav.analyses" },
   { href: "/preferences", labelKey: "nav.preferences" },
   { href: "/chat", labelKey: "nav.chat" },
 ] satisfies { href: string; labelKey: TranslationKey }[];

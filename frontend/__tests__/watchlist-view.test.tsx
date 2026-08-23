@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ vi.mock("@/lib/api", () => ({
   createWatchlist: vi.fn(),
   unwatchSupplier: vi.fn(),
   getImpact: vi.fn(),
+  runAnalysis: vi.fn(),
 }));
 
 import { WatchlistView } from "@/components/watchlist-view";
@@ -17,6 +18,7 @@ import { useUserStore } from "@/store/user";
 import { authUser } from "./helpers";
 
 beforeEach(() => {
+  vi.clearAllMocks();
   localStorage.clear();
   useUserStore.setState({ user: authUser(), platformLanguage: "en" });
   vi.mocked(api.getWatchlists).mockResolvedValue({
@@ -25,6 +27,19 @@ beforeEach(() => {
       { public_id: "wl-2", name: "Logistics", supplier_count: 0 },
     ],
     total_count: 2,
+  });
+  vi.mocked(api.runAnalysis).mockResolvedValue({
+    public_id: "run-1",
+    supplier_public_id: "s-1",
+    status: "completed",
+    model: "gpt-5.4-mini",
+    step_count: 4,
+    prompt_tokens: 100,
+    completion_tokens: 50,
+    started_at: "2026-08-23T09:00:00Z",
+    finished_at: "2026-08-23T09:00:12Z",
+    failure_reason: null,
+    recommendation_count: 1,
   });
   vi.mocked(api.getImpact).mockResolvedValue({
     items: [
@@ -150,5 +165,32 @@ describe("WatchlistView impact", () => {
     await userEvent.click(await screen.findByText("Why"));
 
     expect(await screen.findByText(/filed for protection from creditors/i)).toBeInTheDocument();
+  });
+});
+
+describe("WatchlistView analysis trigger", () => {
+  it("starts an analysis from the supplier the buyer is looking at", async () => {
+    // The trigger lives where the exposure already is, beside the impact badge, because
+    // that is the moment somebody wants it.
+    render(<WatchlistView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Tier 1/ }));
+    await screen.findByText("Siemens AG");
+
+    await userEvent.click(screen.getByRole("button", { name: /Analyse Siemens AG/i }));
+
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalledWith("s-1"));
+    expect(await screen.findByRole("link", { name: /view analysis/i })).toBeInTheDocument();
+  });
+
+  it("does not let a second click bill for a second run", async () => {
+    render(<WatchlistView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Tier 1/ }));
+    await screen.findByText("Siemens AG");
+    const button = screen.getByRole("button", { name: /Analyse Siemens AG/i });
+
+    await userEvent.click(button);
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalledTimes(1));
   });
 });

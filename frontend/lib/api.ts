@@ -18,6 +18,10 @@ import type {
   SearchResponse,
   ImpactListResponse,
   SupplierImpact,
+  AnalysisDetail,
+  AnalysisListResponse,
+  AnalysisRecommendation,
+  AnalysisSummary,
   NotificationListResponse,
   WatchlistDetail,
   WatchlistListResponse,
@@ -69,6 +73,36 @@ export async function search(
  */
 export async function sendSearchFeedback(payload: SearchFeedbackPayload): Promise<void> {
   await client.post("/api/search/feedback", payload);
+}
+
+export async function runAnalysis(supplierPublicId: string): Promise<AnalysisSummary> {
+  const { data } = await client.post("/api/analyses", {
+    supplier_public_id: supplierPublicId,
+  });
+  return data;
+}
+
+export async function getAnalyses(): Promise<AnalysisListResponse> {
+  const { data } = await client.get("/api/analyses");
+  return data;
+}
+
+export async function getAnalysis(publicId: string): Promise<AnalysisDetail> {
+  const { data } = await client.get(`/api/analyses/${publicId}`);
+  return data;
+}
+
+export async function decideRecommendation(
+  publicId: string,
+  ordinal: number,
+  decision: "approve" | "reject",
+  note: string,
+): Promise<AnalysisRecommendation> {
+  const { data } = await client.post(
+    `/api/analyses/${publicId}/recommendations/${ordinal}/${decision}`,
+    { note },
+  );
+  return data;
 }
 
 export async function getImpact(): Promise<ImpactListResponse> {

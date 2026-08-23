@@ -290,7 +290,7 @@ Tests synchronise on loaded content, never on markup present during loading, and
 `vi.clearAllMocks()` runs in `beforeEach` — this project's vitest config does not clear mocks
 between tests, which silently makes "was never called" assertions order-dependent.
 
-- [ ] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
+- [x] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
 
 ---
 

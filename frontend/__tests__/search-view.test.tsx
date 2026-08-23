@@ -79,14 +79,17 @@ describe("SearchView", () => {
 
     // Asserted on the notice specifically: the page subtitle also says "keyword", and a
     // looser matcher would pass with the notice missing entirely.
-    expect(await screen.findByRole("status")).toHaveTextContent(/keyword matching only/i);
+    expect(await screen.findByText(/keyword matching only/i)).toBeInTheDocument();
   });
 
   it("does not claim keyword-only when both retrievers ran", async () => {
     await searchFor();
 
     await screen.findByText(/Rotterdam port strike enters second week/);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Not queryByRole("status") — Spinner claims that role, so the assertion would be
+    // about the loading state rather than about the mode notice.
+    expect(screen.queryByText(/keyword matching only/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/semantic search is unavailable/i)).not.toBeInTheDocument();
   });
 
   it("warns when the semantic half was supposed to run and did not", async () => {
@@ -96,7 +99,7 @@ describe("SearchView", () => {
 
     await searchFor();
 
-    expect(await screen.findByRole("status")).toHaveTextContent(/unavailable/i);
+    expect(await screen.findByText(/semantic search is unavailable/i)).toBeInTheDocument();
   });
 
   it("records a click on the result the user opened, with its position", async () => {
