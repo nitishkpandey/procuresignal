@@ -232,9 +232,9 @@ Storing the raw query text is a GDPR-relevant decision, not an incidental one: i
 content tied to an identified person, so it is in scope for Phase 7's erasure path and is recorded
 as such in that phase's inventory now rather than discovered later.
 
-- [ ] Step 1: Failing tests — capture, dedupe, cross-tenant isolation, unknown article rejected
-- [ ] Step 2: Model, migration, endpoints, audit on write
-- [ ] Step 3: Full gate, commit, push
+- [x] Step 1: Failing tests — capture, dedupe, cross-tenant isolation, unknown article rejected
+- [x] Step 2: Model, migration, endpoints, audit on write
+- [x] Step 3: Full gate, commit, push
 
 ---
 
