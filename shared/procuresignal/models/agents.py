@@ -18,8 +18,10 @@ from .base import BaseModel
 
 # A run is either still going, finished cleanly, or stopped for a reason worth recording.
 RUN_STATUSES = ("running", "completed", "failed")
-# The three things that can happen in a turn of the loop.
-STEP_KINDS = ("model_message", "tool_call", "tool_result")
+# What can happen in a turn of the loop, plus the verification that runs after it.
+# `evidence_check` records which citations survived and which were invented — a fact
+# about the run that belongs in the transcript rather than in a log nobody kept.
+STEP_KINDS = ("model_message", "tool_call", "tool_result", "evidence_check")
 # `proposed` is the only state the loop may create. The model never approves anything,
 # including its own output.
 RECOMMENDATION_STATUSES = ("proposed", "approved", "rejected")

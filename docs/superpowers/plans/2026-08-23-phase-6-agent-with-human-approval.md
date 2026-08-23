@@ -212,15 +212,15 @@ unverifiable citations are dropped and the drop is recorded on the run.
 That last rule is the whole point. A fabricated citation is the characteristic failure of this
 class of system, and it is exactly the failure a procurement audit would catch first.
 
-- [ ] Step 1: Failing tests — every tool is read-only and refuses an organization id in its
+- [x] Step 1: Failing tests — every tool is read-only and refuses an organization id in its
       arguments; results are truncated; dispatch of an unknown tool raises
-- [ ] Step 2: Implement the catalogue and the dispatcher
-- [ ] Step 3: Failing tests — output parsing rejects non-JSON, drops citations no tool returned,
+- [x] Step 2: Implement the catalogue and the dispatcher
+- [x] Step 3: Failing tests — output parsing rejects non-JSON, drops citations no tool returned,
       keeps citations that match, and records what was dropped
-- [ ] Step 4: Implement `analyse_supplier`
-- [ ] Step 5: Failing Postgres test — a scripted client over a real corpus produces a run whose
+- [x] Step 4: Implement `analyse_supplier`
+- [x] Step 5: Failing Postgres test — a scripted client over a real corpus produces a run whose
       recommendations cite only real `event_key` values
-- [ ] Step 6: Full gate, commit, push
+- [x] Step 6: Full gate, commit, push
 
 ---
 
