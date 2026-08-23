@@ -1,0 +1,152 @@
+{
+  "_readme": [
+    "A fixed corpus and twelve hand-labelled procurement queries.",
+    "",
+    "Labels are relevance judgements about the article, not predictions about what the",
+    "retriever can find. A German article about a port strike is relevant to the English",
+    "query 'port strike' whether or not lexical search can reach it — labelling around a",
+    "system's limitations is how an evaluation stops measuring anything.",
+    "",
+    "Two cases expect no results at all. A system that always returns something is not",
+    "measurably better than one that returns nothing, and without these the floor could",
+    "be met by a retriever that answers every query with the whole corpus.",
+    "",
+    "Article ids are stable strings; the harness maps them to database ids on load."
+  ],
+  "_floor_readme": [
+    "Measured, not chosen. Established 2026-08-23 by running scripts/evaluate_search.py",
+    "against this corpus, then set a hair below the observed values so a float rounding",
+    "difference cannot fail a build while a real regression still does.",
+    "",
+    "Two floors because CI can only run one of them. Hybrid retrieval needs an embedding",
+    "provider, and a build that spends money on every push and depends on a third party",
+    "being reachable is a build somebody eventually disables. CI gates lexical; run",
+    "`--hybrid` locally to check the whole stack.",
+    "",
+    "Observed lexical: P@5 0.300, R@10 0.528, MRR 0.750, nDCG 0.573",
+    "Observed hybrid:  P@5 0.567, R@10 1.000, MRR 1.000, nDCG 0.988",
+    "",
+    "A floor moves up when retrieval improves. Lowering one needs a note in the phase",
+    "plan saying what was traded away and why.",
+    "",
+    "What the lexical gate cannot catch, established by trying it: reversing the result",
+    "order changes none of the four numbers. websearch_to_tsquery is AND across terms, so",
+    "most queries match only one or two documents and ordering has nothing to do. The",
+    "lexical gate catches matching regressions — disabling stemming drops it to P@5 0.233,",
+    "R@10 0.306, MRR 0.417, nDCG 0.328 — and is blind to ranking ones.",
+    "",
+    "The hybrid floor does catch ranking: reversing fusion order holds recall at 1.000",
+    "while MRR falls to 0.409 and nDCG to 0.587. That gap is the argument for running",
+    "--hybrid before a release even though CI cannot."
+  ],
+  "floor": {
+    "lexical": {
+      "mean_precision_at_5": 0.29,
+      "mean_recall_at_10": 0.51,
+      "mrr": 0.74,
+      "ndcg_at_10": 0.56
+    },
+    "hybrid": {
+      "mean_precision_at_5": 0.55,
+      "mean_recall_at_10": 0.95,
+      "mrr": 0.95,
+      "ndcg_at_10": 0.95
+    }
+  },
+  "corpus": [
+    {"id": "a01", "language": "en", "title": "Rotterdam port strike enters second week", "summary": "Talks between the dockers' union and terminal operators have stalled again."},
+    {"id": "a02", "language": "en", "title": "Dockworkers walk out at Europe's largest container terminal", "summary": "Union members stopped work overnight and no boxes have moved since."},
+    {"id": "a03", "language": "de", "title": "Hafenstreiks legen Hamburger Terminals lahm", "summary": "Die Gewerkschaft hat die Beschaeftigten zu einem unbefristeten Streik aufgerufen."},
+    {"id": "a04", "language": "en", "title": "Port of Antwerp reports record throughput", "summary": "Volumes rose eight percent year on year with no labour disruption reported."},
+    {"id": "a05", "language": "en", "title": "Taiwan foundry warns of tighter semiconductor supply", "summary": "Lead times for automotive-grade chips have extended to forty weeks."},
+    {"id": "a06", "language": "en", "title": "Carmaker halts two assembly lines over chip shortage", "summary": "Production of two SUV models is suspended pending semiconductor deliveries."},
+    {"id": "a07", "language": "en", "title": "Semiconductor prices ease as distributor inventories rebuild", "summary": "Allocation is winding down after two constrained years for chip buyers."},
+    {"id": "a08", "language": "en", "title": "Bosch opens automotive components plant in Poznan", "summary": "The facility will produce electric vehicle parts from next year."},
+    {"id": "a09", "language": "en", "title": "Bosch recalls fuel injection modules over a quality defect", "summary": "The supplier notified customers of a batch traceability issue."},
+    {"id": "a10", "language": "en", "title": "Siemens Energy warns on grid turbine margins", "summary": "The company flagged further provisions at its wind turbine unit."},
+    {"id": "a11", "language": "en", "title": "Siemens AG reports steady industrial automation demand", "summary": "Orders in the digital industries division held up through the quarter."},
+    {"id": "a12", "language": "en", "title": "EU adds three machine tool suppliers to its sanctions list", "summary": "The designations cover intermediaries registered in third countries."},
+    {"id": "a13", "language": "en", "title": "US export controls extended to additional chip tooling", "summary": "New licence requirements apply to advanced lithography components."},
+    {"id": "a14", "language": "en", "title": "Red Sea diversions add two weeks to Asia-Europe sailings", "summary": "Carriers continue routing around the Cape of Good Hope."},
+    {"id": "a15", "language": "en", "title": "Freight rates climb as shipping capacity is absorbed", "summary": "Spot rates on the Asia to North Europe trade rose again this week."},
+    {"id": "a16", "language": "en", "title": "Lithium prices fall on new Australian supply", "summary": "Battery makers expect input costs to decline into next quarter."},
+    {"id": "a17", "language": "en", "title": "Copper hits a record on smelter outages", "summary": "Treatment charges collapsed after unplanned maintenance at two smelters."},
+    {"id": "a18", "language": "en", "title": "French rail freight operators announce a 48-hour stoppage", "summary": "Cross-border container services will be affected from Tuesday."},
+    {"id": "a19", "language": "en", "title": "Quarterly results from a mid-size logistics group", "summary": "Revenue was flat and margins narrowed slightly on higher costs."},
+    {"id": "a20", "language": "en", "title": "Cyberattack disrupts a tier-one automotive supplier", "summary": "Production systems were taken offline as a precaution after the intrusion."}
+  ],
+  "cases": [
+    {
+      "query": "port strike",
+      "language": "en",
+      "relevant": ["a01", "a02", "a03"],
+      "why": "The plain risk phrasing. a02 says the same thing without either query word and a03 says it in German."
+    },
+    {
+      "query": "Hafenstreik",
+      "language": "de",
+      "relevant": ["a01", "a02", "a03"],
+      "why": "Multilingual. Stemming must reach Hafenstreiks from Hafenstreik; the English articles are on-topic regardless of what any retriever can do about it."
+    },
+    {
+      "query": "semiconductor shortage",
+      "language": "en",
+      "relevant": ["a05", "a06", "a07"],
+      "why": "No single article contains both words in its title, which is what makes this a recall test rather than a lookup."
+    },
+    {
+      "query": "chip shortage",
+      "language": "en",
+      "relevant": ["a05", "a06", "a07"],
+      "why": "Vocabulary mismatch: buyers say chips, press releases say semiconductors."
+    },
+    {
+      "query": "Bosch",
+      "language": "en",
+      "relevant": ["a08", "a09"],
+      "why": "Supplier name lookup, the most common query shape in this product."
+    },
+    {
+      "query": "Siemens Energy",
+      "language": "en",
+      "relevant": ["a10"],
+      "why": "D5's whole argument. Siemens AG is a different legal entity with a different risk profile, so a11 is not relevant and a retriever that returns it is wrong rather than merely imprecise."
+    },
+    {
+      "query": "sanctions on machine tool suppliers",
+      "language": "en",
+      "relevant": ["a12"],
+      "why": "The compliance-critical query. A miss here is a false negative in screening terms."
+    },
+    {
+      "query": "dockworkers walkout",
+      "language": "en",
+      "relevant": ["a01", "a02", "a03"],
+      "why": "Purely semantic: shares no content word with a01 or a03."
+    },
+    {
+      "query": "Red Sea shipping delays",
+      "language": "en",
+      "relevant": ["a14", "a15"],
+      "why": "Multi-term, where a15 is on-topic without naming the Red Sea."
+    },
+    {
+      "query": "semicondutcor shortge",
+      "language": "en",
+      "relevant": ["a05", "a06", "a07"],
+      "why": "Spelling variant. Stemming cannot rescue a typo, so this case measures what query understanding would buy — deliberately out of scope until it can be measured."
+    },
+    {
+      "query": "underwater basket weaving championship",
+      "language": "en",
+      "relevant": [],
+      "why": "Correct answer is nothing. Vector retrieval will always have a nearest neighbour, so this only passes with a distance threshold."
+    },
+    {
+      "query": "recipe for sourdough bread",
+      "language": "en",
+      "relevant": [],
+      "why": "The second no-result case, phrased as an ordinary sentence rather than nonsense words, so it cannot be caught by an out-of-vocabulary shortcut."
+    }
+  ]
+}

@@ -302,11 +302,11 @@ CI runs the harness with a floor committed alongside the labels. Below the floor
 which makes this a gate rather than a dashboard. The floor moves up when retrieval improves and
 never down without an accompanying note in the plan.
 
-- [ ] Step 1: Failing metric tests with hand-computed expectations
-- [ ] Step 2: Implement metrics, then the harness and the golden set
-- [ ] Step 3: Establish the floor from a real run; add the CI step
-- [ ] Step 4: Prove the gate by degrading the ranker and watching it fail
-- [ ] Step 5: Full gate, commit, push
+- [x] Step 1: Failing metric tests with hand-computed expectations
+- [x] Step 2: Implement metrics, then the harness and the golden set
+- [x] Step 3: Establish the floor from a real run; add the CI step
+- [x] Step 4: Prove the gate by degrading the ranker and watching it fail
+- [x] Step 5: Full gate, commit, push
 
 ---
 

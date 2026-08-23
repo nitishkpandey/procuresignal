@@ -221,3 +221,16 @@ def test_frontend_uses_supported_node_and_ships_as_a_verified_image() -> None:
     build_commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["build"]["steps"])
     assert "procuresignal-frontend:latest" in build_commands
     assert "http://localhost:3000" in build_commands
+
+
+def test_ci_gates_on_search_quality() -> None:
+    """An evaluation harness nobody runs is a dashboard. The floor has to be able to
+    fail a build, or retrieval regresses quietly between releases."""
+
+    steps = _ci_workflow()["jobs"]["test"]["steps"]
+    evaluation = [step for step in steps if "evaluate_search.py" in step.get("run", "")]
+
+    assert evaluation, "nothing runs the search evaluation: the floor is decorative"
+    for step in evaluation:
+        assert "--no-floor" not in step["run"], "the gate is running without its floor"
+        assert "TEST_DATABASE_URL" in step.get("env", {})

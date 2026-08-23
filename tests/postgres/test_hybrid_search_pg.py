@@ -146,7 +146,9 @@ async def test_a_document_both_halves_rank_comes_first(pg_session: AsyncSession)
     assert outcome.mode == HYBRID
     assert ranked[0] == agreed, ranked
     assert keyword_favourite in ranked
-    assert distant in ranked
+    # Orthogonal to the query and matching no keyword, so it is below the similarity
+    # floor. Being the nearest of the unrelated documents is not a reason to return one.
+    assert distant not in ranked
 
 
 async def test_vectors_from_another_model_are_not_compared(pg_session: AsyncSession) -> None:
@@ -205,3 +207,32 @@ async def test_the_query_is_embedded_once_per_search(pg_session: AsyncSession) -
     await search(pg_session, query="port strike", limit=10, days=7, provider=provider)
 
     assert len(provider.calls) == 1
+
+
+async def test_a_query_with_no_good_answer_gets_no_answer(pg_session: AsyncSession) -> None:
+    """Vector retrieval always has a nearest neighbour. Without a similarity floor,
+    "recipe for sourdough bread" comes back with the ten least-unrelated procurement
+    articles and the mode still reads `hybrid`.
+
+    The floor is measured rather than guessed: against the golden corpus the two
+    no-answer queries peak at 0.178 and 0.084 similarity, and the weakest true positive
+    across the other ten is 0.390.
+    """
+
+    await _article(pg_session, title="Rotterdam port strike", vector=[1.0, 0.0, 0.0])
+
+    hits = await vector_search(pg_session, embedding=[0.0, 1.0, 0.0], model=MODEL, limit=10, days=7)
+
+    assert hits == []
+
+
+async def test_the_floor_admits_a_genuine_match(pg_session: AsyncSession) -> None:
+    """The other side of the same threshold: a near-but-not-identical vector is what a
+    real paraphrase looks like, and excluding it would trade the no-answer case for
+    every semantic match the feature exists to find."""
+
+    article = await _article(pg_session, title="Rotterdam port strike", vector=[1.0, 0.4, 0.0])
+
+    hits = await vector_search(pg_session, embedding=[1.0, 0.0, 0.0], model=MODEL, limit=10, days=7)
+
+    assert [hit.processed_id for hit in hits] == [article]

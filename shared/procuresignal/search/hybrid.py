@@ -48,6 +48,17 @@ RRF_K = 60
 # only offers `limit` candidates.
 CANDIDATE_MULTIPLIER = 2
 
+# Vector retrieval always has a nearest neighbour: without a floor, "recipe for sourdough
+# bread" returns the ten least-unrelated procurement articles and the mode still says
+# hybrid. A system that always returns something is not better than one that returns
+# nothing, it is just harder to catch being wrong.
+#
+# Measured against the golden corpus with text-embedding-3-small, not guessed. The two
+# queries whose correct answer is nothing peak at 0.178 and 0.084 similarity; the weakest
+# true positive across the other ten queries is 0.390. 0.25 sits in that gap with room on
+# both sides. It is calibrated to this model and moves if the model does.
+MINIMUM_SIMILARITY = 0.25
+
 
 @dataclass(frozen=True)
 class ScoredHit:
@@ -77,6 +88,7 @@ _VECTOR_SQL = text("""
     JOIN news_articles_processed p ON p.id = e.processed_article_id
     WHERE e.model = :model
       AND p.processed_at >= :cutoff
+      AND e.embedding <=> CAST(:query_vector AS vector) <= :maximum_distance
     ORDER BY e.embedding <=> CAST(:query_vector AS vector)
     LIMIT :limit
     """)
@@ -119,11 +131,13 @@ async def vector_search(
     model: str,
     limit: int,
     days: int,
+    minimum_similarity: float = MINIMUM_SIMILARITY,
 ) -> list[Hit]:
     """Nearest neighbours by cosine distance, within the search window.
 
     Filtered by model first: vectors from two embedding models occupy different spaces,
-    and pgvector refuses to compare different widths outright.
+    and pgvector refuses to compare different widths outright. Then by similarity, so a
+    query with no good answer gets no answer rather than the least-bad one.
 
     Returns nothing on SQLite, which has no vector type and no distance operators. That
     is the same signal as an unembedded corpus and is handled the same way.
@@ -140,6 +154,7 @@ async def vector_search(
             "query_vector": literal,
             "model": model,
             "cutoff": datetime.utcnow() - timedelta(days=days),
+            "maximum_distance": 1.0 - minimum_similarity,
             "limit": limit,
         },
     )
