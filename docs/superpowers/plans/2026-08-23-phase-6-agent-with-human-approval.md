@@ -81,8 +81,8 @@ recommendation that a human declines.
 - Test: `tests/unit/test_agent_models.py`, `tests/postgres/test_agent_models_pg.py`
 
 **Interfaces:**
-- Produces: `AgentRun(organization_id, requested_by_user_id, supplier_public_id, status, model,
-  step_count, prompt_tokens, completion_tokens, started_at, finished_at, failure_reason)` with
+- Produces: `AgentRun(public_id, organization_id, requested_by_user_id, supplier_public_id, status,
+  model, step_count, prompt_tokens, completion_tokens, started_at, finished_at, failure_reason)` with
   `status` in `running|completed|failed`; `AgentStep(run_id, ordinal, kind, tool_name,
   payload_json, created_at)` with `kind` in `model_message|tool_call|tool_result`;
   `AgentRecommendation(run_id, ordinal, title, rationale, evidence_event_keys, status,
@@ -107,12 +107,12 @@ registry being tidied up.
 Token counts live on the run because "what did this feature cost" is a question the budget cap can
 only answer in aggregate.
 
-- [ ] Step 1: Failing tests — a run holds ordered steps; recommendations start `proposed`;
+- [x] Step 1: Failing tests — a run holds ordered steps; recommendations start `proposed`;
       cascade deletes with the organization; a step ordinal is unique per run
-- [ ] Step 2: Models, `__init__` exports, migration
-- [ ] Step 3: Failing Postgres tests — the unique constraint and the cascades hold in the
+- [x] Step 2: Models, `__init__` exports, migration
+- [x] Step 3: Failing Postgres tests — the unique constraint and the cascades hold in the
       migrated schema, not just in the ORM
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 4: Full gate, commit, push
 
 ---
 

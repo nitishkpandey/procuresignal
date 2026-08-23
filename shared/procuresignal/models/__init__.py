@@ -1,5 +1,6 @@
 """SQLAlchemy models."""
 
+from .agents import AgentRecommendation, AgentRun, AgentStep
 from .articles import NewsArticleProcessed, NewsArticleRaw
 from .audit import AuditLog
 from .auth import (
@@ -59,6 +60,9 @@ __all__ = [
     "RiskEvent",
     "ArticleEmbedding",
     "SearchFeedback",
+    "AgentRun",
+    "AgentStep",
+    "AgentRecommendation",
     "EnrichmentCacheEntry",
     "NewsRetrievalRun",
     "NewsRetrievalCircuit",
