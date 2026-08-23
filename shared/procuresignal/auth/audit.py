@@ -47,7 +47,13 @@ def redact_secrets_in_text(text: str) -> str:
     return _INLINE_SECRET.sub(lambda m: f"{m.group(1)}=[redacted]", text or "")
 
 
-def _is_sensitive(key: str) -> bool:
+def is_sensitive_key(key: str) -> bool:
+    """Whether a key's name says its value is a credential.
+
+    Public because a subject access export walks table columns and must not hand
+    somebody their own password hash back in a JSON file.
+    """
+
     lowered = key.lower()
     return any(part in lowered for part in _SENSITIVE_KEY_PARTS)
 
@@ -61,7 +67,8 @@ def scrub(value: Any) -> Any:
 
     if isinstance(value, dict):
         return {
-            key: REDACTED if _is_sensitive(str(key)) else scrub(item) for key, item in value.items()
+            key: REDACTED if is_sensitive_key(str(key)) else scrub(item)
+            for key, item in value.items()
         }
     if isinstance(value, (list, tuple)):
         return [scrub(item) for item in value]

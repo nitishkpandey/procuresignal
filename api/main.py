@@ -23,6 +23,7 @@ from api.routers import (
     impact,
     notifications,
     preferences,
+    privacy,
     risk_events,
     search_feedback,
     signals,
@@ -115,6 +116,7 @@ app.include_router(articles.router)
 app.include_router(search_feedback.router)
 app.include_router(impact.router)
 app.include_router(agents.router)
+app.include_router(privacy.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
