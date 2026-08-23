@@ -266,10 +266,10 @@ Tests assert properties rather than magic constants — more severe never scores
 scores higher, adding an event never decreases the total — so the weights stay tunable without
 rewriting the suite. One test pins the sanctions floor specifically.
 
-- [ ] Step 1: Failing property tests plus the sanctions floor and the empty case
-- [ ] Step 2: Implement scoring, then the API over watched suppliers
-- [ ] Step 3: Score the seeded corpus and read the output for plausibility
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 1: Failing property tests plus the sanctions floor and the empty case
+- [x] Step 2: Implement scoring, then the API over watched suppliers
+- [x] Step 3: Score the seeded corpus and read the output for plausibility
+- [x] Step 4: Full gate, commit, push
 
 ---
 

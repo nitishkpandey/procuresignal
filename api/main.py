@@ -19,6 +19,7 @@ from api.routers import (
     currency,
     feed,
     health,
+    impact,
     notifications,
     preferences,
     risk_events,
@@ -111,6 +112,7 @@ app.include_router(preferences.router)
 app.include_router(chat.router)
 app.include_router(articles.router)
 app.include_router(search_feedback.router)
+app.include_router(impact.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
