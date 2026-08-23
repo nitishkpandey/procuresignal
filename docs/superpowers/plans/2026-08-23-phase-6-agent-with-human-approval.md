@@ -159,14 +159,14 @@ A tool name the catalogue does not contain is never dispatched; the loop returns
 to the model as the tool result and records the attempt. Both halves matter: the model can recover,
 and the attempt is on the record.
 
-- [ ] Step 1: Failing tests with a fake client — a loop that calls one tool then answers; the
+- [x] Step 1: Failing tests with a fake client — a loop that calls one tool then answers; the
       step ceiling ends the run as failed; an exhausted budget refuses before the first call;
       an unknown tool name is refused and recorded, not dispatched; every turn is persisted
       before the next request
-- [ ] Step 2: Implement the client and the loop
-- [ ] Step 3: Failing test against a stubbed transport — the request names the model, carries the
+- [x] Step 2: Implement the client and the loop
+- [x] Step 3: Failing test against a stubbed transport — the request names the model, carries the
       tool schemas, and feeds `function_call_output` back with the matching `call_id`
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 4: Full gate, commit, push
 
 ---
 

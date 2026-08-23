@@ -68,7 +68,7 @@ class OpenAILLMClient:
         self.last_tokens_used = _total_tokens(data.get("usage"))
         self.total_tokens_used += self.last_tokens_used
         self.total_api_calls += 1
-        return _extract_output_text(data)
+        return extract_output_text(data)
 
     def get_usage_stats(self) -> dict:
         """Get token usage statistics."""
@@ -81,7 +81,7 @@ class OpenAILLMClient:
         }
 
 
-def _extract_output_text(data: dict[str, Any]) -> str:
+def extract_output_text(data: dict[str, Any]) -> str:
     """Extract text from common Responses API response shapes."""
     output_text = data.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
