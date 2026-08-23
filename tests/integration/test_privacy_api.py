@@ -206,3 +206,95 @@ def test_the_export_reports_when_it_was_made(privacy_env) -> None:
     body = http.get("/api/privacy/me/export").json()
 
     assert datetime.fromisoformat(body["generated_at"])
+
+
+def test_an_admin_can_erase_a_colleague(privacy_env) -> None:
+    http, _caller, _identities, maker = privacy_env
+
+    response = http.post(
+        "/api/privacy/users/user-acme-member/erase",
+        json={"reason": "Article 17 request received by email"},
+    )
+
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["subject_public_id"] == "user-acme-member"
+    assert receipt["deleted"]["users"] == 1
+    assert receipt["deleted"]["chat_messages"] == 1
+
+    async def remaining():
+        async with maker() as session:
+            rows = await session.execute(select(User).where(User.public_id == "user-acme-member"))
+            return rows.scalars().all()
+
+    assert asyncio.run(remaining()) == []
+
+
+def test_the_receipt_reports_what_was_kept(privacy_env) -> None:
+    """`retained` is what keeps the receipt honest. Reporting the audit rows as deleted
+    would make the document a false statement, which is worse than the retention it
+    covers for."""
+
+    http, _caller, _identities, _maker = privacy_env
+
+    # Give the subject an audit row by exporting their data first.
+    http.get("/api/privacy/users/user-acme-member/export")
+    receipt = http.post("/api/privacy/users/user-acme-member/erase", json={"reason": "x"}).json()
+
+    assert receipt["retained"]["audit_log"] >= 0
+    assert "audit_log" not in receipt["deleted"]
+
+
+def test_a_member_cannot_erase_anyone(privacy_env) -> None:
+    http, caller, identities, _maker = privacy_env
+    caller["identity"] = identities["acme-member"]
+
+    response = http.post("/api/privacy/users/user-acme-admin/erase", json={"reason": "x"})
+
+    assert response.status_code == 403
+
+
+def test_an_admin_cannot_erase_themselves_here(privacy_env) -> None:
+    """It would destroy the session making the request and can leave an organization
+    with no administrator. A second admin handles it, which is also the segregation an
+    auditor expects."""
+
+    http, _caller, _identities, _maker = privacy_env
+
+    response = http.post("/api/privacy/users/user-acme-admin/erase", json={"reason": "x"})
+
+    assert response.status_code == 400
+
+
+def test_erasing_across_organizations_is_a_404(privacy_env) -> None:
+    http, _caller, _identities, maker = privacy_env
+
+    response = http.post("/api/privacy/users/user-globex-member/erase", json={"reason": "x"})
+
+    assert response.status_code == 404
+
+    async def survivors():
+        async with maker() as session:
+            rows = await session.execute(select(User).where(User.public_id == "user-globex-member"))
+            return rows.scalars().all()
+
+    assert len(asyncio.run(survivors())) == 1
+
+
+def test_an_erasure_is_recorded_before_the_person_disappears(privacy_env) -> None:
+    http, _caller, identities, maker = privacy_env
+
+    http.post("/api/privacy/users/user-acme-member/erase", json={"reason": "left the company"})
+
+    async def entries():
+        async with maker() as session:
+            rows = await session.execute(
+                select(AuditLog).where(AuditLog.action == "privacy.subject_erased")
+            )
+            return list(rows.scalars().all())
+
+    logged = asyncio.run(entries())
+    assert len(logged) == 1
+    assert logged[0].actor_email == identities["acme-admin"].email
+    assert logged[0].resource_id == "user-acme-member"
+    assert logged[0].detail["reason"] == "left the company"

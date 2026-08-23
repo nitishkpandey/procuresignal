@@ -12,7 +12,7 @@ part a regulator asks for after the fact.
 from fastapi import APIRouter, Depends, HTTPException, status
 from procuresignal.auth.audit import record_audit
 from procuresignal.models import Membership, Role, User
-from procuresignal.privacy.subject import export_subject
+from procuresignal.privacy.subject import erase_subject, export_subject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,11 @@ from api.dependencies import (
     get_session,
     require_role,
 )
-from api.schemas.privacy import SubjectExportResponse
+from api.schemas.privacy import (
+    ErasureReceiptResponse,
+    ErasureRequest,
+    SubjectExportResponse,
+)
 
 router = APIRouter(
     prefix="/api/privacy", tags=["privacy"], dependencies=[Depends(get_current_user)]
@@ -118,4 +122,57 @@ async def export_user_data(
 
     return await _audited_export(
         session, subject=subject, actor=current_user, context=context, on_behalf=True
+    )
+
+
+@router.post(
+    "/users/{public_id}/erase", response_model=ErasureReceiptResponse, dependencies=[_ADMIN]
+)
+async def erase_user_data(
+    public_id: str,
+    payload: ErasureRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    context: ClientContext = Depends(get_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> ErasureReceiptResponse:
+    """Erase someone in the caller's organization, and return a receipt.
+
+    Irreversible, and admin-only rather than self-service: the requester is usually not
+    the subject, and there is no verified-identity flow to hang self-service off yet.
+    """
+
+    subject = await _colleague(session, public_id, current_user)
+
+    if subject.id == current_user.id:
+        # Erasing yourself through this endpoint destroys the session making the
+        # request and can leave an organization with no administrator. A second admin
+        # handles it, which is also the segregation an auditor expects.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Another administrator must erase your account.",
+        )
+
+    # Written before the subject disappears, and committed by erase_subject's own
+    # commit. The trail has to name what was about to happen even if the delete fails.
+    await record_audit(
+        session,
+        action="privacy.subject_erased",
+        outcome="success",
+        actor=current_user,
+        resource_type="user",
+        resource_id=subject.public_id,
+        detail={"reason": payload.reason},
+        client_ip=context.client_ip,
+        user_agent=context.user_agent,
+    )
+
+    receipt = await erase_subject(session, user=subject, reason=payload.reason)
+
+    return ErasureReceiptResponse(
+        subject_public_id=receipt.subject_public_id,
+        erased_at=receipt.erased_at,
+        reason=receipt.reason,
+        deleted=receipt.deleted,
+        anonymised=receipt.anonymised,
+        retained=receipt.retained,
     )

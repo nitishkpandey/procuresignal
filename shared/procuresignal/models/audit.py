@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import JSON, ForeignKey, Index, String
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import BaseModel
@@ -16,9 +16,10 @@ class AuditLog(BaseModel):
     organization_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
-    actor_user_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    # Deliberately not a foreign key. This table refuses UPDATE, so an ON DELETE SET
+    # NULL cascade cannot fire — it made deleting any user who had signed in impossible.
+    # An append-only record must not be mutated by anything, including a constraint.
+    actor_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Denormalized so the trail still names the actor after the account is deleted.
     actor_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
 

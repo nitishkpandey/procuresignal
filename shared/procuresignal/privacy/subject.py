@@ -19,12 +19,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.auth.audit import is_sensitive_key
 from procuresignal.models import Base, User
-from procuresignal.privacy.inventory import INVENTORY, SubjectLink
+from procuresignal.privacy.inventory import INVENTORY, ErasureAction, SubjectLink
 
 REDACTED = "[redacted]"
 
@@ -93,3 +93,75 @@ async def export_subject(session: AsyncSession, *, user: User) -> SubjectExport:
         generated_at=datetime.utcnow(),
         tables=tables,
     )
+
+
+@dataclass
+class ErasureReceipt:
+    """What was done with a person's data, table by table.
+
+    The receipt is the deliverable, not the deletion. A controller has to answer "what
+    did you do with my data" with something more than an assurance, and `retained` is the
+    field that keeps it honest — it names what survives and the note says why.
+    """
+
+    subject_public_id: str
+    erased_at: datetime
+    reason: str
+    deleted: dict[str, int] = field(default_factory=dict)
+    anonymised: dict[str, int] = field(default_factory=dict)
+    retained: dict[str, int] = field(default_factory=dict)
+
+
+async def erase_subject(session: AsyncSession, *, user: User, reason: str = "") -> ErasureReceipt:
+    """Erase one person from every table the registry links to them.
+
+    Not "delete the user row and let cascades do the rest". Cascades cover the tables
+    that have foreign keys; five tables from Phases 1 and 2 store `public_id` in a plain
+    string column with none, and would be left behind holding a dangling identifier. That
+    failure looks exactly like success, which is why this walks the registry instead.
+
+    The account itself goes last, so a failure part-way leaves it intact and the
+    operation repeatable rather than half-done with no way to find the remainder.
+    """
+
+    receipt = ErasureReceipt(
+        subject_public_id=user.public_id,
+        erased_at=datetime.utcnow(),
+        reason=reason,
+    )
+
+    for entry in INVENTORY:
+        if entry.link is SubjectLink.NONE or entry.link_column is None:
+            continue
+
+        table = Base.metadata.tables[entry.table]
+        matches = table.c[entry.link_column] == _subject_value(user, entry.link)
+
+        if entry.erasure is ErasureAction.RETAIN:
+            # Counted rather than touched. `audit_log` refuses UPDATE and DELETE
+            # outright, and the count is what makes the receipt truthful about it.
+            held = await session.scalar(select(func.count()).select_from(table).where(matches))
+            receipt.retained[entry.table] = int(held or 0)
+            continue
+
+        if entry.erasure is ErasureAction.ANONYMISE:
+            result = await session.execute(
+                update(table).where(matches).values({entry.link_column: None})
+            )
+            receipt.anonymised[entry.table] = getattr(result, "rowcount", 0) or 0
+            continue
+
+        if entry.table == "users":
+            # Last, deliberately. See the docstring.
+            continue
+
+        result = await session.execute(delete(table).where(matches))
+        receipt.deleted[entry.table] = getattr(result, "rowcount", 0) or 0
+
+    account = await session.execute(
+        delete(Base.metadata.tables["users"]).where(Base.metadata.tables["users"].c.id == user.id)
+    )
+    receipt.deleted["users"] = getattr(account, "rowcount", 0) or 0
+
+    await session.commit()
+    return receipt
