@@ -5,7 +5,15 @@ published the article, so an agent that can write is an agent a press release ca
 instruct to write.
 """
 
-from .client import AgentClient, AgentTurn, OpenAIAgentClient, ToolCall
+from .client import AgentClient, AgentTurn, OpenAIAgentClient, ToolCall, agent_client
 from .loop import MAX_STEPS, run_loop
 
-__all__ = ["AgentClient", "AgentTurn", "OpenAIAgentClient", "ToolCall", "MAX_STEPS", "run_loop"]
+__all__ = [
+    "AgentClient",
+    "AgentTurn",
+    "OpenAIAgentClient",
+    "ToolCall",
+    "agent_client",
+    "MAX_STEPS",
+    "run_loop",
+]

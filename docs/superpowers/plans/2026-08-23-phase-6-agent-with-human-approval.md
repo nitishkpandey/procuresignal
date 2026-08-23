@@ -254,11 +254,11 @@ this is the record that answers "who agreed to this" a year later.
 Without a configured provider the run endpoint returns 503 with a plain reason, matching how search
 degrades: no fake analysis, ever.
 
-- [ ] Step 1: Failing tests — a member can run and read, cannot approve; an admin can approve and
+- [x] Step 1: Failing tests — a member can run and read, cannot approve; an admin can approve and
       reject; deciding twice is a 409; another organization's run is a 404; no provider is a 503
-- [ ] Step 2: Implement the router and schemas, register in `api/main.py`
-- [ ] Step 3: Failing test — approval writes an audit record naming actor, run and ordinal
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 2: Implement the router and schemas, register in `api/main.py`
+- [x] Step 3: Failing test — approval writes an audit record naming actor, run and ordinal
+- [x] Step 4: Full gate, commit, push
 
 ---
 

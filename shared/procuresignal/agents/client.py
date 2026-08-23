@@ -150,3 +150,16 @@ class OpenAIAgentClient:
             prompt_tokens=int(usage.get("input_tokens") or 0),
             completion_tokens=int(usage.get("output_tokens") or 0),
         )
+
+
+def agent_client() -> AgentClient | None:
+    """The configured client, or None when there is no key.
+
+    None is a supported state, not an error: the endpoint answers 503 with a reason.
+    An analysis produced without a model would be a plausible-looking document with
+    nothing behind it, which is the worst possible output for this feature.
+    """
+
+    if not get_secret("OPENAI_API_KEY", default=""):
+        return None
+    return OpenAIAgentClient()

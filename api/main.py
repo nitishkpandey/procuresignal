@@ -13,6 +13,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from api.rate_limit import close_backend
 from api.routers import (
+    agents,
     articles,
     auth,
     chat,
@@ -113,6 +114,7 @@ app.include_router(chat.router)
 app.include_router(articles.router)
 app.include_router(search_feedback.router)
 app.include_router(impact.router)
+app.include_router(agents.router)
 app.include_router(signals.router)
 app.include_router(currency.router)
 app.include_router(suppliers.router)
