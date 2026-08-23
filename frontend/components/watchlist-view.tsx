@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { ImpactBadge } from "@/components/impact-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
   createWatchlist,
+  getImpact,
   getWatchlist,
   getWatchlists,
   searchSuppliers,
@@ -44,6 +46,15 @@ export function WatchlistView() {
   const detail = useApi(
     () => (activeId ? getWatchlist(activeId) : Promise.resolve(null)),
     `watchlist:${activeId ?? "none"}`,
+  );
+
+  // Loaded once for the whole organization rather than per supplier row: the endpoint
+  // already scores every watched supplier, and a request per row would be N+1 over a
+  // list a buyer scrolls.
+  const impact = useApi(() => getImpact(), "impact");
+  const impactBySupplier = useMemo(
+    () => new Map((impact.data?.items ?? []).map((item) => [item.supplier_public_id, item])),
+    [impact.data?.items],
   );
 
   const [newName, setNewName] = useState("");
@@ -224,12 +235,15 @@ export function WatchlistView() {
                     {detail.data.suppliers.map((supplier) => (
                       <li
                         key={supplier.public_id}
-                        className="flex items-center justify-between gap-3 py-2"
+                        className="flex items-start justify-between gap-3 py-2"
                       >
-                        <span className="text-sm font-medium text-slate-900">
+                        <span className="min-w-0 text-sm font-medium text-slate-900">
                           {supplier.canonical_name}
                         </span>
                         <span className="flex items-center gap-3">
+                          {impactBySupplier.has(supplier.public_id) ? (
+                            <ImpactBadge impact={impactBySupplier.get(supplier.public_id)!} />
+                          ) : null}
                           {supplier.country ? (
                             <span className="text-xs text-slate-500">{supplier.country}</span>
                           ) : null}

@@ -40,6 +40,7 @@ beforeEach(() => {
   vi.mocked(api.search).mockResolvedValue({
     query: "tariff",
     total_results: 1,
+    mode: "hybrid",
     results: [
       {
         id: 2,

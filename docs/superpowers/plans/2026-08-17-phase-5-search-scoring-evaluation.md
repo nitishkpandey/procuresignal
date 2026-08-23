@@ -330,7 +330,7 @@ number.
 
 Tests synchronise on loaded content, never on markup present during loading.
 
-- [ ] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
+- [x] Step 1: Failing tests, implement, full frontend gate including `verify:routes`, commit, push
 
 ---
 

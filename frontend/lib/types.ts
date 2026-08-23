@@ -31,11 +31,55 @@ export interface SearchResult {
   relevance: number;
 }
 
+/** Which retrievers produced a result set. `degraded` is a fault; `lexical` is a
+ * deployment with no embedding provider. The UI must not imply semantic ranking ran
+ * when it did not. */
+export type SearchMode = "hybrid" | "lexical" | "degraded";
+
+export type FeedbackSignal = "click" | "useful" | "not_useful";
+
 export interface SearchResponse {
   query: string;
   total_results: number;
   results: SearchResult[];
   search_time_ms?: number;
+  mode: SearchMode;
+}
+
+export interface SearchFeedbackPayload {
+  query: string;
+  article_id: number;
+  /** 1-based, as the user saw it. A click on result 1 and one on result 9 carry
+   * opposite information about the ranker; without this the table is untrainable. */
+  rank_position: number;
+  signal: FeedbackSignal;
+  mode: SearchMode;
+}
+
+export interface ImpactDriver {
+  event_key: string;
+  risk_type: string;
+  severity: string;
+  confidence: number;
+  published_at: string;
+  contribution: number;
+  evidence_snippet: string;
+  source_name: string;
+}
+
+export interface SupplierImpact {
+  supplier_public_id: string;
+  supplier_name: string;
+  value: number;
+  /** none, low, elevated or severe. An active sanctions designation forces severe
+   * whatever the value says, so the two are not redundant. */
+  band: string;
+  drivers: ImpactDriver[];
+}
+
+export interface ImpactListResponse {
+  items: SupplierImpact[];
+  total: number;
 }
 
 export interface ArticleDetail {

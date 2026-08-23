@@ -11,6 +11,7 @@ import { useUserStore } from "@/store/user";
 
 const NAV = [
   { href: "/", labelKey: "nav.feed" },
+  { href: "/search", labelKey: "nav.search" },
   { href: "/risk-events", labelKey: "nav.risks" },
   { href: "/watchlists", labelKey: "nav.watchlists" },
   { href: "/preferences", labelKey: "nav.preferences" },

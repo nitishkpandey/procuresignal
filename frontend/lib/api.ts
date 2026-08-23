@@ -14,7 +14,10 @@ import type {
   RiskEvent,
   RiskEventResponse,
   RiskEventStatus,
+  SearchFeedbackPayload,
   SearchResponse,
+  ImpactListResponse,
+  SupplierImpact,
   NotificationListResponse,
   WatchlistDetail,
   WatchlistListResponse,
@@ -55,6 +58,26 @@ export async function search(
       language: opts.language ?? "en",
     },
   });
+  return data;
+}
+
+/**
+ * Record what the user did with a result.
+ *
+ * Deliberately fire-and-forget at the call site: feedback is telemetry, and losing a
+ * click must never cost the user their results.
+ */
+export async function sendSearchFeedback(payload: SearchFeedbackPayload): Promise<void> {
+  await client.post("/api/search/feedback", payload);
+}
+
+export async function getImpact(): Promise<ImpactListResponse> {
+  const { data } = await client.get("/api/impact");
+  return data;
+}
+
+export async function getSupplierImpact(publicId: string): Promise<SupplierImpact> {
+  const { data } = await client.get(`/api/impact/${publicId}`);
   return data;
 }
 

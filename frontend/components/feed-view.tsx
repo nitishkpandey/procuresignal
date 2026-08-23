@@ -13,7 +13,7 @@ import { getFeed, search } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { humanize } from "@/lib/labels";
 import { useApi } from "@/lib/useApi";
-import type { FeedArticle, SearchResult } from "@/lib/types";
+import type { FeedArticle, SearchMode, SearchResult } from "@/lib/types";
 import { useUserStore } from "@/store/user";
 import { useReadStore } from "@/store/read";
 import Link from "next/link";
@@ -84,6 +84,7 @@ export function FeedView() {
             loading={results.loading}
             error={results.error}
             items={results.data?.results ?? []}
+            mode={results.data?.mode ?? null}
             onClear={() => {
               setQuery("");
               setDraft("");
@@ -269,6 +270,7 @@ function SearchResults({
   loading,
   error,
   items,
+  mode,
   onClear,
   onRetry,
   language,
@@ -276,6 +278,7 @@ function SearchResults({
   loading: boolean;
   error: string | null;
   items: SearchResult[];
+  mode: SearchMode | null;
   onClear: () => void;
   onRetry: () => void;
   language: string;
@@ -291,6 +294,17 @@ function SearchResults({
         </Button>
       </div>
       {loading ? <Spinner label={t(language, "search.loading")} /> : null}
+      {/* Same rule as the search page: never imply semantic ranking ran when it did
+          not. Two surfaces showing results is one surface too many, but the honest
+          one is not the one to drop. */}
+      {mode && mode !== "hybrid" ? (
+        <p
+          role="status"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          {t(language, mode === "lexical" ? "search.keywordOnly" : "search.semanticDown")}
+        </p>
+      ) : null}
       {error ? (
         <Card className="border-red-200 bg-red-50/70">
           <p className="text-sm font-semibold text-red-800">

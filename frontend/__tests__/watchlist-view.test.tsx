@@ -7,6 +7,7 @@ vi.mock("@/lib/api", () => ({
   getWatchlist: vi.fn(),
   createWatchlist: vi.fn(),
   unwatchSupplier: vi.fn(),
+  getImpact: vi.fn(),
 }));
 
 import { WatchlistView } from "@/components/watchlist-view";
@@ -24,6 +25,36 @@ beforeEach(() => {
       { public_id: "wl-2", name: "Logistics", supplier_count: 0 },
     ],
     total_count: 2,
+  });
+  vi.mocked(api.getImpact).mockResolvedValue({
+    items: [
+      {
+        supplier_public_id: "s-1",
+        supplier_name: "Siemens AG",
+        value: 0.53,
+        band: "severe",
+        drivers: [
+          {
+            event_key: "siemens-bankruptcy",
+            risk_type: "bankruptcy",
+            severity: "critical",
+            confidence: 0.9,
+            published_at: "2026-08-21T09:00:00Z",
+            contribution: 0.81,
+            evidence_snippet: "The group filed for protection from creditors.",
+            source_name: "Handelsblatt",
+          },
+        ],
+      },
+      {
+        supplier_public_id: "s-2",
+        supplier_name: "Robert Bosch GmbH",
+        value: 0,
+        band: "none",
+        drivers: [],
+      },
+    ],
+    total: 2,
   });
   vi.mocked(api.getWatchlist).mockResolvedValue({
     public_id: "wl-1",
@@ -94,5 +125,30 @@ describe("WatchlistView", () => {
     render(<WatchlistView />);
 
     expect(await screen.findByText(/no watchlists yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("WatchlistView impact", () => {
+  it("shows how exposed each watched supplier is", async () => {
+    // The screen a buyer opens on Monday. A list of names without exposure is a list
+    // they still have to check one supplier at a time.
+    render(<WatchlistView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Tier 1/ }));
+    await screen.findByText("Siemens AG");
+
+    expect(await screen.findByText(/severe/i)).toBeInTheDocument();
+    expect(screen.getByText(/no risk events/i)).toBeInTheDocument();
+  });
+
+  it("never shows a band without the events behind it", async () => {
+    render(<WatchlistView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Tier 1/ }));
+    await screen.findByText("Siemens AG");
+
+    await userEvent.click(await screen.findByText("Why"));
+
+    expect(await screen.findByText(/filed for protection from creditors/i)).toBeInTheDocument();
   });
 });
