@@ -20,6 +20,7 @@ from procuresignal.notifications.rules import evaluate_rules
 from procuresignal.notifications.transports.in_app import InAppTransport, deliver_pending
 from procuresignal.observability.metrics import (
     record_dead_letter_metric,
+    record_embedding_backlog,
     record_llm_call,
     record_outbox_depth,
     record_pipeline_success,
@@ -33,6 +34,11 @@ from procuresignal.retrieval import (
     configured_registry,
 )
 from procuresignal.risk_events.persistence import generate_risk_events
+from procuresignal.search.embeddings import (
+    embed_pending_articles,
+    embedding_provider,
+    pending_embedding_count,
+)
 from procuresignal.suppliers.backfill import backfill_supplier_identity
 from procuresignal.suppliers.screening import screen_processed_articles
 from sqlalchemy import desc, exists, or_, select, update
@@ -643,6 +649,48 @@ def resolve_supplier_identity_task(self: Any) -> dict[str, Any]:
                 "registry_coverage": round(summary.coverage, 4),
                 "preferences_updated": summary.preferences_updated,
                 "risk_events_updated": summary.risk_events_updated,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    return _run_with_retry(self, _run)
+
+
+@app.task(
+    name="worker.tasks.embed_articles_task",
+    bind=True,
+    max_retries=2,
+    queue="enrichment",
+    time_limit=1800,
+)
+def embed_articles_task(self: Any) -> dict[str, Any]:
+    """Give recent articles vectors, newest first.
+
+    Skipped rather than failed when no key is configured: semantic search is off, hybrid
+    retrieval degrades to lexical and reports it, and a task that raised every hour
+    would train everyone to ignore it. The backlog gauge is published either way, since
+    the failure this exists to make visible — embeddings quietly stopping — looks like
+    slightly worse search results and nothing else.
+    """
+
+    async def _run() -> dict[str, Any]:
+        provider = embedding_provider()
+        if provider is None:
+            return {
+                "status": "skipped",
+                "reason": "no embedding provider configured",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+        async with session_scope() as session:
+            written = await embed_pending_articles(session, provider=provider)
+            pending = await pending_embedding_count(session, model=provider.name)
+            record_embedding_backlog(provider.name, pending)
+            record_pipeline_success("embeddings")
+            return {
+                "status": "success",
+                "model": provider.name,
+                "embedded": written,
+                "pending": pending,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

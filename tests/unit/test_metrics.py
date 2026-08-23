@@ -166,6 +166,7 @@ def test_every_pipeline_stage_reports_freshness() -> None:
         "risk_events",
         "sanctions_screening",
         "supplier_resolution",
+        "embeddings",
         "alert_evaluation",
         "notification_delivery",
     }

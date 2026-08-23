@@ -140,6 +140,24 @@ groups:
             little, which reads as clean. GET /api/suppliers/unresolved lists what it
             could not place.
 
+  - name: search
+    rules:
+      # Search does not break when embeddings stop, it narrows: hybrid retrieval falls
+      # back to keyword matching and reports the degraded mode, so the only outward sign
+      # is that results feel worse. Nothing else here would fire.
+      - alert: EmbeddingBacklogNotClearing
+        expr: procuresignal_embeddings_pending > 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} articles have no vector under {{ $labels.model }}"
+          description: >
+            Embedding runs hourly and has not cleared the backlog in three cycles.
+            A run refused by the daily LLM budget looks exactly like this, so check
+            LlmBudgetExhausted first; otherwise the provider key or the task is failing.
+            Searches still work and return keyword-only results in the meantime.
+
   - name: alerting
     rules:
       # Alerts that queue and never leave are the quiet version of not alerting at all:

@@ -161,10 +161,10 @@ same earliest thousand rows forever.
 Tests use a deterministic fake provider. The real client is exercised by one test that asserts the
 request shape against a stubbed transport, never the live API.
 
-- [ ] Step 1: Failing tests — idempotency, batching, dimension mismatch rejected, budget refusal
-- [ ] Step 2: Failing Postgres test — vector round-trip and cosine ordering via `<=>`
-- [ ] Step 3: Model, migration, provider, backfill, Celery task with freshness metric
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 1: Failing tests — idempotency, batching, dimension mismatch rejected, budget refusal
+- [x] Step 2: Failing Postgres test — vector round-trip and cosine ordering via `<=>`
+- [x] Step 3: Model, migration, provider, backfill, Celery task with freshness metric
+- [x] Step 4: Full gate, commit, push
 
 ---
 

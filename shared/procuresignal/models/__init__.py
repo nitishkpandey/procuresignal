@@ -20,6 +20,7 @@ from .pipeline import NewsArticleMatch, NewsPipelineRun, NewsPriorityEvent
 from .preferences import UserNewsFeed, UserNewsPreference
 from .retrieval import NewsRetrievalCircuit, NewsRetrievalRun, NewsRetrievalSourceOutcome
 from .risk_events import RiskEvent
+from .search import ArticleEmbedding
 from .signals import Signal, SignalMetadata, SignalSupplyChainImpact
 from .suppliers import ArticleSupplierMention, Supplier, SupplierAlias
 from .watchlists import Watchlist, WatchlistEntry
@@ -56,6 +57,7 @@ __all__ = [
     "SignalMetadata",
     "SignalSupplyChainImpact",
     "RiskEvent",
+    "ArticleEmbedding",
     "EnrichmentCacheEntry",
     "NewsRetrievalRun",
     "NewsRetrievalCircuit",

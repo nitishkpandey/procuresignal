@@ -38,6 +38,7 @@ CELERY_TASK_ROUTES = {
         "routing_key": "processing",
     },
     "worker.tasks.enrich_articles_task": {"queue": "enrichment", "routing_key": "enrichment"},
+    "worker.tasks.embed_articles_task": {"queue": "enrichment", "routing_key": "enrichment"},
     "worker.tasks.generate_risk_events_task": {
         "queue": "personalization",
         "routing_key": "personalization",
@@ -80,6 +81,14 @@ CELERY_BEAT_SCHEDULE = {
     "enrich-articles-every-2-hours": {
         "task": "worker.tasks.enrich_articles_task",
         "schedule": crontab(minute=45, hour="*/2"),
+        "options": {"queue": "enrichment"},
+    },
+    "embed-articles-hourly": {
+        # Hourly rather than with enrichment every two hours: a searcher looking for
+        # this morning's disruption should not wait for the next enrichment cycle to
+        # give it a vector. Runs are cheap when there is nothing pending.
+        "task": "worker.tasks.embed_articles_task",
+        "schedule": crontab(minute=15, hour="*"),
         "options": {"queue": "enrichment"},
     },
     "resolve-supplier-identity-daily": {

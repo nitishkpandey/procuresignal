@@ -112,6 +112,16 @@ SANCTIONS_SCREENING = Counter(
     ["outcome"],
 )
 
+# Embeddings that stop being produced do not break search, they quietly narrow it:
+# retrieval falls back to keywords and the results merely look worse. This is the gauge
+# that separates "the model is bad" from "half the corpus has no vectors".
+EMBEDDINGS_PENDING = Gauge(
+    f"{NAMESPACE}_embeddings_pending",
+    "Articles in the retention window with no vector under the active model.",
+    ["model"],
+    multiprocess_mode="max",
+)
+
 # A drain that stalls leaves alerts queued while every other signal looks healthy,
 # which is the quiet version of not alerting at all.
 NOTIFICATIONS_PENDING = Gauge(
@@ -169,6 +179,10 @@ def record_screening(outcome: str, count: int = 1) -> None:
 
 def record_outbox_depth(pending: int) -> None:
     NOTIFICATIONS_PENDING.set(pending)
+
+
+def record_embedding_backlog(model: str, pending: int) -> None:
+    EMBEDDINGS_PENDING.labels(model=model).set(pending)
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:
