@@ -52,6 +52,10 @@ class PersonalDataTable:
     erasure: ErasureAction
     purpose: str
     retention_days: int | None = None
+    # The timestamp pruning measures age from. `created_at` exists on every table via
+    # BaseModel; the overrides name the column that actually means "when this stopped
+    # being current", which is not always when the row was written.
+    retention_column: str = "created_at"
     # Set where a row is reached through its parent's ON DELETE CASCADE rather than by a
     # column of its own.
     cascades_from: str | None = None
@@ -92,6 +96,7 @@ INVENTORY: tuple[PersonalDataTable, ...] = (
         erasure=ErasureAction.DELETE,
         purpose="Session continuity, with the user agent and issue time of each session.",
         retention_days=90,
+        retention_column="expires_at",
     ),
     PersonalDataTable(
         table="organization_invitations",
@@ -124,6 +129,7 @@ INVENTORY: tuple[PersonalDataTable, ...] = (
         erasure=ErasureAction.DELETE,
         purpose="Which articles were surfaced to a person and which they opened.",
         retention_days=14,
+        retention_column="surfaced_at",
     ),
     PersonalDataTable(
         table="news_article_matches",
@@ -140,6 +146,7 @@ INVENTORY: tuple[PersonalDataTable, ...] = (
         erasure=ErasureAction.DELETE,
         purpose="Conversations a person held with the assistant.",
         retention_days=BEHAVIOURAL_RETENTION_DAYS,
+        retention_column="last_message_at",
     ),
     PersonalDataTable(
         table="chat_messages",
@@ -181,6 +188,7 @@ INVENTORY: tuple[PersonalDataTable, ...] = (
         erasure=ErasureAction.DELETE,
         purpose="Which supplier a named person asked to have analysed, and when.",
         retention_days=BEHAVIOURAL_RETENTION_DAYS,
+        retention_column="started_at",
     ),
     _none(
         "agent_steps",
@@ -264,12 +272,27 @@ INVENTORY: tuple[PersonalDataTable, ...] = (
     _none("suppliers", "The canonical supplier registry."),
     _none("supplier_aliases", "Spellings that resolve to a supplier."),
     _none("article_supplier_mentions", "Which suppliers an article names."),
-    _none("news_articles_raw", "Ingested articles as published.", retention_days=14),
-    _none("news_articles_processed", "Enriched articles.", retention_days=30),
+    _none(
+        "news_articles_raw",
+        "Ingested articles as published.",
+        retention_days=14,
+        retention_column="ingested_at",
+    ),
+    _none(
+        "news_articles_processed",
+        "Enriched articles.",
+        retention_days=30,
+        retention_column="processed_at",
+    ),
     _none(
         "article_embeddings", "Vectors over article text.", cascades_from="news_articles_processed"
     ),
-    _none("risk_events", "Procurement risks detected from articles.", retention_days=14),
+    _none(
+        "risk_events",
+        "Procurement risks detected from articles.",
+        retention_days=14,
+        retention_column="published_at",
+    ),
     _none("signals", "Signal records derived from articles."),
     _none("signal_metadata", "Metadata about a signal."),
     _none("signal_supply_chain_impact", "Impact assessments attached to a signal."),

@@ -188,3 +188,85 @@ def test_prune_expired_records_is_idempotent():
     assert processed_count == 1
     assert feed_count == 1
     assert risk_event_count == 1
+
+
+def test_every_documented_window_is_actually_pruned() -> None:
+    """A table documented with a retention window that nothing prunes is a false
+    statement in a compliance document, and it stays false until somebody audits the
+    code rather than the paperwork.
+
+    The job iterates the registry, so this asserts the two cannot diverge.
+    """
+
+    from procuresignal.privacy.inventory import INVENTORY
+
+    documented = {entry.table for entry in INVENTORY if entry.retention_days is not None}
+
+    assert documented, "no table has a retention window at all"
+    # The job's coverage is the registry itself; this pins the tables that must be in it.
+    for table in ("search_feedback", "agent_runs", "chat_messages", "notifications"):
+        assert table in documented, f"{table} has no expiry"
+
+
+def test_the_named_policy_fields_come_from_the_registry() -> None:
+    """RetentionPolicy exists because search, scoring and the agent tools ask for these
+    four windows by name. Writing the numbers twice is how the inventory and the code
+    start disagreeing about how long an article is kept."""
+
+    from procuresignal.jobs.retention import RetentionPolicy
+    from procuresignal.privacy.inventory import INVENTORY
+
+    by_table = {entry.table: entry.retention_days for entry in INVENTORY}
+    policy = RetentionPolicy()
+
+    assert policy.raw_days == by_table["news_articles_raw"]
+    assert policy.processed_days == by_table["news_articles_processed"]
+    assert policy.feed_days == by_table["user_news_feed"]
+    assert policy.risk_event_days == by_table["risk_events"]
+
+
+async def test_pruning_removes_expired_search_feedback(async_session) -> None:
+    """The table Phase 5 left with no expiry at all."""
+
+    from datetime import datetime, timedelta
+
+    from procuresignal.jobs.retention import prune_expired_records
+    from procuresignal.models import (
+        Membership,
+        Organization,
+        Role,
+        SearchFeedback,
+        User,
+    )
+    from sqlalchemy import select
+
+    organization = Organization(public_id="org-1", name="acme", slug="acme")
+    async_session.add(organization)
+    await async_session.flush()
+    user = User(public_id="user-1", email="b@acme.example", is_active=True)
+    async_session.add(user)
+    await async_session.flush()
+    async_session.add(Membership(organization_id=organization.id, user_id=user.id, role=Role.ADMIN))
+
+    now = datetime.utcnow()
+    for label, created in [("stale", now - timedelta(days=500)), ("fresh", now)]:
+        async_session.add(
+            SearchFeedback(
+                organization_id=organization.id,
+                user_id=user.id,
+                query_text=label,
+                query_fingerprint=label * 8,
+                processed_article_id=1,
+                rank_position=1,
+                signal="click",
+                mode="hybrid",
+                created_at=created,
+            )
+        )
+    await async_session.commit()
+
+    result = await prune_expired_records(async_session, now=now)
+
+    surviving = (await async_session.execute(select(SearchFeedback))).scalars().all()
+    assert [row.query_text for row in surviving] == ["fresh"]
+    assert result.by_table["search_feedback"] == 1
