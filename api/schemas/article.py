@@ -53,6 +53,10 @@ class SearchResponse(BaseModel):
     total_results: int = Field(..., ge=0)
     results: list[SearchResult]
     search_time_ms: float = Field(..., ge=0.0)
+    # Which retrievers produced these results: hybrid, lexical or degraded. In the
+    # response because the first question about a bad result is which half found it,
+    # and because the UI must not imply semantic ranking ran when it did not.
+    mode: str = Field(default="lexical")
 
 
 class ArticleReadResponse(BaseModel):

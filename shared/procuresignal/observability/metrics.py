@@ -112,6 +112,22 @@ SANCTIONS_SCREENING = Counter(
     ["outcome"],
 )
 
+# Labelled by mode, because "search is worse this week" and "the semantic half has been
+# down since Tuesday" are the same complaint until this counter separates them.
+SEARCH_QUERIES = Counter(
+    f"{NAMESPACE}_search_queries_total",
+    "Searches served, by which retrievers produced the results.",
+    ["mode"],
+)
+
+# D4 says to revisit pgvector if p99 search latency exceeds 200ms, and D7 says to
+# revisit Postgres full-text above 500ms. Neither trigger means anything without this.
+SEARCH_LATENCY = Histogram(
+    f"{NAMESPACE}_search_latency_seconds",
+    "End-to-end search latency, by mode.",
+    ["mode"],
+)
+
 # Embeddings that stop being produced do not break search, they quietly narrow it:
 # retrieval falls back to keywords and the results merely look worse. This is the gauge
 # that separates "the model is bad" from "half the corpus has no vectors".
@@ -183,6 +199,11 @@ def record_outbox_depth(pending: int) -> None:
 
 def record_embedding_backlog(model: str, pending: int) -> None:
     EMBEDDINGS_PENDING.labels(model=model).set(pending)
+
+
+def record_search(mode: str, seconds: float) -> None:
+    SEARCH_QUERIES.labels(mode=mode).inc()
+    SEARCH_LATENCY.labels(mode=mode).observe(seconds)
 
 
 def record_retrieval(source_id: str, outcome: str, count: int = 1) -> None:

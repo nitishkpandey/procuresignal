@@ -198,10 +198,10 @@ replacement.
 Metrics: `SEARCH_QUERIES{mode}` counter and a latency histogram, so D4's stated revisit trigger
 (p99 above 200ms) is measurable rather than aspirational.
 
-- [ ] Step 1: Failing tests — fusion order, tie handling, each degradation path, mode reported
-- [ ] Step 2: Implement, rewrite the endpoint, delete the old scorer
-- [ ] Step 3: Verify against a real corpus in Postgres, reading the top ten for two real queries
-- [ ] Step 4: Full gate, commit, push
+- [x] Step 1: Failing tests — fusion order, tie handling, each degradation path, mode reported
+- [x] Step 2: Implement, rewrite the endpoint, delete the old scorer
+- [x] Step 3: Verify against a real corpus in Postgres, reading the top ten for two real queries
+- [x] Step 4: Full gate, commit, push
 
 ---
 

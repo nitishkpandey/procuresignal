@@ -1,11 +1,13 @@
 """Article endpoints."""
 
-from datetime import datetime, timedelta
 from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from procuresignal.models import NewsArticleProcessed, NewsArticleRaw, UserNewsFeed
-from sqlalchemy import desc, or_, select
+from procuresignal.observability.metrics import record_search
+from procuresignal.search.embeddings import embedding_provider
+from procuresignal.search.hybrid import ScoredHit, search
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.article_entities import (
@@ -87,31 +89,47 @@ async def mark_article_read(
     return ArticleReadResponse(article_id=article_id, user_id=user_id, read=True)
 
 
-def _score_search_result(query: str, processed: NewsArticleProcessed, raw: NewsArticleRaw) -> float:
-    haystack = " ".join(
-        part
-        for part in [
-            processed.normalized_title,
-            processed.summary,
-            raw.description or "",
-            raw.content_snippet or "",
-            raw.title,
-        ]
-        if part
-    ).lower()
-    normalized_query = query.strip().lower()
-    terms = [term for term in normalized_query.split() if term]
+async def _results_for(session: AsyncSession, hits: list[ScoredHit]) -> list[SearchResult]:
+    """Load the articles behind the hits, in the order retrieval ranked them.
 
-    score = 0.0
-    if normalized_query in haystack:
-        score += 0.5
+    `relevance` is the fused score scaled against the best result for this query.
+    Reciprocal rank scores are small absolute numbers — a first-place result scores
+    about 0.016 — and are only ever meaningful relative to the other results for the
+    same query, so showing them raw would be showing noise.
+    """
 
-    score += min(0.3, 0.1 * sum(1 for term in terms if term in haystack))
+    if not hits:
+        return []
 
-    if normalized_query in raw.title.lower():
-        score += 0.2
+    rows = (
+        await session.execute(
+            select(NewsArticleProcessed, NewsArticleRaw)
+            .join(NewsArticleRaw, NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
+            .where(NewsArticleProcessed.id.in_([hit.processed_id for hit in hits]))
+        )
+    ).all()
+    by_id = {processed.id: (processed, raw) for processed, raw in rows}
+    best = max(hit.score for hit in hits) or 1.0
 
-    return min(score, 1.0)
+    results = []
+    for hit in hits:
+        found = by_id.get(hit.processed_id)
+        if found is None:
+            # Retrieval and this query ran in the same transaction, so this means the
+            # article was pruned between them. Dropping it beats a half-empty card.
+            continue
+        processed, raw = found
+        results.append(
+            SearchResult(
+                id=processed.id,
+                title=processed.normalized_title,
+                summary=processed.summary,
+                category=processed.top_level_category,
+                published_at=raw.published_at,
+                relevance=min(1.0, hit.score / best),
+            )
+        )
+    return results
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -122,51 +140,25 @@ async def search_articles(
     language: str = Query("en", min_length=2, max_length=10),
     session: AsyncSession = Depends(get_session),
 ) -> SearchResponse:
-    """Search processed articles."""
+    """Search processed articles, lexically and semantically."""
 
     start = perf_counter()
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
-    query = f"%{q.strip()}%"
-
-    result = await session.execute(
-        select(NewsArticleProcessed, NewsArticleRaw)
-        .join(NewsArticleRaw, NewsArticleProcessed.raw_article_id == NewsArticleRaw.id)
-        .where(NewsArticleProcessed.processed_at >= cutoff_date)
-        .where(
-            or_(
-                NewsArticleProcessed.normalized_title.ilike(query),
-                NewsArticleProcessed.summary.ilike(query),
-                NewsArticleRaw.title.ilike(query),
-                NewsArticleRaw.description.ilike(query),
-                NewsArticleRaw.content_snippet.ilike(query),
-            )
-        )
-        .order_by(desc(NewsArticleProcessed.processed_at))
-        .limit(limit * 3)
+    outcome = await search(
+        session,
+        query=q,
+        limit=limit,
+        days=days,
+        provider=embedding_provider(),
+        language=language,
     )
-
-    scored_results = []
-    for processed, raw in result.all():
-        relevance = _score_search_result(q, processed, raw)
-        if relevance > 0:
-            scored_results.append(
-                SearchResult(
-                    id=processed.id,
-                    title=processed.normalized_title,
-                    summary=processed.summary,
-                    category=processed.top_level_category,
-                    published_at=raw.published_at,
-                    relevance=relevance,
-                )
-            )
-
-    scored_results.sort(key=lambda result: result.relevance, reverse=True)
-    results = scored_results[:limit]
-    results = await translate_search_results(results, language)
+    results = await translate_search_results(await _results_for(session, outcome.hits), language)
+    elapsed = perf_counter() - start
+    record_search(outcome.mode, elapsed)
 
     return SearchResponse(
         query=q,
-        total_results=len(scored_results),
+        total_results=len(results),
         results=results,
-        search_time_ms=(perf_counter() - start) * 1000,
+        search_time_ms=elapsed * 1000,
+        mode=outcome.mode,
     )
