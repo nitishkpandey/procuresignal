@@ -243,7 +243,7 @@ services:
       - "5555:5555"
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.3.1
     container_name: procuresignal-grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -252,11 +252,13 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.7.3
     container_name: procuresignal-prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro

@@ -43,3 +43,22 @@ traffic may be excluded when it uses an identified environment or route. Third-p
 remain included when ProcureSignal surfaces them as a 5xx or failed notification because that
 is the outcome users receive. Revisit these exclusions when the deployment topology and formal
 support commitments are selected.
+
+## Operations dashboard
+
+Compose provisions **ProcureSignal Operations** (UID `procuresignal-operations`) under the
+ProcureSignal folder on every Grafana startup, including an empty data volume. Open
+`http://localhost:3001` for local development. The datasource uses the internal Prometheus
+service; no manual import or datasource setup is required. Dashboard changes belong in
+`docker/grafana`, not the UI, and its mounts are read-only.
+
+The dashboard covers API and worker scrape health, API objectives, pipeline age, retrieval
+failures, dead letters, notification success and backlog, sanctions unmatched ratio,
+embedding backlog, and budget refusals. **No data is not healthy**: verify target health
+first, then distinguish idle traffic from missing instrumentation. Counter panels show
+windowed increases, not lifetime totals. Sanctions unmatched ratio measures registry
+placement, not a guarantee that a supplier is compliant.
+
+The Compose Grafana credentials are local-development defaults. Before exposing monitoring
+outside the machine, configure credentials, access control, TLS, and network restrictions
+for the chosen deployment. Provisioning does not establish those production controls.
