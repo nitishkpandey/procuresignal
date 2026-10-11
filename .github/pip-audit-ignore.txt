@@ -1,4 +1,4 @@
-# Vulnerabilities with no reachable fix, reviewed 2026-08-07.
+# Vulnerabilities with no reachable fix, reviewed 2026-10-10.
 #
 # An entry here is a decision with a date on it, not a way to make the build green.
 # Each one names why no upgrade closes it and when to look again. If this file grows
@@ -7,7 +7,7 @@
 # starlette: the fixes land in starlette 1.x. FastAPI 0.121 constrains starlette below
 # that, so no version of starlette we can install resolves them. Revisit when FastAPI
 # supports starlette 1.x — likely the next minor.
-# Reviewed: 2026-08-07. Next review: 2026-09-07.
+# Reviewed: 2026-10-10. Next review: 2026-11-10.
 PYSEC-2026-161
 PYSEC-2026-248
 PYSEC-2026-249

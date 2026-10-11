@@ -1,3 +1,5 @@
+import re
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -123,7 +125,9 @@ def test_dependencies_are_scanned_for_known_vulnerabilities() -> None:
     assert "audit" in jobs
     commands = "\n".join(step.get("run", "") for step in jobs["audit"]["steps"])
     assert "pip-audit" in commands
-    assert "npm audit" in commands
+    assert "scripts/audit_npm.py" in commands
+    npm_gate = (ROOT / "scripts/audit_npm.py").read_text()
+    assert '["npm", "audit", "--json"]' in npm_gate
 
 
 def test_the_audit_job_blocks_rather_than_warns() -> None:
@@ -151,6 +155,10 @@ def test_audit_exceptions_are_dated_decisions() -> None:
     assert "Reviewed:" in ignore
     assert "Next review:" in ignore
 
+    match = re.search(r"Next review: (\d{4}-\d{2}-\d{2})", ignore)
+    assert match, "the next review date must be machine-readable"
+    assert date.fromisoformat(match.group(1)) >= date.today(), "audit exception expired"
+
     entries = [
         line.strip()
         for line in ignore.splitlines()
@@ -164,6 +172,7 @@ def test_the_audit_job_uses_the_ignore_list() -> None:
     commands = "\n".join(step.get("run", "") for step in _ci_workflow()["jobs"]["audit"]["steps"])
 
     assert "pip-audit-ignore.txt" in commands
+    assert "scripts/audit_npm.py" in commands
 
 
 def test_route_type_contracts_are_verified() -> None:

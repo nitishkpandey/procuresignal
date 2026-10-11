@@ -162,8 +162,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Audit npm dependencies
-        working-directory: frontend
-        run: npm audit --audit-level=high
+        run: python scripts/audit_npm.py
 
   build:
     name: Build Docker images

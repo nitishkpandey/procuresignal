@@ -1,0 +1,17 @@
+{
+  "reviewed": "2026-10-10",
+  "next_review": "2026-11-10",
+  "advisories": {
+    "GHSA-vfj7-8cjw-p6xm": {
+      "reason": "Only reachable through eslint-config-next's development-only glob scanner. No compatible fix exists: npm proposes downgrading eslint-config-next from 16 to 14 while the application runs Next 16. Production dependencies audit clean.",
+      "maximum_severity": "high",
+      "packages": [
+        "@next/eslint-plugin-next",
+        "braces",
+        "eslint-config-next",
+        "fast-glob",
+        "micromatch"
+      ]
+    }
+  }
+}
