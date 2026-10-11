@@ -79,6 +79,30 @@ def test_ci_runs_the_postgres_suite_and_cannot_skip_it() -> None:
         assert "TEST_DATABASE_URL" in env
 
 
+def test_ci_proves_a_backup_can_be_restored_with_the_shipped_postgres_tools() -> None:
+    workflow = _ci_workflow()
+    steps = workflow["jobs"]["build"]["steps"]
+    recovery_steps = [
+        step for step in steps if "test_database_recovery_pg.py" in step.get("run", "")
+    ]
+
+    assert len(recovery_steps) == 1
+    assert "procuresignal-api:latest" in recovery_steps[0]["run"]
+    assert str(recovery_steps[0].get("env", {}).get("REQUIRE_POSTGRES")) == "1"
+    assert "TEST_DATABASE_URL" in recovery_steps[0].get("env", {})
+    assert (
+        workflow["jobs"]["build"]["services"]["postgres"]["image"]
+        == workflow["jobs"]["test"]["services"]["postgres"]["image"]
+    )
+
+    api_dockerfile = (ROOT / "Dockerfile.api").read_text()
+    assert api_dockerfile.startswith("FROM python:3.11-slim-bookworm\n")
+    assert "postgresql-client" in api_dockerfile
+    assert "COPY ./migrations /app/migrations" in api_dockerfile
+    assert "COPY ./alembic.ini /app/alembic.ini" in api_dockerfile
+    assert "COPY ./scripts/database_recovery.py /app/scripts/database_recovery.py" in api_dockerfile
+
+
 def test_dev_and_ci_agree_on_the_postgres_image() -> None:
     """A dev database that cannot run the migrations is a workstation that cannot run
     the app, discovered at the first `alembic upgrade` rather than at review."""

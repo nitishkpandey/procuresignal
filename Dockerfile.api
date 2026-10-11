@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
@@ -22,6 +22,9 @@ RUN poetry config virtualenvs.create false && \
 COPY ./shared /app/shared
 COPY ./api /app/api
 COPY ./worker /app/worker
+COPY ./migrations /app/migrations
+COPY ./alembic.ini /app/alembic.ini
+COPY ./scripts/database_recovery.py /app/scripts/database_recovery.py
 
 # Create non-root user for security
 RUN useradd -m -u 1000 procuresignal && chown -R procuresignal:procuresignal /app

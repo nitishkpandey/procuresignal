@@ -81,7 +81,9 @@ jobs:
       # into the run above would let the whole suite pass having verified nothing
       # database-specific, which is how six unusable Alembic revisions reached main.
       - name: Verify against real PostgreSQL
-        run: poetry run pytest tests/postgres -v --no-cov
+        run: >-
+          poetry run pytest tests/postgres -v --no-cov
+          --ignore=tests/postgres/test_database_recovery_pg.py
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@localhost:5432/postgres
           REQUIRE_POSTGRES: '1'
@@ -168,6 +170,20 @@ jobs:
     name: Build Docker images
     runs-on: ubuntu-latest
     needs: [lint, test, frontend]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: procuresignal
+          POSTGRES_PASSWORD: procuresignal
+          POSTGRES_DB: procuresignal
+        options: >-
+          --health-cmd "pg_isready -U procuresignal"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v6
       - name: Build API image
@@ -176,6 +192,21 @@ jobs:
         run: docker build -t procuresignal-worker:latest -f Dockerfile.worker .
       - name: Build Frontend image
         run: docker build -t procuresignal-frontend:latest frontend
+      - name: Prove a backup can be restored with the shipped image
+        run: >-
+          docker run --rm --network host
+          --volume "$PWD:/workspace:ro"
+          --workdir /workspace
+          --env TEST_DATABASE_URL
+          --env REQUIRE_POSTGRES
+          --env PYTHONPATH=/workspace/shared:/workspace
+          --env PYTHONDONTWRITEBYTECODE=1
+          procuresignal-api:latest
+          pytest tests/postgres/test_database_recovery_pg.py -v --no-cov
+          -o cache_dir=/tmp/pytest-cache
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://procuresignal:procuresignal@localhost:5432/postgres
+          REQUIRE_POSTGRES: '1'
       - name: Test API image
         run: docker run --rm --entrypoint uvicorn procuresignal-api:latest --help
       - name: Test Worker image
