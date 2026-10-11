@@ -146,6 +146,12 @@ NOTIFICATIONS_PENDING = Gauge(
     multiprocess_mode="max",
 )
 
+NOTIFICATION_DELIVERIES = Counter(
+    f"{NAMESPACE}_notification_deliveries_total",
+    "Notification delivery attempts, by transport and outcome.",
+    ["transport", "outcome"],
+)
+
 METRICS_PATH = "/metrics"
 
 # Requests that match no route are all recorded under one label. Without this, anything
@@ -195,6 +201,10 @@ def record_screening(outcome: str, count: int = 1) -> None:
 
 def record_outbox_depth(pending: int) -> None:
     NOTIFICATIONS_PENDING.set(pending)
+
+
+def record_notification_delivery(transport: str, outcome: str) -> None:
+    NOTIFICATION_DELIVERIES.labels(transport=transport, outcome=outcome).inc()
 
 
 def record_embedding_backlog(model: str, pending: int) -> None:
@@ -262,6 +272,7 @@ __all__ = [
     "LLM_BUDGET_REFUSALS",
     "RATE_LIMIT_BACKEND_ERRORS",
     "SANCTIONS_SCREENING",
+    "NOTIFICATION_DELIVERIES",
     "MetricsMiddleware",
     "metrics_response",
     "route_template",
@@ -274,6 +285,7 @@ __all__ = [
     "record_screening",
     "NOTIFICATIONS_PENDING",
     "record_outbox_depth",
+    "record_notification_delivery",
     "start_worker_metrics_server",
 ]
 

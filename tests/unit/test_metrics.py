@@ -7,13 +7,17 @@ outside as a healthy system, which is the failure this task removes.
 
 import asyncio
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from procuresignal.models import Base, Role
+from procuresignal.notifications.transports import in_app as transport_module
+from procuresignal.notifications.transports.in_app import InAppTransport, deliver_pending
 from procuresignal.observability.metrics import (
     ENRICHMENT_LLM_CALLS,
     HTTP_REQUESTS,
+    NOTIFICATION_DELIVERIES,
     PIPELINE_LAST_SUCCESS,
     RETRIEVAL_ARTICLES,
     record_pipeline_success,
@@ -180,3 +184,39 @@ def test_retrieval_freshness_is_conditional_on_completion() -> None:
     guarded = 'if result.status == "completed":\n            record_pipeline_success("retrieval")'
 
     assert guarded in source
+
+
+@pytest.mark.asyncio
+async def test_notification_delivery_outcomes_are_counted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queued = [SimpleNamespace(public_id="notification-1")]
+
+    async def pending(_session: object, *, limit: int) -> list[SimpleNamespace]:
+        assert limit == 500
+        return queued
+
+    async def mark(_session: object, _notification: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(transport_module, "pending_notifications", pending)
+    monkeypatch.setattr(transport_module, "mark_delivered", mark)
+    monkeypatch.setattr(transport_module, "mark_failed", mark)
+
+    success = NOTIFICATION_DELIVERIES.labels(transport="in_app", outcome="success")
+    failed = NOTIFICATION_DELIVERIES.labels(transport="broken", outcome="failed")
+    before_success = success._value.get()
+    before_failed = failed._value.get()
+
+    await deliver_pending(object(), transport=InAppTransport())  # type: ignore[arg-type]
+
+    class BrokenTransport:
+        name = "broken"
+
+        async def deliver(self, _notification: object) -> None:
+            raise RuntimeError("transport unavailable")
+
+    await deliver_pending(object(), transport=BrokenTransport())  # type: ignore[arg-type]
+
+    assert success._value.get() - before_success == 1
+    assert failed._value.get() - before_failed == 1

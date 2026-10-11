@@ -267,3 +267,12 @@ def test_ci_gates_on_search_quality() -> None:
     for step in evaluation:
         assert "--no-floor" not in step["run"], "the gate is running without its floor"
         assert "TEST_DATABASE_URL" in step.get("env", {})
+
+
+def test_ci_parses_the_prometheus_configuration_with_promtool() -> None:
+    steps = _ci_workflow()["jobs"]["build"]["steps"]
+    commands = "\n".join(step.get("run", "") for step in steps)
+
+    assert "prom/prometheus:v3.7.3" in commands
+    assert "--entrypoint promtool" in commands
+    assert "check config /etc/prometheus/prometheus.yml" in commands

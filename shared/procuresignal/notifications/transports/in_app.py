@@ -5,6 +5,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from procuresignal.models import Notification
+from procuresignal.observability.metrics import record_notification_delivery
 
 from ..outbox import mark_delivered, mark_failed, pending_notifications
 from .base import NotificationTransport
@@ -41,6 +42,7 @@ async def deliver_pending(
         try:
             await transport.deliver(notification)
         except Exception as exc:  # noqa: BLE001 - one bad row must not stop the queue
+            record_notification_delivery(transport.name, "failed")
             logger.warning(
                 "could not deliver notification %s over %s",
                 notification.public_id,
@@ -50,6 +52,7 @@ async def deliver_pending(
             continue
 
         await mark_delivered(session, notification)
+        record_notification_delivery(transport.name, "success")
         delivered += 1
 
     return delivered

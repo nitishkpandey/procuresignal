@@ -1,0 +1,31 @@
+groups:
+  - name: procuresignal-sli
+    rules:
+      - record: procuresignal:api_availability:ratio_5m
+        expr: |
+          (
+            1 - (
+              (sum(rate(procuresignal_http_requests_total{status=~"5.."}[5m])) or vector(0))
+              /
+              clamp_min(sum(rate(procuresignal_http_requests_total[5m])), 0.001)
+            )
+          )
+          and on()
+          (sum(rate(procuresignal_http_requests_total[5m])) > 0)
+
+      - record: procuresignal:api_latency_p95_seconds:5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(procuresignal_http_request_seconds_bucket[5m]))
+          )
+
+      - record: procuresignal:notification_delivery_success:ratio_30m
+        expr: |
+          (
+            (sum(rate(procuresignal_notification_deliveries_total{outcome="success"}[30m])) or vector(0))
+            /
+            clamp_min(sum(rate(procuresignal_notification_deliveries_total[30m])), 0.001)
+          )
+          and on()
+          (sum(rate(procuresignal_notification_deliveries_total[30m])) > 0)

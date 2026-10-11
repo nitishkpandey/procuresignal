@@ -130,8 +130,24 @@ def test_the_alerts_cover_every_failure_this_phase_names() -> None:
         "LlmBudgetExhausted",
         "SanctionsScreeningUnplaced",
         "NotificationsNotDraining",
+        "ApiTargetDown",
+        "WorkerTargetDown",
+        "ApiAvailabilitySloBurn",
+        "ApiLatencySloBurn",
+        "NotificationDeliverySloBurn",
     ):
         assert expected in alerts
+
+
+def test_slo_ratio_alerts_require_real_traffic() -> None:
+    rules = {rule["alert"]: rule for rule in _rules()}
+
+    for alert in ("ApiAvailabilitySloBurn", "ApiLatencySloBurn"):
+        assert "sum(rate(procuresignal_http_requests_total" in rules[alert]["expr"]
+        assert "> 0" in rules[alert]["expr"]
+    notification = rules["NotificationDeliverySloBurn"]["expr"]
+    assert "sum(rate(procuresignal_notification_deliveries_total" in notification
+    assert "> 0" in notification
 
 
 def test_prometheus_loads_the_rules_file() -> None:
@@ -187,6 +203,7 @@ def test_every_label_selector_uses_a_label_the_metric_declares(rule: dict) -> No
             metrics_module.LLM_BUDGET_REFUSALS,
             metrics_module.SANCTIONS_SCREENING,
             metrics_module.NOTIFICATIONS_PENDING,
+            metrics_module.NOTIFICATION_DELIVERIES,
         )
     }
 
@@ -200,3 +217,14 @@ def test_every_label_selector_uses_a_label_the_metric_declares(rule: dict) -> No
             f"{rule['alert']} filters {metric_name} on {sorted(unknown)}, which it does "
             f"not declare. PromQL matches every series instead of none."
         )
+
+
+def test_slo_alerts_read_the_expected_recording_rules() -> None:
+    rules = {rule["alert"]: rule["expr"] for rule in _rules()}
+
+    assert "procuresignal:api_availability:ratio_5m" in rules["ApiAvailabilitySloBurn"]
+    assert "procuresignal:api_latency_p95_seconds:5m" in rules["ApiLatencySloBurn"]
+    assert (
+        "procuresignal:notification_delivery_success:ratio_30m"
+        in rules["NotificationDeliverySloBurn"]
+    )

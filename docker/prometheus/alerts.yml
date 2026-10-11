@@ -8,6 +8,77 @@
 # from a healthy one — which is precisely how prometheus.yml scraped a non-existent
 # endpoint for months without anyone noticing.
 groups:
+  - name: target-health
+    rules:
+      - alert: ApiTargetDown
+        expr: up{job="procuresignal-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The ProcureSignal API metrics target is down"
+          description: >
+            Prometheus has been unable to scrape the API for two minutes. Check the API
+            container, its /metrics endpoint, and the Compose network before trusting any
+            API service-level indicator.
+
+      - alert: WorkerTargetDown
+        expr: up{job="procuresignal-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The ProcureSignal worker metrics target is down"
+          description: >
+            Prometheus has been unable to scrape the worker for two minutes. Retrieval,
+            enrichment, screening, and notification metrics are incomplete until the
+            worker metrics server is reachable again.
+
+  - name: service-level-objectives
+    rules:
+      - alert: ApiAvailabilitySloBurn
+        expr: |
+          (procuresignal:api_availability:ratio_5m < 0.995)
+          and
+          (sum(rate(procuresignal_http_requests_total[5m])) > 0)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API availability is below the 99.5% objective"
+          description: >
+            The five-minute API availability indicator has remained below 99.5% for ten
+            minutes while requests were present. Inspect 5xx responses and recent deploys.
+
+      - alert: ApiLatencySloBurn
+        expr: |
+          (procuresignal:api_latency_p95_seconds:5m > 0.5)
+          and
+          (sum(rate(procuresignal_http_requests_total[5m])) > 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency is above the 500 ms objective"
+          description: >
+            The five-minute p95 API latency has exceeded 500 ms for ten minutes while
+            requests were present. Inspect route latency, database load, and dependencies.
+
+      - alert: NotificationDeliverySloBurn
+        expr: |
+          (procuresignal:notification_delivery_success:ratio_30m < 0.99)
+          and
+          (sum(rate(procuresignal_notification_deliveries_total[30m])) > 0)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Notification delivery is below the 99% objective"
+          description: >
+            The 30-minute delivery-success indicator has remained below 99% for fifteen
+            minutes while deliveries were attempted. Inspect transport failures and the
+            notification outbox before alerts age out.
+
   - name: pipeline-freshness
     rules:
       # The signature failure of this system: ingestion returns nothing for days while

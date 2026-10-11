@@ -186,6 +186,16 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v6
+      - name: Validate Prometheus configuration and rules
+        run: |
+          mkdir -p "$RUNNER_TEMP/procuresignal-prometheus"
+          cp prometheus.yml "$RUNNER_TEMP/procuresignal-prometheus/prometheus.yml"
+          cp docker/prometheus/alerts.yml "$RUNNER_TEMP/procuresignal-prometheus/alerts.yml"
+          cp docker/prometheus/slo-rules.yml "$RUNNER_TEMP/procuresignal-prometheus/slo-rules.yml"
+          docker run --rm --entrypoint promtool \
+            --volume "$RUNNER_TEMP/procuresignal-prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.7.3 \
+            check config /etc/prometheus/prometheus.yml
       - name: Build API image
         run: docker build -t procuresignal-api:latest -f Dockerfile.api .
       - name: Build Worker image
