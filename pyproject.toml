@@ -42,7 +42,7 @@ langdetect = "^1.0"
 spacy = "^3.7"
 
 # Enrichment
-tenacity = "^8.2"
+tenacity = ">=8.2,<10.0"
 
 # Logging
 structlog = "^23.2"
